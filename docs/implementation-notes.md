@@ -131,3 +131,51 @@ points change or sharpen PLAN.md, and later tasks must follow them:
     every descendant group, never the test's own group), `killMarkedProcesses` and `waitFor(condition, timeoutMs)`.
 - **Timeouts.** The integration and e2e projects use 30 s test and hook timeouts, because each fake start costs
   about 0.3 s and later tests chain several.
+
+## m1-config
+
+- **Where it lives.** `@mastermind/core/contracts` (`src/contracts/config.ts`) holds the browser-safe shapes:
+  `configSchema` (the full, defaulted `Config` that Settings edits), `configLayerSchema` (a deep-partial layer, as
+  written in either YAML file or sent as a change), `parseDuration`, `resolveMaxWorkers`, `SubscriptionPlan` and the
+  detection result `ProjectDetection`. The Node side is `@mastermind/core/config` (`src/config/`), a new package
+  export.
+- **Strict keys.** Every config object is a `z.strictObject`, so a typo such as `models.wroker` is an error that
+  names the key instead of being ignored. `ConfigError` carries `file` and `issues: { key, message }[]`, and its
+  message reads `.mastermind/config.yaml: stuckCheck.after: expected a duration such as 60m, 90s or 1h30m`.
+  Changes passed to `setConfig` are reported as `config change: <key>: …`.
+- **Layering** validates each file as a layer first (so errors name the file), then deep-merges defaults ←
+  `mastermind.yaml` ← `.mastermind/config.yaml`. Objects merge key by key; arrays and scalars replace.
+- **`setConfig(context, overrides)`** validates the change, edits `.mastermind/config.yaml` as a YAML `Document`
+  (comments, order and unrelated keys survive), sets only the leaves present in the change, validates the result
+  and writes it atomically (temp file plus rename). It returns the merged config. There is no "unset" yet.
+  Calls are serialised per file within the process, so concurrent changes from Settings and the Conductor
+  are all kept. The `@mastermind/core/config` barrel exports only the public API; setup helpers stay private.
+- **`Config` keeps the file form** (`maxWorkers: auto`, durations as text, `~/` paths), so it round-trips through
+  Settings. `resolveConfig(config, { repoRoot, homeDir, plan })` gives the runtime form: `maxWorkers` as a number
+  (auto = 1 on Pro, 2 on Max), `stuckCheck.afterMs`/`everyMs`, and absolute `worktreeDir` and
+  `sandbox.allowWrite` (`~/` expands to the injected home, relative paths resolve against the repo).
+- **Durations** are one or more `<n><unit>` parts with units `ms`, `s`, `m`, `h`, `d` (`60m`, `1h30m`); zero is
+  invalid.
+- **Additions to section 13.** `models.fixer` (default opus), because Settings (15.2) and decision 15 let each role's
+  model be chosen. The default `worktreeDir` is `<home>/.mastermind/worktrees/<repo>-<first 6 hex of sha256(repo
+  path)>`, with characters outside `[\w.-]` in the repo name replaced by `-`. `commands` default to empty strings,
+  meaning "none". The plan's log retention setting (section 20) is not a config key yet.
+- **Detection** (`detectProject`) checks sources in this order and the first source to offer a command wins it:
+  Makefile (`setup|deps|bootstrap`, `build|all`, `test|check` targets), package.json, Cargo.toml, go.mod,
+  pyproject.toml. Each command comes with a `source` such as `package.json script "build" via pnpm (pnpm-lock.yaml)`
+  for the Conductor's confirmation question. The Node package manager comes from the lockfile, then the
+  `packageManager` field, then npm. Setup is `pnpm install`, `yarn install`, `npm ci` (or `npm install` without a
+  lockfile), `cargo fetch`, `go mod download`, `uv sync`, `poetry install` or `python -m pip install -e .`. Python
+  gets no build command and pytest as the test command. npm's placeholder test script is ignored. A malformed
+  package.json is skipped and reported in `warnings` rather than failing startup.
+- **Sandbox presets** (`sandboxPreset(toolchains, platform)`) list registry domains and cache folders per toolchain
+  (npm, pnpm, yarn, cargo, go, pip, uv, poetry) for macOS and Linux. Cache folders are stored as `~/…` so the config
+  stays readable and portable; `resolveConfig` makes them absolute for the spawn. XDG and other env overrides of
+  cache locations are not followed.
+- **First run** (`prepareProject`) creates `.mastermind/`, appends `/.mastermind/` and `/.mastermind-result.md` to
+  `info/exclude` in the git common dir (it follows a `.git` file's `gitdir:` and `commondir`, without running git),
+  and, only when `.mastermind/config.yaml` does not exist yet, writes the detected commands and presets there. Keys
+  the committed `mastermind.yaml` already sets are left out, so the committed values stay in effect. It returns
+  `{ firstRun: true, detection }` so the Conductor can ask the owner to confirm the commands.
+- **Unit test helper.** `packages/core/src/testing/temp-dir.ts` (`makeTempDir`, `writeFiles`) cleans up through
+  vitest's `onTestFinished`, since the unit project has no setup file.

@@ -1,0 +1,13 @@
+export { defaultConfig } from "./defaults.js";
+export { detectProject } from "./detect.js";
+export { ConfigError } from "./errors.js";
+export type { ConfigIssue } from "./errors.js";
+export { loadConfig, setConfig } from "./layers.js";
+export { projectPaths } from "./paths.js";
+export type { ConfigContext, ProjectPaths } from "./paths.js";
+export { sandboxPreset } from "./presets.js";
+export type { HostPlatform, SandboxPreset } from "./presets.js";
+export { resolveConfig } from "./resolve.js";
+export type { ResolveContext, ResolvedConfig } from "./resolve.js";
+export { GitDirError, prepareProject } from "./setup.js";
+export type { ProjectSetupContext, ProjectSetupResult } from "./setup.js";
