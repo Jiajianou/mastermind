@@ -16,9 +16,11 @@
     "./lock": "./src/lock.ts",
     "./procs": "./src/procs.ts",
     "./recovery": "./src/recovery.ts",
+    "./runtime": "./src/runtime.ts",
     "./scheduler": "./src/scheduler.ts",
     "./sessions": "./src/sessions/index.ts",
-    "./startup": "./src/startup/index.ts"
+    "./startup": "./src/startup/index.ts",
+    "./status": "./src/status.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

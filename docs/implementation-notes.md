@@ -553,3 +553,49 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Tests.** `test/integration/startup/` drives `startMastermind` with scripted prompts, and runs the CLI from source
   (`test/support/cli.ts`, `node --import tsx`) for the refusal and not-a-repo exits. `test/integration/doctor.test.ts`
   runs `mastermind doctor` the same way, with stub `bwrap` and `socat` on PATH so it passes on Linux CI.
+
+## m1-runtime-tui
+
+- **Where it lives.** `@mastermind/core/runtime` (`src/runtime.ts`) wires one bus, the action registry (builtins plus
+  `stopSession`), the scheduler and the session manager over the `Startup`, keeps the resolved config current
+  through `setConfig`, and exposes `togglePause`, `killProcessesSync`, `markKilledSync` and `closeSync`.
+  `@mastermind/core/status` (`src/status.ts`) is the one store the terminal view reads: `getSnapshot`/`subscribe`
+  (shaped for `useSyncExternalStore`), rebuilt from SQLite and `scheduler.summary()` on every bus event. Running
+  checks are counted from `check.updated` events, since the checks table has no running query. The CLI side is
+  `foreground.ts` (signals, view, kill path), `ctrl-c.ts`, `kill-path.ts`, `plain-log.ts`, `terminal-commands.ts`
+  and `tui/*.tsx`.
+- **Event lines.** The five lines come from bus events, not from every stream line: session start (`Start worker,
+  attempt 1 of 3`) and end, commits and errors, setup and later checks, rebases, a task reaching review, blocked or
+  done, pause and resume, usage-limit waits and sign-in changes. Every other session event only updates that row's
+  activity column. `store.notice` adds mastermind's own lines (runtime errors, key feedback). Chat, terminal,
+  proposal and shutdown events don't rebuild the snapshot at all.
+- **Header.** Shows `mainBranch @ <short sha>` read once at start (null if the branch can't be resolved), because the
+  owner works on another branch (decision 6). Nothing moves main in M1; M5's rebase queue should refresh it.
+- **Link line** is a placeholder (`Web app → not served yet …`) because `StatusHeader.link` is `null` until m2 starts
+  the server. `o` and `c` already run `open`/`xdg-open` and `pbcopy`/`wl-copy`/`xclip` through the process
+  registry (kind `utility`), and print a notice while there is no link. `--open` does the same as `o` at start.
+- **Ctrl+C machine.** `stepCtrlC(state, input)` is pure and works on timestamps, so a press that arrives after the
+  2 s window while its timer is still queued re-arms instead of firing. `createCtrlCGuard` drives it with
+  `setTimeout` on `performance.now()`, and re-arms the timer for the remainder when it fires before `expiresAt`
+  (libuv timers count from the loop's cached time), so the footer can never stay armed. The Ink `\x03` key (Ink runs with `exitOnCtrlC: false`) and `SIGINT` both call `guard.press()`.
+  Without a TTY on both stdin and stdout, the view is plain log lines (the header, the link line, every event line,
+  and the armed warning when it arms).
+- **Kill path** (`runKillPath`) is fully synchronous and never stops part-way: `killAllSync`, `db.killRunning()`,
+  Ink `clear` plus `unmount`, `closeSync` (scheduler stop, db close, lock release), the summary through `writeSync`
+  (stdout to a pipe is asynchronous on macOS and `process.exit` would cut it off), then any step failures on stderr.
+  The summary counts come from the transaction, or from the registry's kill counts if it failed. Tasks stay
+  `running`; the next start's recovery requeues them (3.5). It runs in about 50 ms on macOS.
+- **Exit codes, a deviation.** Ctrl+C twice exits 130 as 3.3 says; SIGHUP exits 129, SIGTERM 143 and an uncaught
+  exception 1 (with the error on stderr), so callers can tell the causes apart. All four run the same kill path.
+- **Path guard command.** The CLI has a hidden `mastermind path-guard <worktree>` subcommand, and the session
+  manager gets `[process.execPath, ...process.execArgv, process.argv[1], "path-guard"]`. With the built binary that
+  is `node …/dist/index.js path-guard`. Run from source (`node --import tsx`), the hook would resolve `tsx` from the
+  worktree and fail, so live runs need the built binary.
+- **Prompts directory** is `<repo>/prompts/`, found relative to the CLI module (`src/` and `dist/` are at the same
+  depth), which matches the install-from-repo decision 10.
+- **JSX and tsx.** The CLI tsconfig sets `jsx: react-jsx`. tsx only applies a tsconfig whose `include` covers the file,
+  so `test/support/cli.ts` runs the CLI source with `cwd` = `packages/cli`; from the repo root, tsx would compile
+  JSX in classic mode and fail with `React is not defined`. `spawnCli` there is the shared helper for long-running
+  CLI tests. ESLint applies the React hooks rules to `packages/cli/src/**/*.tsx`.
+- **Dependencies.** `ink` 8 and `react` 19 are CLI dependencies (external to the tsup bundle);
+  `ink-testing-library` and `@types/react` are CLI dev dependencies.

@@ -3,7 +3,7 @@ import { productName } from "@mastermind/core/contracts";
 import { Command, InvalidArgumentError } from "commander";
 import { z } from "zod";
 import cliPackage from "../package.json" with { type: "json" };
-import { runDoctorCommand, runForeground } from "./commands.js";
+import { runDoctorCommand, runForeground, runPathGuard } from "./commands.js";
 
 const portSchema = z.coerce.number().int().min(1).max(65_535);
 
@@ -46,6 +46,14 @@ program
   .argument("[path]", "the git repository to check", ".")
   .action(async (path: unknown) => {
     process.exitCode = await runDoctorCommand(pathSchema.parse(path));
+  });
+
+program
+  .command("path-guard", { hidden: true })
+  .description("answer a PreToolUse hook: allow edits inside the worktree only")
+  .argument("<worktree>", "the task worktree that edits must stay inside")
+  .action(async (worktree: unknown) => {
+    process.exitCode = await runPathGuard(pathSchema.parse(worktree));
   });
 
 await program.parseAsync();

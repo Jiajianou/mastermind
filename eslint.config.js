@@ -42,6 +42,10 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
   },
   {
+    files: ["packages/cli/src/**/*.tsx"],
+    extends: [reactHooks.configs.flat["recommended-latest"]],
+  },
+  {
     files: ["packages/core/src/contracts/**/*.ts"],
     rules: {
       "no-restricted-imports": [

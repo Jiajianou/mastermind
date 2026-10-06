@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
+import { text } from "node:stream/consumers";
 import { createProcessRegistry } from "@mastermind/core/procs";
+import { pathGuardResponse } from "@mastermind/core/sessions";
 import {
   doctorPassed,
   formatDoctorReport,
@@ -7,6 +9,8 @@ import {
   startMastermind,
   StartupError,
 } from "@mastermind/core/startup";
+import type { Startup } from "@mastermind/core/startup";
+import { runInForeground } from "./foreground.js";
 import { createTerminalPrompts } from "./terminal-prompts.js";
 
 export interface ForegroundOptions {
@@ -20,22 +24,44 @@ function reportFailure(error: unknown): number {
   return 1;
 }
 
+const runsUntilKilled = new Promise<never>(() => undefined);
+
 export async function runForeground(path: string, options: ForegroundOptions): Promise<number> {
+  const registry = createProcessRegistry();
+  const homeDir = homedir();
+  let startup: Startup;
   try {
-    const startup = await startMastermind({
+    startup = await startMastermind({
       path,
       port: options.port,
       env: process.env,
-      homeDir: homedir(),
+      homeDir,
       platform: process.platform,
-      registry: createProcessRegistry(),
+      registry,
       prompts: createTerminalPrompts(process.stdin, process.stdout),
     });
-    startup.close();
-    return 0;
   } catch (error) {
     return reportFailure(error);
   }
+  try {
+    await runInForeground({
+      startup,
+      registry,
+      env: process.env,
+      homeDir,
+      open: options.open,
+    });
+  } catch (error) {
+    registry.killAllSync();
+    startup.close();
+    return reportFailure(error);
+  }
+  return runsUntilKilled;
+}
+
+export async function runPathGuard(worktree: string): Promise<number> {
+  process.stdout.write(pathGuardResponse(await text(process.stdin), worktree));
+  return 0;
 }
 
 export async function runDoctorCommand(path: string): Promise<number> {
