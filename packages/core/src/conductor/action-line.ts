@@ -11,20 +11,21 @@ export interface ToolCallRecord {
 
 const toolPrefix = "mcp__mastermind__";
 
-function awaitsConfirmation(output: string): boolean {
+function parseOutput(output: string): unknown {
   try {
-    return awaitingConfirmationSchema.safeParse(JSON.parse(output)).success;
+    return JSON.parse(output);
   } catch {
-    return false;
+    return output;
   }
 }
 
 function donePhrase(call: ToolCallRecord): string | null {
-  if (call.isError || !call.name.startsWith(toolPrefix) || awaitsConfirmation(call.output))
-    return null;
+  if (call.isError || !call.name.startsWith(toolPrefix)) return null;
+  const result = parseOutput(call.output);
+  if (awaitingConfirmationSchema.safeParse(result).success) return null;
   const toolName = call.name.slice(toolPrefix.length);
   const tool = actionTools.find((candidate) => candidate.name === toolName);
-  return tool === undefined ? null : tool.done(call.input);
+  return tool === undefined ? null : tool.done(call.input, result);
 }
 
 export function summariseActions(calls: readonly ToolCallRecord[]): string | null {

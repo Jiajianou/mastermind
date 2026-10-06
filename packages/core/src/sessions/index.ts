@@ -1,4 +1,4 @@
-export { stopSessionAction } from "./actions.js";
+export { messageSessionAction, stopSessionAction } from "./actions.js";
 export { classifyExit } from "./exit.js";
 export { createSessionManager, wipMessage } from "./manager.js";
 export type { SessionManager, SessionManagerOptions, UsageBackoff } from "./manager.js";

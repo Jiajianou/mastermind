@@ -16,7 +16,7 @@ export interface WorkerSettlement {
 }
 
 export interface SettlementInput {
-  report: SessionReport;
+  report: Pick<SessionReport, "end" | "conversationStarted">;
   task: Pick<Task, "attempts" | "held">;
   claudeSessionId: string | null;
   maxAttempts: number;

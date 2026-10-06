@@ -34,6 +34,9 @@ export const sessionSchema = z.object({
 });
 export type Session = z.infer<typeof sessionSchema>;
 
+export const isEditingRole = ({ role }: Pick<Session, "role">): boolean =>
+  role === "worker" || role === "fixer";
+
 export const eventTypeSchema = z.enum([
   "start",
   "read",
@@ -64,3 +67,12 @@ export const exitOutcomeSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("auth_failed"), reason: z.string() }),
 ]);
 export type ExitOutcome = z.infer<typeof exitOutcomeSchema>;
+
+export const steeringDeliverySchema = z.enum(["live", "resumed"]);
+export type SteeringDelivery = z.infer<typeof steeringDeliverySchema>;
+
+export const messageSessionResultSchema = z.object({
+  delivery: steeringDeliverySchema,
+  session: sessionSchema,
+});
+export type MessageSessionResult = z.infer<typeof messageSessionResultSchema>;

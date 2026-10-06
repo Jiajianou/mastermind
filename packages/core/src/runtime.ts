@@ -27,7 +27,7 @@ import type { KillReport, ProcessRegistry } from "./procs.js";
 import { createProposalGate, proposalActions } from "./proposals.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
-import { createSessionManager, stopSessionAction } from "./sessions/index.js";
+import { createSessionManager, messageSessionAction, stopSessionAction } from "./sessions/index.js";
 import type { Startup } from "./startup/index.js";
 import { createStatusStore } from "./status.js";
 import type { StatusStore } from "./status.js";
@@ -127,6 +127,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     clock,
   });
   actions.register(stopSessionAction(manager));
+  actions.register(messageSessionAction(manager));
   const gate = createProposalGate({
     db,
     bus,

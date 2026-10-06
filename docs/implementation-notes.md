@@ -93,7 +93,7 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   `Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>`, or give the trailer text), `resultFile`,
   `structuredOutput` (needs `--json-schema`), `mcp`, `sleep`, `hang` (`ignoreSigterm`), `spawnGrandchild`
   (`marker`, `sameGroup`), `awaitMessage` (branches on the next stdin message), `usageLimit`, `authExpired`
-  (`variant`, `signOut`) and `crash`.
+  (`variant`, `signOut`) and `crash` (`afterMs`).
 - **Realism choices.** Bash and commit steps really run in cwd through `/bin/sh`, each in its own process group like
   Claude Code's Bash tool. SIGTERM kills those groups and exits 143; SIGINT exits 130. `--permission-mode auto`
   with a haiku model reports `permissionMode: "default"`, as in spike 7. Reusing a `--session-id` or resuming an
@@ -1156,3 +1156,51 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   commits one file and then edits README.md every 600 ms: the edit appears in the diff with `uncommitted` and keeps
   advancing without a reload; File mode lists the full tree and opens a plain editor; All shows the pane and Open
   leads back to the diff.
+
+## m4-steering
+
+- **Where it lives.** `SessionManager.messageSession(sessionId, text)` in `sessions/manager.ts`, the
+  `messageSession` action in `sessions/actions.ts` (route `POST /api/sessions/:sessionId/message`), the
+  `message_session` tool in `conductor/tools.ts`, and `sessions/SessionMessageBox.tsx` on the Sessions screen.
+  Contracts: `messageSessionInputSchema` (text trimmed, 1 to 20 000 characters) and `messageSessionResultSchema`
+  (`{ delivery: "live" | "resumed", session }`, the session that received the message).
+- **Live delivery** is a stdin write (`LiveSession.steer`), accepted only until the session's first `result` (stdin
+  is closed there, PLAN 8.4). The `steer` event is the CLI's `isReplay` echo, as the CLI notes decided, so it
+  appears when the worker really takes the message in; nothing is recorded at write time, which would show it twice.
+- **Resume fallback.** A session that has ended (or is ending: its result is in but the process hasn't exited, in
+  which case the call waits for it to settle) is resumed with `--resume <claude_session_id>` in the task's clone,
+  with the message as the prompt. The new worker row keeps the steered session's `attempt` and the task's round,
+  and the task's `attempts` is unchanged; how the resumed run ends is settled like any worker run. The message is
+  stored as a `steer` event on the new session before it starts (the CLI's replay of a turn's own prompt is not
+  stored). The resume is refused with a 409 when it can't work or would collide: the conversation never got going,
+  the session isn't the task's latest worker/fixer conversation (the error names the latest session), the task is
+  `running` with another conversation, `rebasing`, `blocked` or `done`, the clone is gone, sign-in is needed, or a
+  usage-limit back-off is active. `pending` (including held), `checking` and `review` resume; the start bypasses
+  the scheduler (an explicit owner instruction, like a request-changes resume) and so is allowed while paused.
+- **Continuations.** A message to a session whose conversation has continued in a live session of the same task
+  (same claude session id) goes to that live session. Messages are handled one at a time, so two quick messages to
+  an ended session give one resume and one live steer, not two resumes.
+- **Messages the CLI never took in.** A message written to stdin but not echoed by the time the process exits
+  (it arrived as the turn ended) is redelivered by resuming, once the run has settled. If that resume is refused,
+  an `error` event `Message not delivered: <reason>` goes on the original session. Only runs that exited on their own
+  redeliver: a stopped session drops them, and so does one mastermind aborted (a wrong permission mode would abort
+  the resume too and count another attempt).
+- **Action line.** `ActionTool.done(input, result)` now receives the tool's parsed result, so `message_session`
+  reads `✓ Sent to <task>` from the session in the result.
+- **Shared helpers.** The "conversation got going" rule moved from `recovery.ts` to `sessions/conversation.ts`
+  (`canResumeConversation`), used by recovery and steering. `isEditingRole` (worker or fixer) lives in the
+  browser-safe `contracts/sessions.ts`, so the Sessions screen shows the box by the same rule the server applies.
+- **fake-claude.** `crash` takes `afterMs`: the process dies that long into the step, so stdin messages written
+  meanwhile are never taken in (the fake hands queued messages over only between steps, like a tool boundary).
+- **Web.** The box sits under the timeline of worker and fixer sessions. Enter sends, Shift+Enter adds a newline.
+  For an ended session a hint says sending resumes it; after a resume the screen selects the new session. The
+  Conductor prompt gained a short "Steering work" section.
+- **Tests.** `test/integration/sessions/steering.test.ts`: a fake worker that waits on stdin writes a different
+  file after an injected message; an ended session is resumed (argv, cwd, prompt, attempt, steer event, committed
+  file); a message the worker never took in (it crashes mid-step) being redelivered and, under the crash's back-off,
+  refused with a `Message not delivered` error; refusals; and the chat tool plus the HTTP route against a stand-in manager (the conductor harness gained a
+  `messageSession` option). `packages/web/src/sessions/message-box.test.tsx` covers the box.
+- **Fix: ambiguous chat box lookups in Playwright.** `getByRole("textbox", { name: "Message" })` matches
+  substrings in Playwright, so right after a click to Chat, m3.spec's `say` found the Sessions screen's "Message
+  this session" box (still mounted for a moment) and steered alpha instead of chatting. The chat specs now pass
+  `exact: true`.

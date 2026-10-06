@@ -33,3 +33,10 @@ export const setPriorityInputSchema = z.strictObject({ taskId: taskIdSchema, pri
 export const importTasksInputSchema = z.strictObject({ yaml: z.string() });
 
 export const sessionRefInputSchema = z.strictObject({ sessionId: z.int().min(1) });
+
+export const steeringMessageMaxLength = 20_000;
+
+export const messageSessionInputSchema = z.strictObject({
+  sessionId: z.int().min(1),
+  text: z.string().trim().min(1).max(steeringMessageMaxLength),
+});

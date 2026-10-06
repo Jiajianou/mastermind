@@ -26,6 +26,8 @@ import type { ProcessRegistry } from "@mastermind/core/procs";
 import { createProposalGate, proposalActions } from "@mastermind/core/proposals";
 import { createScheduler } from "@mastermind/core/scheduler";
 import type { Scheduler } from "@mastermind/core/scheduler";
+import { messageSessionAction } from "@mastermind/core/sessions";
+import type { SessionManager } from "@mastermind/core/sessions";
 import { z } from "zod";
 import { onCleanup } from "../../support/cleanup.js";
 import type { Scenario } from "../../support/fake-claude.js";
@@ -65,6 +67,7 @@ export interface ConductorHarness {
 export interface ConductorHarnessOptions {
   scenario: Scenario;
   idleMs?: number;
+  messageSession?: SessionManager["messageSession"];
 }
 
 const apiErrorSchema = z.object({ message: z.string() });
@@ -100,6 +103,8 @@ export async function conductorHarness(
     },
     builtinActions,
   );
+  if (options.messageSession !== undefined)
+    actions.register(messageSessionAction({ messageSession: options.messageSession }));
   const scheduler = createScheduler({
     db,
     bus,

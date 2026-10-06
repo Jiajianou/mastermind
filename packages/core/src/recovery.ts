@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
 import { assertTransition } from "./actions/transitions.js";
+import { isEditingRole } from "./contracts/index.js";
 import type { Session, Task } from "./contracts/index.js";
 import type { Db, KilledCounts } from "./db/index.js";
 import { commitLeftovers } from "./git/index.js";
 import type { Git } from "./git/index.js";
 import { killTreesSync, ProcessKillError, readLiveProcess } from "./procs.js";
-import { createStreamParser } from "./sessions/parser.js";
+import { canResumeConversation } from "./sessions/conversation.js";
 
 export const interruptedMessage = "WIP: interrupted";
 
@@ -81,21 +82,9 @@ function requeue(db: Db, task: Task): RecoveryReport["requeued"][number] {
   return { taskId: task.id, resumeSession };
 }
 
-// As after a usage limit, `--resume` is only offered once the conversation got going: a run killed before its
-// first assistant line may have no stored conversation, and resuming it would fail with "No conversation found".
 function resumableSession(db: Db, taskId: string): string | null {
-  const sessions = db.sessions.listForTask(taskId);
-  const latest = sessions.findLast(({ role }) => role === "worker" || role === "fixer");
+  const latest = db.sessions.listForTask(taskId).findLast(isEditingRole);
   const claudeSessionId = latest?.claudeSessionId ?? null;
   if (claudeSessionId === null) return null;
-  const runs = sessions.filter((session) => session.claudeSessionId === claudeSessionId);
-  return runs.some((run) => conversationStarted(db, run.id)) ? claudeSessionId : null;
-}
-
-function conversationStarted(db: Db, sessionId: number): boolean {
-  const parser = createStreamParser();
-  return db.events.listForSession(sessionId).some(({ payload }) => {
-    const { line } = parser.parseLine(payload).details;
-    return line === "assistant" || line === "tool_use";
-  });
+  return canResumeConversation(db, taskId, claudeSessionId) ? claudeSessionId : null;
 }

@@ -47,7 +47,12 @@ export type Step =
       variant?: "invalid-token" | "not-logged-in" | undefined;
       signOut?: boolean | undefined;
     }
-  | { kind: "crash"; exitCode?: number | undefined; stderr?: string | undefined };
+  | {
+      kind: "crash";
+      exitCode?: number | undefined;
+      stderr?: string | undefined;
+      afterMs?: number | undefined;
+    };
 
 export const stepSchema: z.ZodType<Step> = z.lazy(() =>
   z.discriminatedUnion("kind", [
@@ -108,6 +113,7 @@ export const stepSchema: z.ZodType<Step> = z.lazy(() =>
       kind: z.literal("crash"),
       exitCode: z.number().int().min(1).max(255).optional(),
       stderr: z.string().optional(),
+      afterMs: z.number().int().positive().optional(),
     }),
   ]),
 );

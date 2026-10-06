@@ -57,7 +57,12 @@ const builtins = {
 } satisfies ContractedActions<
   Exclude<
     ActionName,
-    "stopSession" | "confirmProposal" | "rejectProposal" | "sendChat" | "stopChat"
+    | "stopSession"
+    | "messageSession"
+    | "confirmProposal"
+    | "rejectProposal"
+    | "sendChat"
+    | "stopChat"
   >
 >;
 

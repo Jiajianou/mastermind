@@ -4,6 +4,7 @@ import {
   actionIssueSchema,
   createTasksInputSchema,
   importTasksInputSchema,
+  messageSessionInputSchema,
   noInputSchema,
   sessionRefInputSchema,
   setPriorityInputSchema,
@@ -25,8 +26,8 @@ import type { Config } from "./config.js";
 import { busEventSchema } from "./events.js";
 import { runtimeFlagsSchema, summarySchema } from "./runtime.js";
 import type { RuntimeFlags } from "./runtime.js";
-import { sessionEventSchema, sessionSchema } from "./sessions.js";
-import type { Session } from "./sessions.js";
+import { messageSessionResultSchema, sessionEventSchema, sessionSchema } from "./sessions.js";
+import type { MessageSessionResult, Session } from "./sessions.js";
 import { taskIdSchema, taskSchema } from "./tasks.js";
 import type { Task } from "./tasks.js";
 
@@ -56,6 +57,7 @@ export interface ActionResults {
   release: Task;
   retry: Task;
   stopSession: Session;
+  messageSession: MessageSessionResult;
   pause: RuntimeFlags;
   resume: RuntimeFlags;
   setConfig: Config;
@@ -89,6 +91,11 @@ export const actionRoutes = {
     path: "/api/sessions/:sessionId/stop",
     intParams: ["sessionId"],
   },
+  messageSession: {
+    method: "POST",
+    path: "/api/sessions/:sessionId/message",
+    intParams: ["sessionId"],
+  },
   pause: { method: "POST", path: "/api/pause" },
   resume: { method: "POST", path: "/api/resume" },
   setConfig: { method: "PATCH", path: "/api/config" },
@@ -118,6 +125,7 @@ export const actionInputSchemas = {
   release: taskRefInputSchema,
   retry: taskRefInputSchema,
   stopSession: sessionRefInputSchema,
+  messageSession: messageSessionInputSchema,
   pause: noInputSchema,
   resume: noInputSchema,
   setConfig: configLayerSchema,
@@ -142,6 +150,7 @@ export const actionResultSchemas = {
   release: taskSchema,
   retry: taskSchema,
   stopSession: sessionSchema,
+  messageSession: messageSessionResultSchema,
   pause: runtimeFlagsSchema,
   resume: runtimeFlagsSchema,
   setConfig: configSchema,

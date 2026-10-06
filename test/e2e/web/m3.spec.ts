@@ -72,7 +72,7 @@ const screens = (page: Page) => page.getByRole("navigation", { name: "Screens" }
 const statusPill = (page: Page, text: string) => page.getByRole("link", { name: text });
 
 async function say(page: Page, message: string): Promise<void> {
-  const input = page.getByRole("textbox", { name: "Message" });
+  const input = page.getByRole("textbox", { name: "Message", exact: true });
   await expect(input).toBeEnabled();
   await input.fill(message);
   await input.press("Enter");
@@ -222,7 +222,7 @@ test("Chat, Overview and Sessions use real labelled controls, work from the keyb
   await expect(page.getByRole("banner")).toContainText(mastermind.project);
   await expectAccessibleScreen(page);
 
-  const message = page.getByRole("textbox", { name: "Message" });
+  const message = page.getByRole("textbox", { name: "Message", exact: true });
   await tabTo(page, message);
   await expectFocusRing(message);
   await page.keyboard.type("Please add alpha");

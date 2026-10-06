@@ -330,6 +330,7 @@ async function runStep(runtime: TurnRuntime, step: Step, progress: TurnProgress)
       if (step.signOut === true) runtime.state.setAccount("signed-out");
       throw new FakeExit(1);
     case "crash":
+      if (step.afterMs !== undefined) await waitUnlessInterrupted(step.afterMs, signal);
       process.stderr.write(`${step.stderr ?? "fake-claude: simulated crash"}\n`);
       throw new FakeExit(step.exitCode ?? 1);
   }

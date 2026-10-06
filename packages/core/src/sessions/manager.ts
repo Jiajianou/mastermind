@@ -7,19 +7,21 @@ import { systemClock } from "../clock.js";
 import type { Clock } from "../clock.js";
 import { projectPaths } from "../config/index.js";
 import type { ResolvedConfig } from "../config/index.js";
-import type { Check, Session, Task } from "../contracts/index.js";
+import { isEditingRole } from "../contracts/index.js";
+import type { Check, MessageSessionResult, Session, Task } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { Environment } from "../env.js";
 import type { EventBus } from "../events.js";
 import { commitLeftovers, createTaskClone, deleteClone, headCommit } from "../git/index.js";
 import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
+import { canResumeConversation } from "./conversation.js";
 import { resumePrompt, workerTaskPrompt } from "./prompts.js";
 import { editingSessionSettings, workerPermissionOptions } from "./settings.js";
 import { settleWorkerRun } from "./settlement.js";
 import type { WorkerSettlement } from "./settlement.js";
 import { runSetupCheck } from "./setup.js";
-import { createSessionSpawner } from "./spawner.js";
+import { createSessionSpawner, userMessageLine } from "./spawner.js";
 import type { LiveSession, SessionReport } from "./spawner.js";
 
 export const wipMessage = "WIP: uncommitted at session end";
@@ -50,12 +52,29 @@ export interface SessionManagerOptions {
 export interface SessionManager {
   startTask(task: Task): Promise<void>;
   stopSession(sessionId: number): Promise<void>;
+  messageSession(sessionId: number, text: string): Promise<MessageSessionResult>;
 }
 
 interface Workspace {
   path: string;
   setup: Check | null;
 }
+
+interface RunningSession {
+  session: LiveSession;
+  settled: Promise<void>;
+}
+
+interface WorkerLaunch {
+  task: Task;
+  worktree: string;
+  print: PrintOptions;
+  prompt: (running: Task) => string;
+  attempt: number;
+  steer?: string;
+}
+
+const conflict = (message: string) => ActionError.fromMessage("conflict", message);
 
 export function createSessionManager(options: SessionManagerOptions): SessionManager {
   const { db, bus, git, repoRoot, onError, clock = systemClock } = options;
@@ -68,7 +87,8 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     onError,
     resultGraceMs: options.resultGraceMs,
   });
-  const live = new Map<number, { session: LiveSession; settled: Promise<void> }>();
+  const live = new Map<number, RunningSession>();
+  let steering: Promise<unknown> = Promise.resolve();
 
   function requireTask(taskId: string): Task {
     const task = db.tasks.get(taskId);
@@ -118,9 +138,12 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     return { path: clone.path, setup };
   }
 
-  function workerPrint(config: ResolvedConfig, worktree: string, task: Task): PrintOptions {
-    const session =
-      task.resumeSession === null ? { sessionId: randomUUID() } : { resume: task.resumeSession };
+  function workerPrint(
+    config: ResolvedConfig,
+    worktree: string,
+    resume: string | null,
+  ): PrintOptions {
+    const session = resume === null ? { sessionId: randomUUID() } : { resume };
     return {
       model: config.models.worker,
       inputFormat: "stream-json",
@@ -138,7 +161,10 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     };
   }
 
-  function beginSession(taskId: string, print: PrintOptions): { session: Session; task: Task } {
+  function beginSession({ task: { id: taskId }, print, attempt, steer }: WorkerLaunch): {
+    session: Session;
+    task: Task;
+  } {
     const started = db.transaction(() => {
       const task = requireTask(taskId);
       assertTransition(taskId, task.status, "running");
@@ -146,13 +172,33 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         role: "worker",
         taskId,
         round: task.round,
-        attempt: task.attempts + 1,
+        attempt,
         claudeSessionId: print.sessionId ?? print.resume ?? null,
         model: print.model,
       });
-      return { session, task: db.tasks.update(taskId, { status: "running", resumeSession: null }) };
+      const steered =
+        steer === undefined
+          ? null
+          : db.events.append({
+              sessionId: session.id,
+              type: "steer",
+              summary: steer,
+              payload: userMessageLine(steer),
+            });
+      return {
+        session,
+        steered,
+        task: db.tasks.update(taskId, { status: "running", resumeSession: null }),
+      };
     });
     emitTask(started.task);
+    if (started.steered !== null)
+      bus.emit({
+        type: "session.event",
+        sessionId: started.session.id,
+        taskId,
+        event: started.steered,
+      });
     return started;
   }
 
@@ -162,7 +208,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         [
           db.sessions.end(session.id, { status: "failed" }),
           db.tasks.update(previous.id, {
-            status: "pending",
+            status: previous.status,
             resumeSession: previous.resumeSession,
           }),
         ] as const,
@@ -244,6 +290,138 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     applyEffect(settlement);
     bus.emit({ type: "session.ended", sessionId: session.id, taskId, session: settled.session });
     emitTask(settled.task);
+    if (end.kind === "exited" && report.undeliveredMessages.length > 0)
+      redeliver(session, report.undeliveredMessages.join("\n\n"));
+  }
+
+  async function launchWorker(launch: WorkerLaunch): Promise<LiveSession> {
+    const { session, task: running } = beginSession(launch);
+    let started: LiveSession;
+    try {
+      started = await spawner.launch({
+        session,
+        cwd: launch.worktree,
+        prompt: launch.prompt(running),
+        print: launch.print,
+      });
+    } catch (error) {
+      abandonStart(session, launch.task);
+      throw error;
+    }
+    const settled = started.finished
+      .finally(() => live.delete(session.id))
+      .then((report) => settle(running.id, started.session, launch.worktree, report))
+      .catch(onError);
+    live.set(session.id, { session: started, settled });
+    return started;
+  }
+
+  function serialized<T>(work: () => Promise<T>): Promise<T> {
+    const next = steering.then(work);
+    steering = next.catch(() => undefined);
+    return next;
+  }
+
+  function steerableSession(sessionId: number): Session & { taskId: string } {
+    const session = db.sessions.get(sessionId);
+    if (session === null)
+      throw ActionError.fromMessage("not_found", `no session ${String(sessionId)}`);
+    const { taskId } = session;
+    if (taskId === null || !isEditingRole(session))
+      throw ActionError.fromMessage(
+        "invalid_input",
+        `session ${String(sessionId)} is a ${session.role} session; only worker and fixer sessions take messages`,
+      );
+    return { ...session, taskId };
+  }
+
+  function liveContinuation(session: Session): RunningSession | undefined {
+    const exact = live.get(session.id);
+    if (exact !== undefined || session.claudeSessionId === null) return exact;
+    return [...live.values()].find(
+      ({ session: { session: other } }) =>
+        other.taskId === session.taskId && other.claudeSessionId === session.claudeSessionId,
+    );
+  }
+
+  function assertResumable(session: Session & { taskId: string }, task: Task): string {
+    const id = String(session.id);
+    const claudeSessionId = session.claudeSessionId;
+    if (claudeSessionId === null || !canResumeConversation(db, task.id, claudeSessionId))
+      throw conflict(`session ${id} ended before its conversation started, so it can't be resumed`);
+    const latest = db.sessions.listForTask(task.id).findLast(isEditingRole);
+    if (latest !== undefined && latest.claudeSessionId !== claudeSessionId)
+      throw conflict(
+        `session ${id} is not the latest session of ${task.id}; message session ${String(latest.id)} instead`,
+      );
+    switch (task.status) {
+      case "running":
+        throw conflict(`${task.id} already has a running session`);
+      case "rebasing":
+        throw conflict(`${task.id} is being rebased onto main`);
+      case "blocked":
+        throw conflict(`${task.id} is blocked; retry it first`);
+      case "done":
+        throw conflict(`${task.id} is done`);
+      case "pending":
+      case "checking":
+      case "review":
+        break;
+    }
+    if (task.worktree === null || !existsSync(task.worktree))
+      throw conflict(`the workspace of ${task.id} is gone`);
+    const flags = db.flags.get();
+    if (flags.authRequired) throw conflict("sign-in is needed before a session can resume");
+    if (flags.backoffResumeAt !== null && new Date(flags.backoffResumeAt) > clock.now())
+      throw conflict(`work is backing off after a usage limit until ${flags.backoffResumeAt}`);
+    return task.worktree;
+  }
+
+  async function resumeWithMessage(
+    session: Session & { taskId: string },
+    text: string,
+  ): Promise<MessageSessionResult> {
+    const task = requireTask(session.taskId);
+    const worktree = assertResumable(session, task);
+    const started = await launchWorker({
+      task,
+      worktree,
+      print: workerPrint(options.config(), worktree, session.claudeSessionId),
+      prompt: () => text,
+      attempt: session.attempt ?? task.attempts + 1,
+      steer: text,
+    });
+    return { delivery: "resumed", session: started.session };
+  }
+
+  async function deliver(sessionId: number, text: string): Promise<MessageSessionResult> {
+    const target = steerableSession(sessionId);
+    const running = liveContinuation(target);
+    if (running !== undefined) {
+      if (running.session.steer(text)) {
+        const session = db.sessions.get(running.session.session.id) ?? running.session.session;
+        return { delivery: "live", session };
+      }
+      await running.settled;
+    }
+    return resumeWithMessage(target, text);
+  }
+
+  // A message written to stdin that the CLI hadn't taken in when the turn ended is sent again by resuming.
+  function redeliver(session: Session, text: string): void {
+    serialized(() => deliver(session.id, text)).catch((error: unknown) => {
+      if (!(error instanceof ActionError)) {
+        onError(error);
+        return;
+      }
+      const event = db.events.append({
+        sessionId: session.id,
+        type: "error",
+        summary: `Message not delivered: ${error.message}`,
+        payload: JSON.stringify({ type: "steer", text, error: error.message }),
+      });
+      bus.emit({ type: "session.event", sessionId: session.id, taskId: session.taskId, event });
+    });
   }
 
   return {
@@ -253,26 +431,14 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       assertTransition(pending.id, pending.status, "running");
       const workspace = await prepareWorkspace(pending, config);
       const task = requireTask(scheduled.id);
-      const print = workerPrint(config, workspace.path, task);
-      const { session, task: running } = beginSession(task.id, print);
-      let started: LiveSession;
-      try {
-        started = await spawner.launch({
-          session,
-          cwd: workspace.path,
-          prompt:
-            task.resumeSession === null ? workerTaskPrompt(running, workspace.setup) : resumePrompt,
-          print,
-        });
-      } catch (error) {
-        abandonStart(session, task);
-        throw error;
-      }
-      const settled = started.finished
-        .finally(() => live.delete(session.id))
-        .then((report) => settle(task.id, started.session, workspace.path, report))
-        .catch(onError);
-      live.set(session.id, { session: started, settled });
+      await launchWorker({
+        task,
+        worktree: workspace.path,
+        print: workerPrint(config, workspace.path, task.resumeSession),
+        prompt: (running) =>
+          task.resumeSession === null ? workerTaskPrompt(running, workspace.setup) : resumePrompt,
+        attempt: task.attempts + 1,
+      });
     },
 
     async stopSession(sessionId) {
@@ -281,6 +447,10 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         throw ActionError.fromMessage("not_found", `no running session ${String(sessionId)}`);
       await running.session.stop();
       await running.settled;
+    },
+
+    messageSession(sessionId, text) {
+      return serialized(() => deliver(sessionId, text));
     },
   };
 }

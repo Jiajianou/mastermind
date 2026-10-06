@@ -1,3 +1,4 @@
+import { isEditingRole } from "@mastermind/core/contracts";
 import type { Session } from "@mastermind/core/contracts";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router";
@@ -7,6 +8,7 @@ import { SessionFacts } from "../sessions/SessionFacts.js";
 import { SessionHeader } from "../sessions/SessionHeader.js";
 import { defaultSessionId, groupSessions } from "../sessions/session-list.js";
 import { SessionList } from "../sessions/SessionList.js";
+import { SessionMessageBox } from "../sessions/SessionMessageBox.js";
 import { Timeline } from "../sessions/Timeline.js";
 import { useSessionEvents } from "../sessions/use-session-events.js";
 import { useLive } from "../store/hooks.js";
@@ -33,6 +35,9 @@ function SessionDetail({ session }: { session: Session }) {
           running={session.status === "running"}
           failure={failure}
         />
+        {session.taskId !== null && isEditingRole(session) && (
+          <SessionMessageBox key={session.id} session={session} />
+        )}
       </div>
       <SessionFacts session={session} task={task} activity={activity} />
     </>

@@ -21,11 +21,13 @@ export type SessionEnd =
 export interface SessionReport {
   end: SessionEnd;
   conversationStarted: boolean;
+  undeliveredMessages: string[];
 }
 
 export interface LiveSession {
   session: Session;
   finished: Promise<SessionReport>;
+  steer(text: string): boolean;
   stop(): Promise<void>;
 }
 
@@ -49,8 +51,8 @@ export interface SessionSpawner {
   launch(request: LaunchRequest): Promise<LiveSession>;
 }
 
-const userMessage = (text: string): string =>
-  `${JSON.stringify({ type: "user", message: { role: "user", content: text } })}\n`;
+export const userMessageLine = (text: string): string =>
+  JSON.stringify({ type: "user", message: { role: "user", content: text } });
 
 const totalInput = (usage: TokenUsage): number =>
   usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
@@ -79,6 +81,9 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
     let initSeen = false;
     let editRoots = [cwd];
     let conversationStarted = false;
+    let acceptingMessages = true;
+    let replays = 0;
+    const steeringMessages: string[] = [];
     let endedByMastermind: SessionEnd | null = null;
     let stoppedAfterResult = false;
     let lingerTimer: ReturnType<typeof setTimeout> | undefined;
@@ -86,12 +91,14 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
 
     const stopChild = async (end: SessionEnd): Promise<void> => {
       endedByMastermind ??= end;
+      acceptingMessages = false;
       if (child !== null) await stopGroup(child);
     };
 
     const onResult = (event: ParsedEvent): void => {
       if (event.details.line !== "result") return;
       resultEvent = event;
+      acceptingMessages = false;
       if (event.details.usage !== null) {
         usage.inputTokens += totalInput(event.details.usage);
         usage.outputTokens += event.details.usage.outputTokens;
@@ -119,6 +126,7 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
         }
       }
       if (details.line === "assistant" || details.line === "tool_use") conversationStarted = true;
+      if (details.line === "user" && details.isReplay) replays += 1;
       if (details.line === "api_error" || details.line === "rate_limit") evidence.push(event);
       onResult(event);
     };
@@ -174,9 +182,18 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
       session: started,
     });
     child.stdin?.on("error", (error) => stderr.push(`stdin: ${error.message}`));
-    child.stdin?.write(userMessage(prompt));
+    child.stdin?.write(`${userMessageLine(prompt)}\n`);
+
+    const { stdin } = child;
+    const steer = (text: string): boolean => {
+      if (!acceptingMessages || !stdin?.writable) return false;
+      steeringMessages.push(text);
+      stdin.write(`${userMessageLine(text)}\n`);
+      return true;
+    };
 
     const finished = child.exited.then(async (exit): Promise<SessionReport> => {
+      acceptingMessages = false;
       clearTimeout(lingerTimer);
       await closeStream(rawLog);
       if (stderr.length > 0)
@@ -184,13 +201,21 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
           join(sessionLogsDir, `${String(session.id)}.stderr`),
           stderr.join("\n"),
         ).catch(onError);
-      if (endedByMastermind !== null) return { end: endedByMastermind, conversationStarted };
+      // Every replayed line after the prompt's own is a steering message the CLI took in, in the order written.
+      const undeliveredMessages = steeringMessages.slice(Math.max(replays - 1, 0));
+      if (endedByMastermind !== null)
+        return { end: endedByMastermind, conversationStarted, undeliveredMessages };
       const code = stoppedAfterResult ? 0 : exitCode(exit);
       const outcome = classifyExit(resultEvent, code, stderr.join("\n"), evidence);
-      return { end: { kind: "exited", outcome }, conversationStarted };
+      return { end: { kind: "exited", outcome }, conversationStarted, undeliveredMessages };
     });
 
-    return { session: started, finished, stop: () => stopChild({ kind: "stopped" }) };
+    return {
+      session: started,
+      finished,
+      steer,
+      stop: () => stopChild({ kind: "stopped" }),
+    };
   }
 
   return { launch };

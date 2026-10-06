@@ -6,6 +6,8 @@ import {
   changesInputSchema,
   configLayerSchema,
   createTasksInputSchema,
+  messageSessionInputSchema,
+  messageSessionResultSchema,
   noInputSchema,
   proposePlanInputSchema,
   sessionEventsInputSchema,
@@ -37,7 +39,7 @@ export interface ConductorTool {
 export interface ActionTool extends GateableTool {
   action: ActionName;
   description: string;
-  done(input: unknown): string;
+  done(input: unknown, result: unknown): string;
 }
 
 interface ReadTool {
@@ -53,7 +55,7 @@ function actionTool<Schema extends z.ZodType>(tool: {
   input: Schema;
   description: string;
   describe: (input: z.output<Schema>) => string;
-  done: (input: z.output<Schema>) => string;
+  done: (input: z.output<Schema>, result: unknown) => string;
 }): ActionTool {
   const { name, action, description } = tool;
   return {
@@ -61,7 +63,7 @@ function actionTool<Schema extends z.ZodType>(tool: {
     action,
     description,
     describe: (input) => tool.describe(parseInput(tool.input, input)),
-    done: (input) => tool.done(parseInput(tool.input, input)),
+    done: (input, result) => tool.done(parseInput(tool.input, input), result),
   };
 }
 
@@ -164,6 +166,19 @@ export const actionTools: readonly ActionTool[] = [
       "Stop a running session (SIGTERM, then SIGKILL after 10 seconds). Its task is held and keeps the session for resuming; release the task to continue.",
     describe: ({ sessionId }) => `Stop session ${String(sessionId)}`,
     done: ({ sessionId }) => `Stopped session ${String(sessionId)}`,
+  }),
+  actionTool({
+    name: "message_session",
+    action: "messageSession",
+    input: messageSessionInputSchema,
+    description:
+      "Steer a worker or fixer session with a message from the owner, such as a correction or an extra instruction. A running session takes it in at its next tool call. A session that has ended is resumed in the same workspace with the message, and the task runs again without counting an attempt; this is refused while the task is blocked, rebasing or done, or when the session is not the task's latest. Find session ids with list_sessions.",
+    describe: ({ sessionId }) => `Send a message to session ${String(sessionId)}`,
+    done: ({ sessionId }, result) => {
+      const delivered = messageSessionResultSchema.safeParse(result);
+      const taskId = delivered.success ? delivered.data.session.taskId : null;
+      return `Sent to ${taskId ?? `session ${String(sessionId)}`}`;
+    },
   }),
   actionTool({
     name: "set_config",

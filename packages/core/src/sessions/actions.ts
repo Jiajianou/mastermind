@@ -1,6 +1,6 @@
 import { ActionError, defineAction } from "../actions/index.js";
 import type { ContractedActions } from "../actions/index.js";
-import { sessionRefInputSchema } from "../contracts/index.js";
+import { messageSessionInputSchema, sessionRefInputSchema } from "../contracts/index.js";
 import type { SessionManager } from "./manager.js";
 
 export function stopSessionAction(manager: Pick<SessionManager, "stopSession">) {
@@ -18,4 +18,15 @@ export function stopSessionAction(manager: Pick<SessionManager, "stopSession">) 
       return session;
     },
   }) satisfies ContractedActions<"stopSession">["stopSession"];
+}
+
+export function messageSessionAction(manager: Pick<SessionManager, "messageSession">) {
+  return defineAction({
+    name: "messageSession",
+    description:
+      "Send a message to a worker or fixer session. A live session takes it in at its next tool call; a session that has ended is resumed in the same workspace with the message, as a new session that counts no attempt. Returns how it was delivered and the session that received it.",
+    input: messageSessionInputSchema,
+    emits: [],
+    handler: ({ sessionId, text }) => manager.messageSession(sessionId, text),
+  }) satisfies ContractedActions<"messageSession">["messageSession"];
 }

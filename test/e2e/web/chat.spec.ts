@@ -72,7 +72,7 @@ test.describe("a reply", () => {
     page,
     mastermind,
   }) => {
-    const input = page.getByRole("textbox", { name: "Message" });
+    const input = page.getByRole("textbox", { name: "Message", exact: true });
     await expect(input).toBeEnabled();
 
     await input.fill("Please add a hello task");
@@ -122,7 +122,7 @@ test.describe("a decision", () => {
     page,
     mastermind,
   }) => {
-    const input = page.getByRole("textbox", { name: "Message" });
+    const input = page.getByRole("textbox", { name: "Message", exact: true });
     await expect(input).toBeEnabled();
     await input.fill("use sonnet for workers");
     await input.press("Enter");
