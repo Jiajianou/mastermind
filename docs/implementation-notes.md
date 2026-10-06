@@ -1396,3 +1396,20 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   rebase queue now leaves within milliseconds, so the poll could miss it. It now waits for all three tasks to be
   `done` and checks that gamma's worker started after both dependencies were done; the resume test likewise
   waits for `done`.
+
+## m5-verify
+
+- **What it proves.** `test/e2e/m5-rebase.test.ts` runs the built binary on a temp repo whose Makefile `build` and
+  `test` targets are auto-detected, and adds tasks with the real `mastermind import`. Three tests: a passing task
+  whose worker commits with a `Co-Authored-By: Claude` trailer and writes a robot footer and trailer into
+  `.mastermind-result.md` reaches main as one squashed, trailer-free commit by the owner, with `main~1` the old main,
+  no merge commits, the owner still on `dev`, and the clone and `refs/mastermind/` ref gone (reviewer on, no
+  findings); two parallel tasks where `clash` strays into `README.md` and finishes only once `retitle` is on main,
+  so its checks' rebase conflicts and a conflict fixer resolves it with a real `git rebase` (no attempt counted,
+  rebase checks failed, passed, passed) before it lands on top of `retitle`; and a task whose acceptance keeps
+  failing (`maxAttempts: 2`, judge says not flaky) gets one fixer, then is `blocked` with the "Blocked after 2
+  attempts" event, shows as blocked in `mastermind tasks`, and main is untouched.
+- **Ordering without sleeps.** The clash worker's last step is a bounded shell loop that polls the owner's repo
+  until `retitle`'s squashed subject is on main, so the conflict is certain rather than timing-dependent.
+- **No defects found.** The milestone 5 flows behaved as the integration tests describe; nothing in earlier work
+  needed changing.
