@@ -1,14 +1,17 @@
 import { Document, isMap, isSeq, parseDocument } from "yaml";
-import { z } from "zod";
-import { newTaskSchema } from "../contracts/index.js";
+import {
+  createTasksInputSchema,
+  importTasksInputSchema,
+  newTaskSchema,
+  noInputSchema,
+} from "../contracts/index.js";
 import type { Task } from "../contracts/index.js";
 import type { NewTask } from "../db/index.js";
 import { ActionError } from "./errors.js";
-import { defineAction, noInputSchema, parseInput } from "./registry.js";
+import { defineAction, parseInput } from "./registry.js";
 import { insertTaskBatch } from "./tasks.js";
 
 const taskKeys = new Set<string>(newTaskSchema.keyof().options);
-const tasksFileSchema = z.strictObject({ tasks: z.array(newTaskSchema).min(1) });
 
 export interface TasksFile {
   tasks: NewTask[];
@@ -54,7 +57,9 @@ export function readTasksFile(text: string): TasksFile {
   }
   const warnings: string[] = [];
   const entries = topLevelEntries(document.toJS(), warnings);
-  const { tasks } = parseInput(tasksFileSchema, { tasks: knownTaskFields(entries, warnings) });
+  const { tasks } = parseInput(createTasksInputSchema, {
+    tasks: knownTaskFields(entries, warnings),
+  });
   return { tasks, warnings };
 }
 
@@ -87,7 +92,7 @@ export const importTasks = defineAction({
   name: "importTasks",
   description:
     "Create tasks from the text of a tasks.yaml file (a list of tasks, or a mapping with a tasks list). Unknown keys are ignored and reported as warnings; the import is rejected as a whole on a duplicate id, an unknown dependency or a cycle.",
-  input: z.strictObject({ yaml: z.string() }),
+  input: importTasksInputSchema,
   emits: ["task.updated"],
   handler: ({ yaml }, scope): { tasks: Task[]; warnings: string[] } => {
     const { tasks, warnings } = readTasksFile(yaml);

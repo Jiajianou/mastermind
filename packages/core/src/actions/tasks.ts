@@ -1,5 +1,9 @@
-import { z } from "zod";
-import { newTaskSchema, taskEditSchema, taskIdSchema } from "../contracts/index.js";
+import {
+  createTasksInputSchema,
+  setPriorityInputSchema,
+  taskRefInputSchema,
+  updateTaskInputSchema,
+} from "../contracts/index.js";
 import type { Task } from "../contracts/index.js";
 import type { NewTask, TaskPatch } from "../db/index.js";
 import { describeGraphIssue, findGraphIssues } from "./dag.js";
@@ -10,12 +14,6 @@ import type { ActionScope } from "./registry.js";
 import { assertTransition } from "./transitions.js";
 
 type TaskScope = ActionScope<"task.updated">;
-
-const taskRefSchema = z.strictObject({ taskId: taskIdSchema });
-
-function hasChanges(input: Record<string, unknown>): boolean {
-  return Object.entries(input).some(([key, value]) => key !== "taskId" && value !== undefined);
-}
 
 function graphError(issues: readonly GraphIssue[]): ActionError {
   return new ActionError(
@@ -54,7 +52,7 @@ export const createTasks = defineAction({
   name: "createTasks",
   description:
     "Create a batch of tasks at once. The batch may reference its own tasks and existing ones in deps, and is rejected as a whole on a duplicate id, an unknown dependency or a cycle.",
-  input: z.strictObject({ tasks: z.array(newTaskSchema).min(1) }),
+  input: createTasksInputSchema,
   emits: ["task.updated"],
   handler: ({ tasks }, scope) => insertTaskBatch(scope, tasks),
 });
@@ -63,9 +61,7 @@ export const updateTask = defineAction({
   name: "updateTask",
   description:
     "Change a task's title, goal, acceptance command, touches, deps or priority. New deps must exist and must not form a cycle.",
-  input: taskEditSchema
-    .extend({ taskId: taskIdSchema })
-    .refine(hasChanges, { error: "expected at least one field to change" }),
+  input: updateTaskInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId, ...changes }, scope) => {
     const { db } = scope;
@@ -86,7 +82,7 @@ export const updateTask = defineAction({
 export const setPriority = defineAction({
   name: "setPriority",
   description: "Set a task's priority. Higher numbers start first.",
-  input: z.strictObject({ taskId: taskIdSchema, priority: z.int() }),
+  input: setPriorityInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId, priority }, scope) => {
     requireTask(scope, taskId);
@@ -97,7 +93,7 @@ export const setPriority = defineAction({
 export const moveToTop = defineAction({
   name: "moveToTop",
   description: "Give a task a higher priority than every other unfinished task.",
-  input: taskRefSchema,
+  input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
     const task = requireTask(scope, taskId);
@@ -114,7 +110,7 @@ export const moveToTop = defineAction({
 export const hold = defineAction({
   name: "hold",
   description: "Hold a task so the scheduler does not start it. Running work is not stopped.",
-  input: taskRefSchema,
+  input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
     requireTask(scope, taskId);
@@ -125,7 +121,7 @@ export const hold = defineAction({
 export const release = defineAction({
   name: "release",
   description: "Release a held task so the scheduler may start it again.",
-  input: taskRefSchema,
+  input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
     requireTask(scope, taskId);
@@ -136,7 +132,7 @@ export const release = defineAction({
 export const retry = defineAction({
   name: "retry",
   description: "Return a blocked task to the queue with a fresh set of attempts.",
-  input: taskRefSchema,
+  input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
     const task = requireTask(scope, taskId);

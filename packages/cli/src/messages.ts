@@ -21,8 +21,3 @@ export function killSummary({ sessions, checks }: LiveCounts): string {
     "Worktrees kept. Unfinished tasks resume on the next `mastermind .`",
   ].join("\n");
 }
-
-export const linkPlaceholder =
-  "Web app → not served yet (the web app arrives in a later milestone)";
-
-export const noLinkNotice = "There is no web app link yet.";

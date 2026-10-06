@@ -27,9 +27,15 @@ export interface SessionEnding {
   outputTokens?: number | null;
 }
 
+export interface SessionFilter {
+  taskId?: string | undefined;
+  startedSince?: string | undefined;
+}
+
 export interface SessionRepository {
   create(session: NewSession): Session;
   get(id: number): Session | null;
+  list(filter?: SessionFilter): Session[];
   listRunning(): Session[];
   listForTask(taskId: string): Session[];
   update(id: number, patch: SessionPatch): Session;
@@ -78,6 +84,12 @@ export function createSessionRepository({ database, clock }: DbContext): Session
     "SELECT * FROM sessions WHERE status = 'running' ORDER BY id",
   );
   const selectForTask = database.prepare("SELECT * FROM sessions WHERE task_id = ? ORDER BY id");
+  const selectFiltered = database.prepare(
+    `SELECT * FROM sessions
+     WHERE (:taskId IS NULL OR task_id = :taskId)
+       AND (:startedSince IS NULL OR started_at >= :startedSince OR status = 'running')
+     ORDER BY id`,
+  );
 
   function get(id: number): Session | null {
     const row = selectSession.get(id);
@@ -114,6 +126,17 @@ export function createSessionRepository({ database, clock }: DbContext): Session
     },
 
     get,
+
+    list(filter = {}) {
+      return readRows(
+        "sessions",
+        sessionRowSchema,
+        selectFiltered.all({
+          taskId: filter.taskId ?? null,
+          startedSince: filter.startedSince ?? null,
+        }),
+      );
+    },
 
     listRunning() {
       return readRows("sessions", sessionRowSchema, selectRunning.all());

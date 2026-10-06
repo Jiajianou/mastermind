@@ -1,3 +1,4 @@
+import { cp } from "node:fs/promises";
 import { defineConfig } from "tsup";
 
 export default defineConfig({
@@ -9,4 +10,8 @@ export default defineConfig({
   // node:sqlite has no unprefixed name, so stripping the protocol (tsup's default) breaks the import.
   removeNodeProtocol: false,
   clean: true,
+  async onSuccess() {
+    await cp("../web/dist", "dist/web", { recursive: true });
+    await cp("../../prompts", "dist/prompts", { recursive: true });
+  },
 });

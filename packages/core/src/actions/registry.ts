@@ -1,5 +1,12 @@
 import { z } from "zod";
-import type { BusEventOf, BusEventType, Config, ConfigLayer } from "../contracts/index.js";
+import type {
+  ActionName,
+  ActionResults,
+  BusEventOf,
+  BusEventType,
+  Config,
+  ConfigLayer,
+} from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import { ActionError } from "./errors.js";
@@ -30,6 +37,12 @@ export interface ActionDefinition<Input extends z.ZodType, Output, Emits extends
 
 export type AnyActionDefinition = ActionDefinition<z.ZodType, unknown, BusEventType>;
 
+export type ContractedActions<Names extends ActionName> = {
+  [Name in Names]: {
+    handler(...args: never[]): ActionResults[Name] | Promise<ActionResults[Name]>;
+  };
+};
+
 export type ActionInfo = Pick<AnyActionDefinition, "name" | "description" | "input" | "emits">;
 
 export interface ActionRegistry {
@@ -41,8 +54,6 @@ export interface ActionRegistry {
     input: z.input<Input>,
   ): Promise<Output>;
 }
-
-export const noInputSchema = z.strictObject({}).default({});
 
 export function defineAction<Input extends z.ZodType, Output, Emits extends BusEventType>(
   definition: ActionDefinition<Input, Output, Emits>,

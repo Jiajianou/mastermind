@@ -6,6 +6,7 @@
   "exports": {
     "./contracts": "./src/contracts/index.ts",
     "./actions": "./src/actions/index.ts",
+    "./api": "./src/api/index.ts",
     "./auth": "./src/auth.ts",
     "./claude": "./src/claude.ts",
     "./config": "./src/config/index.ts",
@@ -26,7 +27,13 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.5",
+    "fastify": "^5.12.5",
+    "ws": "^8.22.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
   }
 }

@@ -13,7 +13,13 @@ export { openDb } from "./open.js";
 export type { Db, OpenDbOptions } from "./open.js";
 export type { NewRebase, RebaseRepository } from "./rebases.js";
 export type { CommentRepository, FindingRepository, NewComment, NewFinding } from "./review.js";
-export type { NewSession, SessionEnding, SessionPatch, SessionRepository } from "./sessions.js";
+export type {
+  NewSession,
+  SessionEnding,
+  SessionFilter,
+  SessionPatch,
+  SessionRepository,
+} from "./sessions.js";
 export type { NewTask, TaskPatch, TaskRepository } from "./tasks.js";
 export type { Transaction } from "./transaction.js";
 export { systemClock } from "../clock.js";

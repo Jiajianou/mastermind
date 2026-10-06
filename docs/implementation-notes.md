@@ -622,3 +622,66 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   finished, exit 129/130/143. The trap is removed in the same tick the runtime installs its own handlers. A signal
   that lands inside `startMastermind` after the lock is taken leaves a stale lock, which the next start takes over.
   fake-claude gained `FAKE_CLAUDE_LOGIN_WAIT=1` to test this (`test/integration/kill-path.test.ts`).
+
+## m2-http-ws
+
+- **Where it lives.** `@mastermind/core/api` (`src/api/`, a new package export): `serveApi` writes the token, builds
+  the Fastify app (`server.ts`), listens with the port fallback (`listen.ts`) and records the port in the lock.
+  `local-request.ts` holds the Host, Origin, bearer and WebSocket token checks, `read-routes.ts` and
+  `action-routes.ts` the routes, `stream.ts` the WebSocket, `errors.ts` the error bodies. `createRuntime` serves the
+  API (so `RuntimeOptions` gained `webRoot`), puts the link in the status header and closes the server first in
+  `closeSync`. `StatusHeader.link` is now always a string, and the M1 "not served yet" placeholder is gone.
+- **Contracts** (`contracts/api.ts`): `apiErrorSchema` (`invalid_input | not_found | conflict | unauthorized |
+  forbidden | internal`, with `issues: {path, message}[]`), `actionRoutes` (action name → method and path),
+  `ActionResults` (each routed action's result type), the read response schemas (`apiResponseSchemas`, `ApiSummary`,
+  `TaskView`), the query schemas and the stream constants. The action input schemas moved from the action modules to
+  `contracts/actions.ts`, so the web app validates with the same zod schemas the server does. `builtinActions` and
+  `stopSessionAction` are checked against `ActionResults` with `satisfies ContractedActions<…>`, so a handler whose
+  result drifts from the contract fails typecheck.
+- **Generated mutation routes.** Every registered action needs an entry in `actionRoutes`; `createApiServer` throws
+  for one that has none, so a new action can't silently miss its route. Path parameters are named after input
+  fields (`/api/tasks/:taskId/hold`) and merged over the JSON body, and `intParams` turns digit-only values into
+  numbers (`sessionId`). The input goes through `registry.invoke`, so HTTP validation is the action's own schema and
+  errors name the field (`tasks[0].id`, `priority`, `colour: unknown key`). Routes beyond 14.1's list:
+  `POST /api/tasks/:taskId/priority` (setPriority), `PATCH /api/config` (setConfig) and `POST /api/tasks/export`
+  (exportTasks; POST so it can't collide with a task whose id is `export`). `stopSession` now returns the stopped
+  session. Status codes: 400, 404, 409 from `ActionError`, 400 for `ConfigError` and Fastify's body errors, and 500
+  `internal` for anything else, which is also passed to `onError` (the terminal's notice line).
+- **Reads.** `GET /api/summary` is the scheduler summary plus `activeSessions` (running session rows) and
+  `rebaseQueue` (tasks in `rebasing`, oldest first; M5 owns the real queue). `GET /api/tasks[/:taskId]` adds
+  `unblocks`. `GET /api/sessions?taskId=&since=` lists sessions (new `db.sessions.list`); `since` keeps sessions
+  started at or after it plus every running one, for "active, then finished today". `GET
+  /api/sessions/:sessionId/events?after=<event id>` pages a timeline and is 404 for an unknown session.
+- **Local-only checks** (section 20). Every request, static files included, must carry a `Host` of `localhost`,
+  `127.0.0.1` or `[::1]` (any port), and an `Origin`, when present, of `http://` one of those; otherwise 403. That
+  stops DNS rebinding (the browser sends the attacker's host name) and cross-site requests. Every API route then
+  needs `Authorization: Bearer <token>` (compared in constant time), else 401 with `WWW-Authenticate: Bearer`. The
+  token hook is registered in the encapsulated Fastify context that holds the API routes, never as a check on the
+  raw URL: the router matches the percent-decoded path, so a prefix test let `/%61pi/pause` through without a token.
+  **The web app's own files need no token**: a browser opening the printed link can't send a header, and the bundle
+  holds no data. Unknown non-API GETs fall back to `index.html`; unknown `/api` paths are a JSON 404 (they match no
+  route, so they reveal nothing and need no token). There are no CORS headers, so a foreign page can't read responses even where it could send.
+- **WebSocket auth: a subprotocol**, not a first message. The client offers two protocols,
+  `streamProtocols(token)` = `["mastermind", "mastermind.token.<token>"]`, and the server answers `mastermind`, so
+  the token is never echoed. The check runs on the HTTP upgrade, so a bad token is a plain 401 (a foreign Origin 403,
+  another path 404) and no unauthenticated socket ever exists, which a first-message scheme can't promise. The `ws`
+  server runs with `noServer` on Fastify's own `http.Server`, without per-message deflate, so every send is written
+  synchronously. Messages are `BusEvent` JSON (`streamMessageSchema`); clients don't send anything.
+- **`service.stopping`.** The stream's `closeSync` sends it, closes each client with code 1001 and destroys the
+  sockets, all synchronously, as part of `runtime.closeSync` on the kill path. It is best-effort: a frame the kernel
+  can't take at once is lost when the process exits. In practice it arrives (the e2e test checks it on SIGTERM).
+- **Ports.** `Startup.port` is now `{ first, exact }`: the config port (default 4700) falls back through the next 99
+  ports; `--port` is exact and fails with `port N is already in use`, because an explicit port the owner asked for
+  should not quietly become another. The server listens on our own `http.Server` (Fastify's `serverFactory`) so a
+  busy port can be retried, which `fastify.listen` doesn't allow.
+- **Token file.** 32 random bytes as hex, written to a temp file created with mode 600 and renamed over
+  `.mastermind/token`, so an older token file with looser permissions is replaced rather than reused. The token is
+  written before the port reaches the lock, so a second instance's "already running" link is never half made.
+- **Self-contained build.** The CLI's tsup `onSuccess` copies `packages/web/dist` to `dist/web` and `prompts/` to
+  `dist/prompts`; `@mastermind/web` is a dev dependency of the CLI so `pnpm -r build` builds web first. `src/assets.ts`
+  uses those copies when they sit next to the running module (the bundle) and the repo's folders otherwise (running
+  from source). `fastify`, `@fastify/static` and `ws` are CLI dependencies, so tsup keeps them external.
+- **Tests.** `test/integration/api/` (`http.test.ts`, `ws.test.ts`) serve a real server on a free port over a temp
+  database and the real action registry, with `stopSession` backed by a stand-in that ends the row. They fail on any
+  error the API reports through `onError`. `test/e2e/web-server.test.ts` runs the built binary: printed link, lock
+  port, bundled `index.html`, an authorised read, and `service.stopping` with close code 1001 on SIGTERM.

@@ -14,14 +14,18 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.5",
     "@mastermind/core": "workspace:*",
     "commander": "^15.0.0",
+    "fastify": "^5.12.5",
     "ink": "^8.0.0",
     "react": "^19.3.0",
+    "ws": "^8.22.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@mastermind/web": "workspace:*",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
     "tsup": "^8.5.1"

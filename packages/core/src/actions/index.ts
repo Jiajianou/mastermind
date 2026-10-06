@@ -1,4 +1,5 @@
-import type { AnyActionDefinition } from "./registry.js";
+import type { ActionName } from "../contracts/index.js";
+import type { AnyActionDefinition, ContractedActions } from "./registry.js";
 import { pause, resume, setConfig } from "./runtime.js";
 import { exportTasks, importTasks } from "./tasks-file.js";
 import { createTasks, hold, moveToTop, release, retry, setPriority, updateTask } from "./tasks.js";
@@ -15,6 +16,7 @@ export type {
   ActionScope,
   AnyActionDefinition,
   ConfigWriter,
+  ContractedActions,
 } from "./registry.js";
 export { setBackoff } from "./runtime.js";
 export type { SchedulerScope } from "./runtime.js";
@@ -36,7 +38,7 @@ export {
   updateTask,
 };
 
-export const builtinActions: readonly AnyActionDefinition[] = [
+const builtins = {
   createTasks,
   updateTask,
   setPriority,
@@ -49,4 +51,6 @@ export const builtinActions: readonly AnyActionDefinition[] = [
   setConfig,
   importTasks,
   exportTasks,
-];
+} satisfies ContractedActions<Exclude<ActionName, "stopSession">>;
+
+export const builtinActions: readonly AnyActionDefinition[] = Object.values(builtins);

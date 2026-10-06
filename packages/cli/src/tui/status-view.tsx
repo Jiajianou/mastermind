@@ -2,7 +2,6 @@ import type { Summary } from "@mastermind/core/contracts";
 import { clockTime } from "@mastermind/core/status";
 import type { RunningSession, StatusSnapshot } from "@mastermind/core/status";
 import { Box, Text } from "ink";
-import { linkPlaceholder } from "../messages.js";
 import {
   accountText,
   elapsed,
@@ -34,8 +33,7 @@ function queueText({ counts }: Summary): string {
   return `${String(counts.pending)} remaining · ${String(counts.review)} review · ${String(counts.blocked)} blocked`;
 }
 
-function LinkLine({ link }: { link: string | null }) {
-  if (link === null) return <Text dimColor>{linkPlaceholder}</Text>;
+function LinkLine({ link }: { link: string }) {
   return (
     <Text>
       Web app → <Text color={frostBlue}>{link}</Text>

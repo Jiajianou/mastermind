@@ -1,3 +1,4 @@
+import type { PortChoice } from "../api/index.js";
 import type { AcceptedAuth } from "../auth.js";
 import { checkClaude, createClaudeCli, describeClaudeCheck } from "../claude.js";
 import type { ClaudeCli } from "../claude.js";
@@ -45,7 +46,7 @@ export interface Startup {
   repoRoot: string;
   branch: string | null;
   config: Config;
-  port: number;
+  port: PortChoice;
   auth: AcceptedAuth;
   setup: ProjectSetupResult;
   recovery: RecoveryReport;
@@ -118,7 +119,7 @@ export async function startMastermind(options: StartupOptions): Promise<Startup>
         db.close();
         lock.releaseSync();
       };
-      const port = options.port ?? config.port;
+      const port = { first: options.port ?? config.port, exact: options.port !== undefined };
       return { repoRoot, branch, config, port, auth, setup, recovery, lock, db, git, cli, close };
     } catch (error) {
       db.close();

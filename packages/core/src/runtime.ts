@@ -1,9 +1,11 @@
 import { basename } from "node:path";
+import { serveApi } from "./api/index.js";
+import type { ServedApi } from "./api/index.js";
 import { builtinActions, createActionRegistry, pause, resume } from "./actions/index.js";
 import type { ActionRegistry } from "./actions/index.js";
 import { systemClock } from "./clock.js";
 import type { Clock } from "./clock.js";
-import { resolveConfig, setConfig } from "./config/index.js";
+import { projectPaths, resolveConfig, setConfig } from "./config/index.js";
 import type { ResolvedConfig } from "./config/index.js";
 import type { Config, RuntimeFlags } from "./contracts/index.js";
 import type { KilledCounts } from "./db/index.js";
@@ -25,6 +27,7 @@ export interface RuntimeOptions {
   env: Environment;
   homeDir: string;
   promptsDir: string;
+  webRoot: string;
   pathGuardCommand: readonly string[];
   onError: (error: unknown) => void;
   clock?: Clock;
@@ -47,6 +50,16 @@ async function shortCommit(startup: Startup, ref: string): Promise<string | null
     return (await startup.git.run(startup.repoRoot, ["rev-parse", "--short", ref])).trim();
   } catch (error) {
     if (error instanceof GitError) return null;
+    throw error;
+  }
+}
+
+// A listening server keeps the process alive, so a runtime that fails to finish must not leave it open.
+function closeOnFailure<T>(api: ServedApi, build: () => T): T {
+  try {
+    return build();
+  } catch (error) {
+    api.closeSync();
     throw error;
   }
 }
@@ -100,21 +113,36 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   actions.register(stopSessionAction(manager));
 
-  const store = createStatusStore({
+  const mainCommit = await shortCommit(startup, config.mainBranch);
+  const api = await serveApi({
     db,
     bus,
-    clock,
-    header: {
-      repoName: basename(repoRoot),
-      mainBranch: config.mainBranch,
-      mainCommit: await shortCommit(startup, config.mainBranch),
-      email: startup.auth.email,
-      plan: startup.auth.plan,
-      link: null,
-    },
+    actions,
     summary: () => scheduler.summary(),
-    maxAttempts: () => config.maxAttempts,
+    webRoot: options.webRoot,
+    onError,
+    stateDir: projectPaths(repoRoot).stateDir,
+    lock: startup.lock,
+    port: startup.port,
   });
+
+  const store = closeOnFailure(api, () =>
+    createStatusStore({
+      db,
+      bus,
+      clock,
+      header: {
+        repoName: basename(repoRoot),
+        mainBranch: config.mainBranch,
+        mainCommit,
+        email: startup.auth.email,
+        plan: startup.auth.plan,
+        link: api.link,
+      },
+      summary: () => scheduler.summary(),
+      maxAttempts: () => config.maxAttempts,
+    }),
+  );
 
   return {
     bus,
@@ -135,6 +163,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     markKilledSync: () => db.killRunning(),
 
     closeSync() {
+      api.closeSync();
       scheduler.stop();
       store.dispose();
       startup.close();

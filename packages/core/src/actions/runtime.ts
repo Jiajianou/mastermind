@@ -1,6 +1,6 @@
-import { configLayerSchema } from "../contracts/index.js";
+import { configLayerSchema, noInputSchema } from "../contracts/index.js";
 import type { RuntimeFlags } from "../contracts/index.js";
-import { defineAction, noInputSchema } from "./registry.js";
+import { defineAction } from "./registry.js";
 import type { ActionScope } from "./registry.js";
 
 export type SchedulerScope = Pick<ActionScope<"scheduler.updated">, "db" | "emit">;

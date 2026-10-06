@@ -2,7 +2,6 @@ import { cleanEnv } from "@mastermind/core/env";
 import type { Environment } from "@mastermind/core/env";
 import type { ProcessRegistry, SpawnRequest } from "@mastermind/core/procs";
 import type { Runtime } from "@mastermind/core/runtime";
-import { noLinkNotice } from "./messages.js";
 
 export type TerminalCommand = "open" | "copy" | "pause";
 
@@ -49,27 +48,18 @@ export function createTerminalCommands(
     return succeeded;
   }
 
-  function withLink(use: (link: string) => Promise<void>): void {
-    const { link } = store.getSnapshot().header;
-    if (link === null) {
-      store.notice(noLinkNotice);
-      return;
-    }
-    use(link).catch(onError);
+  async function copyLink(link: string): Promise<void> {
+    if (await launch(clipboardFor(platform, env), link)) store.notice("Copied the web app link");
   }
 
   return (command) => {
+    const { link } = store.getSnapshot().header;
     switch (command) {
       case "open":
-        withLink(async (link) => {
-          await launch(openerFor(platform, link));
-        });
+        launch(openerFor(platform, link)).catch(onError);
         return;
       case "copy":
-        withLink(async (link) => {
-          if (await launch(clipboardFor(platform, env), link))
-            store.notice("Copied the web app link");
-        });
+        copyLink(link).catch(onError);
         return;
       case "pause":
         runtime.togglePause().catch(onError);

@@ -19,7 +19,7 @@ export interface StatusHeader {
   mainCommit: string | null;
   email: string | null;
   plan: SubscriptionPlan;
-  link: string | null;
+  link: string;
 }
 
 export interface RunningSession {

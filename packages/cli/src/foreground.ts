@@ -1,9 +1,9 @@
 import { writeSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import type { Environment } from "@mastermind/core/env";
 import type { ProcessRegistry } from "@mastermind/core/procs";
 import { createRuntime } from "@mastermind/core/runtime";
 import type { Startup } from "@mastermind/core/startup";
+import { promptsDir, webRoot } from "./assets.js";
 import { createCtrlCGuard } from "./ctrl-c.js";
 import { exitCodes, runKillPath } from "./kill-path.js";
 import type { KillPathSteps } from "./kill-path.js";
@@ -19,8 +19,6 @@ export interface ForegroundRun {
   homeDir: string;
   open: boolean;
 }
-
-const promptsDir = fileURLToPath(new URL("../../../prompts/", import.meta.url));
 
 function pathGuardCommand(): string[] {
   const entry = process.argv[1];
@@ -107,6 +105,7 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
     env,
     homeDir: run.homeDir,
     promptsDir,
+    webRoot,
     pathGuardCommand: pathGuardCommand(),
     onError: (error) => {
       reportError(error);

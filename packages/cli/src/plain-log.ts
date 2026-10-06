@@ -1,6 +1,6 @@
 import type { StatusStore } from "@mastermind/core/status";
 import type { CtrlCGuard } from "./ctrl-c.js";
-import { armedWarning, linkPlaceholder } from "./messages.js";
+import { armedWarning } from "./messages.js";
 import type { TerminalView } from "./tui/app.js";
 import { accountText, eventLineText, headerTitle, liveCounts } from "./tui/format.js";
 
@@ -11,7 +11,7 @@ export function startPlainLog(
 ): TerminalView {
   const { header } = store.getSnapshot();
   write(`${headerTitle(header)} · ${accountText(header)}`);
-  write(header.link === null ? linkPlaceholder : `Web app → ${header.link}`);
+  write(`Web app → ${header.link}`);
 
   let printedUpTo = 0;
   const printNewLines = (): void => {
