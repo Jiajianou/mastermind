@@ -8,13 +8,20 @@ import type { CliProcess, CliRun } from "./cli.js";
 import { waitFor } from "./processes.js";
 import type { TempRepo } from "./temp-repo.js";
 
+export interface WebApp {
+  link: string;
+  origin: string;
+  token: string;
+}
+
 export interface RunningMastermind {
   mastermind: CliProcess;
+  webApp: WebApp;
   spawn(args: readonly string[]): CliProcess;
   run(args: readonly string[]): Promise<CliRun>;
 }
 
-const printedLink = /Web app → http:\/\/127\.0\.0\.1:\d+\//;
+const printedLink = /Web app → ((http:\/\/127\.0\.0\.1:\d+)\/#t=([0-9a-f]{64}))/;
 
 export interface StartOptions {
   launch?: (args: readonly string[], env: Record<string, string>) => CliProcess;
@@ -28,12 +35,15 @@ export async function startMastermind(
 ): Promise<RunningMastermind> {
   const mastermind = launch([repo.path], env);
   mastermind.child.stdin.end();
-  await waitFor(() => printedLink.test(mastermind.output.stdout), startupMs).catch(
-    (error: unknown) => {
-      const { stdout, stderr } = mastermind.output;
-      throw new Error(`mastermind did not start:\n${stdout}${stderr}`, { cause: error });
-    },
-  );
+  const webApp = await waitFor(() => {
+    const [, link, origin, token] = printedLink.exec(mastermind.output.stdout) ?? [];
+    return (
+      link !== undefined && origin !== undefined && token !== undefined && { link, origin, token }
+    );
+  }, startupMs).catch((error: unknown) => {
+    const { stdout, stderr } = mastermind.output;
+    throw new Error(`mastermind did not start:\n${stdout}${stderr}`, { cause: error });
+  });
 
   const spawn = (args: readonly string[]): CliProcess => {
     const client = launch([...args, "--repo", repo.path], env);
@@ -42,6 +52,7 @@ export async function startMastermind(
   };
   return {
     mastermind,
+    webApp,
     spawn,
     async run(args) {
       const { output, closed } = spawn(args);

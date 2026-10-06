@@ -1,5 +1,7 @@
 import { basename } from "node:path";
 import { test as base } from "@playwright/test";
+import type { APIResponse } from "@playwright/test";
+import type { z } from "zod";
 import { runCleanups } from "../../support/cleanup.js";
 import type { CliProcess } from "../../support/cli.js";
 import { isolatedEnv } from "../../support/isolated-env.js";
@@ -15,9 +17,9 @@ export interface ServedMastermind {
   link: string;
   origin: string;
   token: string;
+  readApi<Schema extends z.ZodType>(path: string, schema: Schema): Promise<z.output<Schema>>;
+  postApi(path: string, data: unknown): Promise<APIResponse>;
 }
-
-const printedLink = /Web app → ((http:\/\/127\.0\.0\.1:\d+)\/#t=([0-9a-f]{64}))/;
 
 export interface MastermindOptions {
   repoFiles: Record<string, string>;
@@ -33,11 +35,10 @@ export const test = base.extend<MastermindOptions & { mastermind: ServedMastermi
       await repo.git("switch", "--quiet", "--create", "dev");
       const env = await isolatedEnv();
       if (scenario !== null) await env.writeScenario(scenario);
-      const { mastermind } = await startMastermind(repo, env.env);
-      const [, link, origin, token] = printedLink.exec(mastermind.output.stdout) ?? [];
-      if (link === undefined || origin === undefined || token === undefined)
-        throw new Error(`no web app link in:\n${mastermind.output.stdout}`);
+      const { mastermind, webApp } = await startMastermind(repo, env.env);
+      const { link, origin, token } = webApp;
       await page.goto(link);
+      const authorized = { headers: { authorization: `Bearer ${token}` } };
       await use({
         process: mastermind,
         repoPath: repo.path,
@@ -46,6 +47,11 @@ export const test = base.extend<MastermindOptions & { mastermind: ServedMastermi
         link,
         origin,
         token,
+        readApi: async (path, schema) => {
+          const response = await page.request.get(`${origin}${path}`, authorized);
+          return schema.parse(await response.json());
+        },
+        postApi: (path, data) => page.request.post(`${origin}${path}`, { ...authorized, data }),
       });
       if (testInfo.status !== testInfo.expectedStatus) {
         const { stdout, stderr } = mastermind.output;

@@ -1519,3 +1519,23 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   `mastermind .` kills an open terminal and its command. The web store has reducer cases for the offsets, the
   Decide screen test covers the unavailable message (xterm is mocked there: jsdom has no canvas or `matchMedia`),
   and `decide.spec.ts` types a command into the real terminal and stops it.
+
+## m6-verify
+
+- **What it proves.** `test/e2e/m6-rounds.test.ts` runs the built binary: a task added by `mastermind chat` waits in
+  review (`requireReviewFor: [src/]`), the owner comments on a line over HTTP, and `mastermind chat` makes the fake
+  Conductor call `request_changes` with that comment id. The action line names round 2, the resumed worker (same
+  `claude` session, same clone) receives exactly the stored round message, the task returns to review in round 2,
+  and `?since=round:1` gives the round's own change (one line modified, from the round's start commit) while
+  `base` still gives the whole file as added; the file route serves both sides of that diff.
+- **The UI round.** `test/e2e/web/m6.spec.ts` covers the other mode from the browser: a line comment and a reviewer
+  finding (ticked on the Request changes screen) go to a fresh session, the stored message equals the preview, the
+  round's worker has a new `claude` session id, the reviewer's round-2 run finds nothing, the "Since round 1"
+  toggle shows the round's change, and Approve and rebase puts round 2's work on main with no merge commit.
+  `request-changes.spec.ts` already covers the resume mode from the UI.
+- **The first comment's id.** The fake Conductor's scenario is written before the run, so it names comment id 1;
+  the test asserts the owner's comment got that id in the new database.
+- **No defects found.** Both flows behaved as the integration tests describe; nothing in earlier work changed.
+- **Shared web app link and API helpers.** `startMastermind` now returns the parsed `webApp` link (origin and
+  token), and the Playwright `mastermind` fixture offers `readApi(path, schema)` and `postApi(path, data)`, so specs
+  stop copying the link regex and bearer-header helpers.
