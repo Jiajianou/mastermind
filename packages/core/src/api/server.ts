@@ -8,7 +8,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionRegistry } from "../actions/index.js";
 import type { ChatState } from "../chat.js";
 import { registerMcpRoutes } from "../conductor/mcp.js";
-import type { Summary } from "../contracts/index.js";
+import type { InstanceInfo, Summary } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import type { ProposalGate } from "../proposals.js";
@@ -26,6 +26,7 @@ export interface ApiServerOptions {
   actions: ActionRegistry;
   gate: ProposalGate;
   chat: ChatState;
+  instance: InstanceInfo;
   summary: () => Summary;
   token: string;
   webRoot: string;

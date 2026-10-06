@@ -7,13 +7,22 @@ import {
   sessionsQuerySchema,
   taskIdSchema,
 } from "../contracts/index.js";
-import type { ApiSummary, ChatView, Session, SessionEvent, TaskView } from "../contracts/index.js";
+import type {
+  ApiSummary,
+  ChatView,
+  InstanceInfo,
+  Session,
+  SessionEvent,
+  TaskView,
+} from "../contracts/index.js";
 import type { ReadModels } from "../reads.js";
 
 const taskParamsSchema = z.strictObject({ taskId: taskIdSchema });
 const sessionParamsSchema = z.strictObject({ sessionId: z.coerce.number().int().min(1) });
 
 export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): void {
+  app.get("/api/instance", (): InstanceInfo => reads.instance());
+
   app.get("/api/summary", (): ApiSummary => reads.summary());
 
   app.get("/api/tasks", (): TaskView[] => reads.tasks());

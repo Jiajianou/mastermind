@@ -8,7 +8,9 @@ import { trackChild } from "./processes.js";
 // settings.
 const cliPackage = fileURLToPath(new URL("../../packages/cli/", import.meta.url));
 const cliSource = fileURLToPath(new URL("../../packages/cli/src/index.ts", import.meta.url));
-const builtCli = fileURLToPath(new URL("../../packages/cli/dist/index.js", import.meta.url));
+export const builtCliPath = fileURLToPath(
+  new URL("../../packages/cli/dist/index.js", import.meta.url),
+);
 
 export interface CliRun {
   code: number | null;
@@ -48,7 +50,7 @@ export function spawnCli(args: readonly string[], env: Record<string, string>): 
 }
 
 export function spawnBuiltCli(args: readonly string[], env: Record<string, string>): CliProcess {
-  return spawnNode([builtCli, ...args], cliPackage, env);
+  return spawnNode([builtCliPath, ...args], cliPackage, env);
 }
 
 export async function runCli(args: readonly string[], options: CliRunOptions): Promise<CliRun> {

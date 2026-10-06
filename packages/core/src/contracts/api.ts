@@ -1,11 +1,23 @@
 import { z } from "zod";
-import { actionErrorCodeSchema, actionIssueSchema } from "./actions.js";
-import { chatViewSchema } from "./chat.js";
+import {
+  actionErrorCodeSchema,
+  actionIssueSchema,
+  createTasksInputSchema,
+  importTasksInputSchema,
+  noInputSchema,
+  sessionRefInputSchema,
+  setPriorityInputSchema,
+  taskRefInputSchema,
+  updateTaskInputSchema,
+} from "./actions.js";
+import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } from "./chat.js";
 import type { ChatTurn, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
+import { proposalRefInputSchema } from "./conductor.js";
+import { configLayerSchema, configSchema, subscriptionPlanSchema } from "./config.js";
 import type { Config } from "./config.js";
 import { busEventSchema } from "./events.js";
-import { summarySchema } from "./runtime.js";
+import { runtimeFlagsSchema, summarySchema } from "./runtime.js";
 import type { RuntimeFlags } from "./runtime.js";
 import { sessionEventSchema, sessionSchema } from "./sessions.js";
 import type { Session } from "./sessions.js";
@@ -87,6 +99,49 @@ export const actionRoutes = {
   stopChat: { method: "POST", path: "/api/chat/stop" },
 } as const satisfies Record<ActionName, ActionRoute>;
 
+export const actionInputSchemas = {
+  createTasks: createTasksInputSchema,
+  importTasks: importTasksInputSchema,
+  exportTasks: noInputSchema,
+  updateTask: updateTaskInputSchema,
+  setPriority: setPriorityInputSchema,
+  moveToTop: taskRefInputSchema,
+  hold: taskRefInputSchema,
+  release: taskRefInputSchema,
+  retry: taskRefInputSchema,
+  stopSession: sessionRefInputSchema,
+  pause: noInputSchema,
+  resume: noInputSchema,
+  setConfig: configLayerSchema,
+  confirmProposal: proposalRefInputSchema,
+  rejectProposal: proposalRefInputSchema,
+  sendChat: sendChatInputSchema,
+  stopChat: noInputSchema,
+} satisfies Record<ActionName, z.ZodType>;
+export type ActionInputs = { [Name in ActionName]: z.input<(typeof actionInputSchemas)[Name]> };
+
+const taskListSchema = z.array(taskSchema);
+
+export const actionResultSchemas = {
+  createTasks: taskListSchema,
+  importTasks: z.object({ tasks: taskListSchema, warnings: z.array(z.string()) }),
+  exportTasks: z.object({ yaml: z.string() }),
+  updateTask: taskSchema,
+  setPriority: taskSchema,
+  moveToTop: taskSchema,
+  hold: taskSchema,
+  release: taskSchema,
+  retry: taskSchema,
+  stopSession: sessionSchema,
+  pause: runtimeFlagsSchema,
+  resume: runtimeFlagsSchema,
+  setConfig: configSchema,
+  confirmProposal: proposalSchema,
+  rejectProposal: proposalSchema,
+  sendChat: chatTurnSchema,
+  stopChat: z.object({ stopped: z.boolean() }),
+} satisfies { [Name in ActionName]: z.ZodType<ActionResults[Name]> };
+
 export function isActionName(name: string): name is ActionName {
   return Object.hasOwn(actionRoutes, name);
 }
@@ -111,7 +166,14 @@ export const sessionEventsQuerySchema = z.strictObject({
 });
 export type SessionEventsQuery = z.infer<typeof sessionEventsQuerySchema>;
 
+export const instanceInfoSchema = z.object({
+  project: z.string(),
+  account: z.object({ email: z.string().nullable(), plan: subscriptionPlanSchema }),
+});
+export type InstanceInfo = z.infer<typeof instanceInfoSchema>;
+
 export const apiResponseSchemas = {
+  instance: instanceInfoSchema,
   summary: apiSummarySchema,
   tasks: z.array(taskViewSchema),
   task: taskViewSchema,
@@ -119,6 +181,8 @@ export const apiResponseSchemas = {
   sessionEvents: z.array(sessionEventSchema),
   chat: chatViewSchema,
 };
+
+export const accessTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const streamPath = "/api/stream";
 export const streamProtocol = "mastermind";

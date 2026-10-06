@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ClaudeCli } from "./claude.js";
-import { subscriptionPlanSchema } from "./contracts/index.js";
+import { planLabel, subscriptionPlanSchema } from "./contracts/index.js";
 import type { SubscriptionPlan } from "./contracts/index.js";
 import type { ExitResult } from "./procs.js";
 
@@ -100,10 +100,6 @@ export function logout(cli: ClaudeCli): Promise<ExitResult> {
   return cli.handOff({ command: "auth-logout" });
 }
 
-const planNames: Record<SubscriptionPlan, string> = { pro: "Pro", max: "Max" };
-
-export const planLabel = (plan: SubscriptionPlan): string => planNames[plan];
-
 const providerNames: Readonly<Record<string, string>> = {
   bedrock: "Amazon Bedrock",
   vertex: "Google Vertex AI",
@@ -145,8 +141,8 @@ export function describeAuth(verdict: AuthVerdict): string {
   switch (verdict.kind) {
     case "accepted":
       return verdict.email === null
-        ? `✓ Signed in (${planNames[verdict.plan]})`
-        : `✓ Signed in as ${verdict.email} (${planNames[verdict.plan]})`;
+        ? `✓ Signed in (${planLabel(verdict.plan)})`
+        : `✓ Signed in as ${verdict.email} (${planLabel(verdict.plan)})`;
     case "not-signed-in":
       return signInPrompt;
     case "wrong-kind":

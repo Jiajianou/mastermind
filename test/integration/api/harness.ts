@@ -7,6 +7,7 @@ import { serveApi } from "@mastermind/core/api";
 import type { PortChoice, ServedApi } from "@mastermind/core/api";
 import { actionTools } from "@mastermind/core/conductor";
 import { loadConfig, setConfig } from "@mastermind/core/config";
+import type { InstanceInfo } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
@@ -25,6 +26,11 @@ export interface TestApi {
   authorization: string;
   url(path: string): string;
 }
+
+export const testInstance: InstanceInfo = {
+  project: "demo",
+  account: { email: "owner@example.com", plan: "max" },
+};
 
 export const webIndex = "<!doctype html><title>Mastermind</title>";
 export const webScript = "console.log('mastermind');";
@@ -147,6 +153,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
       status: () => ({ model: config.models.conductor, replying: false }),
       activeTurn: () => null,
     },
+    instance: testInstance,
     summary: () => scheduler.summary(),
     webRoot,
     onError: (error) => errors.push(error),

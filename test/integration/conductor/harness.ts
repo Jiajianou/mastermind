@@ -33,7 +33,7 @@ import type { IsolatedEnv } from "../../support/isolated-env.js";
 import { waitFor } from "../../support/processes.js";
 import { createTempRepo } from "../../support/temp-repo.js";
 import type { TempRepo } from "../../support/temp-repo.js";
-import { freePort } from "../api/harness.js";
+import { freePort, testInstance } from "../api/harness.js";
 
 const promptsDir = fileURLToPath(new URL("../../../prompts/", import.meta.url));
 
@@ -142,6 +142,7 @@ export async function conductorHarness(
     actions,
     gate,
     chat: runner,
+    instance: testInstance,
     summary: () => scheduler.summary(),
     webRoot: join(env.root, "no-web"),
     onError,

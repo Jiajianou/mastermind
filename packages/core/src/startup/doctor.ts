@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { AuthStatusError, checkAuth, describeAuth, planLabel } from "../auth.js";
+import { AuthStatusError, checkAuth, describeAuth } from "../auth.js";
 import { checkClaude, createClaudeCli, describeClaudeCheck } from "../claude.js";
 import type { ClaudeCli } from "../claude.js";
 import {
@@ -13,6 +13,7 @@ import {
   resolveConfigPath,
 } from "../config/index.js";
 import type { ConfigContext } from "../config/index.js";
+import { planLabel } from "../contracts/index.js";
 import type { Config } from "../contracts/index.js";
 import { cleanEnv } from "../env.js";
 import type { Environment } from "../env.js";

@@ -1,0 +1,306 @@
+import { busEventSchema } from "@mastermind/core/contracts";
+import type { Rebase } from "@mastermind/core/contracts";
+import { describe, expect, it } from "vitest";
+import {
+  at,
+  check,
+  config,
+  message,
+  session,
+  sessionEvent,
+  snapshot,
+  stateWith,
+  summary,
+  task,
+} from "../testing/fixtures.js";
+import { reduce, terminalOutputLimit } from "./reducer.js";
+import type { LiveState, StoreAction } from "./state.js";
+
+interface Case {
+  name: string;
+  before: LiveState;
+  action: StoreAction;
+  after: (next: LiveState, before: LiveState) => void;
+}
+
+const rebase: Rebase = { id: 4, taskId: "alpha", status: "running", logPath: null, ts: at(5) };
+
+const cases: Case[] = [
+  {
+    name: "task.updated stores the task and leaves other tasks untouched",
+    before: stateWith({ tasks: { alpha: task("alpha"), beta: task("beta") } }),
+    action: {
+      type: "task.updated",
+      taskId: "alpha",
+      task: task("alpha", { status: "running", updatedAt: at(1) }),
+    },
+    after: (next, before) => {
+      expect(next.tasks.alpha?.status).toBe("running");
+      expect(next.tasks.beta).toBe(before.tasks.beta);
+    },
+  },
+  {
+    name: "task.updated ignores a task older than the one already known",
+    before: stateWith({ tasks: { alpha: task("alpha", { status: "review", updatedAt: at(9) }) } }),
+    action: {
+      type: "task.updated",
+      taskId: "alpha",
+      task: task("alpha", { status: "running", updatedAt: at(1) }),
+    },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "session.started adds a new session",
+    before: stateWith({ sessions: { 2: session(2) } }),
+    action: { type: "session.started", sessionId: 1, taskId: "alpha", session: session(1) },
+    after: (next, before) => {
+      expect(next.sessions[1]).toEqual(session(1));
+      expect(next.sessions[2]).toBe(before.sessions[2]);
+    },
+  },
+  {
+    name: "session.started never reopens a session already known to have ended",
+    before: stateWith({ sessions: { 1: session(1, { status: "succeeded", endedAt: at(4) }) } }),
+    action: { type: "session.started", sessionId: 1, taskId: "alpha", session: session(1) },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "session.ended records how the session ended",
+    before: stateWith({ sessions: { 1: session(1) } }),
+    action: {
+      type: "session.ended",
+      sessionId: 1,
+      taskId: "alpha",
+      session: session(1, { status: "failed", endedAt: at(4) }),
+    },
+    after: (next) => {
+      expect(next.sessions[1]?.status).toBe("failed");
+    },
+  },
+  {
+    name: "session.event appends to that session's timeline in id order",
+    before: stateWith({ sessionEvents: { 1: [sessionEvent(1), sessionEvent(3)], 2: [] } }),
+    action: { type: "session.event", sessionId: 1, taskId: "alpha", event: sessionEvent(2) },
+    after: (next, before) => {
+      expect(next.sessionEvents[1]?.map((event) => event.id)).toEqual([1, 2, 3]);
+      expect(next.sessionEvents[2]).toBe(before.sessionEvents[2]);
+    },
+  },
+  {
+    name: "session.event ignores an event it already has",
+    before: stateWith({ sessionEvents: { 1: [sessionEvent(1)] } }),
+    action: { type: "session.event", sessionId: 1, taskId: "alpha", event: sessionEvent(1) },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "check.updated keeps each of a task's checks by id",
+    before: stateWith({ checks: { alpha: { 1: check(1) }, beta: {} } }),
+    action: {
+      type: "check.updated",
+      taskId: "alpha",
+      check: check(2, { kind: "acceptance", status: "failed" }),
+    },
+    after: (next, before) => {
+      expect(Object.keys(next.checks.alpha ?? {})).toEqual(["1", "2"]);
+      expect(next.checks.alpha?.[2]?.status).toBe("failed");
+      expect(next.checks.beta).toBe(before.checks.beta);
+    },
+  },
+  {
+    name: "rebase.updated keeps the task's latest rebase",
+    before: stateWith({}),
+    action: { type: "rebase.updated", taskId: "alpha", rebase },
+    after: (next) => {
+      expect(next.rebases.alpha).toEqual(rebase);
+    },
+  },
+  {
+    name: "terminal.output appends to the terminal and keeps only the most recent output",
+    before: stateWith({
+      terminals: { t1: { taskId: "alpha", output: "x".repeat(terminalOutputLimit) } },
+    }),
+    action: { type: "terminal.output", taskId: "alpha", terminalId: "t1", data: "$ make\n" },
+    after: (next) => {
+      const output = next.terminals.t1?.output ?? "";
+      expect(output).toHaveLength(terminalOutputLimit);
+      expect(output.endsWith("x$ make\n")).toBe(true);
+    },
+  },
+  {
+    name: "chat.message appends a new message",
+    before: stateWith({ chat: { ...stateWith({}).chat, messages: [message(1)] } }),
+    action: { type: "chat.message", message: message(2) },
+    after: (next) => {
+      expect(next.chat.messages.map((known) => known.id)).toEqual([1, 2]);
+    },
+  },
+  {
+    name: "chat.message for a reply replaces the streamed draft of its turn",
+    before: stateWith({
+      chat: { ...stateWith({}).chat, replying: true, drafts: { "turn-1": "Hel", "turn-2": "x" } },
+    }),
+    action: {
+      type: "chat.message",
+      message: message(5, { kind: "conductor", content: "Hello", turnId: "turn-1" }),
+    },
+    after: (next) => {
+      expect(next.chat.messages.map((known) => known.content)).toEqual(["Hello"]);
+      expect(next.chat.drafts).toEqual({ "turn-2": "x" });
+    },
+  },
+  {
+    name: "chat.delta extends the draft of its turn",
+    before: stateWith({ chat: { ...stateWith({}).chat, drafts: { "turn-1": "Hel" } } }),
+    action: { type: "chat.delta", turnId: "turn-1", text: "lo" },
+    after: (next) => {
+      expect(next.chat.drafts["turn-1"]).toBe("Hello");
+    },
+  },
+  {
+    name: "chat.delta is ignored once the turn's reply is stored",
+    before: stateWith({
+      chat: {
+        ...stateWith({}).chat,
+        messages: [message(5, { kind: "conductor", turnId: "turn-1" })],
+      },
+    }),
+    action: { type: "chat.delta", turnId: "turn-1", text: "late" },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "chat.turn marks replying and drops the draft when the turn ends",
+    before: stateWith({
+      chat: { ...stateWith({}).chat, replying: true, drafts: { "turn-1": "x" } },
+    }),
+    action: { type: "chat.turn", turnId: "turn-1", replying: false },
+    after: (next) => {
+      expect(next.chat.replying).toBe(false);
+      expect(next.chat.drafts).toEqual({});
+    },
+  },
+  {
+    name: "proposal.updated stores the proposal by id",
+    before: stateWith({}),
+    action: {
+      type: "proposal.updated",
+      proposal: {
+        id: 7,
+        ts: at(6),
+        action: "hold",
+        args: { taskId: "alpha" },
+        status: "pending",
+        decidedAt: null,
+        result: null,
+      },
+    },
+    after: (next) => {
+      expect(next.proposals[7]?.status).toBe("pending");
+    },
+  },
+  {
+    name: "auth.updated sets whether sign-in is needed",
+    before: stateWith({}),
+    action: { type: "auth.updated", authRequired: true },
+    after: (next) => {
+      expect(next.scheduler.authRequired).toBe(true);
+    },
+  },
+  {
+    name: "scheduler.updated sets pause and the usage-limit resume time",
+    before: stateWith({}),
+    action: { type: "scheduler.updated", paused: true, resumeAt: at(30) },
+    after: (next) => {
+      expect(next.scheduler).toEqual({ paused: true, authRequired: false, resumeAt: at(30) });
+    },
+  },
+  {
+    name: "config.updated follows the chat model",
+    before: stateWith({}),
+    action: { type: "config.updated", config: config("sonnet") },
+    after: (next) => {
+      expect(next.chat.model).toBe("sonnet");
+    },
+  },
+  {
+    name: "service.stopping marks mastermind stopped",
+    before: stateWith({}),
+    action: { type: "service.stopping" },
+    after: (next) => {
+      expect(next.connection).toBe("stopped");
+    },
+  },
+  {
+    name: "snapshot.loaded replaces the normalised state and keeps unchanged entities",
+    before: stateWith({
+      tasks: { gone: task("gone"), alpha: task("alpha"), beta: task("beta") },
+      chat: { ...stateWith({}).chat, drafts: { t: "x" } },
+    }),
+    action: {
+      type: "snapshot.loaded",
+      snapshot: snapshot({
+        summary: summary({ paused: true, activeSessions: [session(3)] }),
+        tasks: [task("alpha"), task("beta", { status: "running", updatedAt: at(2) })],
+        sessions: [session(1, { status: "succeeded" })],
+        chat: { model: "opus", replying: true, messages: [message(1)] },
+      }),
+    },
+    after: (next, before) => {
+      expect(Object.keys(next.tasks)).toEqual(["alpha", "beta"]);
+      expect(next.tasks.alpha).toBe(before.tasks.alpha);
+      expect(next.tasks.beta?.status).toBe("running");
+      expect(Object.keys(next.sessions)).toEqual(["1", "3"]);
+      expect(next.scheduler.paused).toBe(true);
+      expect(next.instance?.project).toBe("demo");
+      expect(next.chat).toEqual({
+        model: "opus",
+        replying: true,
+        messages: [message(1)],
+        drafts: {},
+      });
+    },
+  },
+  {
+    name: "flags.changed applies the flags an action returned",
+    before: stateWith({}),
+    action: {
+      type: "flags.changed",
+      flags: { paused: true, authRequired: false, backoffResumeAt: at(40) },
+    },
+    after: (next) => {
+      expect(next.scheduler).toEqual({ paused: true, authRequired: false, resumeAt: at(40) });
+    },
+  },
+  {
+    name: "connection.changed records the connection",
+    before: stateWith({}),
+    action: { type: "connection.changed", connection: "reconnecting" },
+    after: (next) => {
+      expect(next.connection).toBe("reconnecting");
+    },
+  },
+];
+
+describe("store reducer", () => {
+  it.each(cases)("$name", ({ before, action, after }) => {
+    after(reduce(before, action), before);
+  });
+
+  it("has a case for every action kind", () => {
+    const covered = new Set(cases.map(({ action }) => action.type));
+    const kinds: StoreAction["type"][] = [
+      ...busEventSchema.options.map((option) => option.shape.type.value),
+      "snapshot.loaded",
+      "connection.changed",
+      "flags.changed",
+    ];
+    expect([...covered].sort()).toEqual([...kinds].sort());
+  });
+});

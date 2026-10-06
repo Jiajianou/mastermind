@@ -4,7 +4,7 @@ import { apiErrorSchema, apiResponseSchemas, taskSchema } from "@mastermind/core
 import type { NewTaskInput } from "@mastermind/core/contracts";
 import { readLock, tokenPath } from "@mastermind/core/lock";
 import { describe, expect, it } from "vitest";
-import { occupyPort, serveTestApi, webIndex, webScript } from "./harness.js";
+import { occupyPort, serveTestApi, testInstance, webIndex, webScript } from "./harness.js";
 import type { TestApi } from "./harness.js";
 
 type Method = "GET" | "POST" | "PATCH";
@@ -215,6 +215,14 @@ describe("HTTP API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(apiResponseSchemas.sessions.element.parse(response.json()).status).toBe("stopped");
+  });
+
+  it("tells the web app which project and account it serves", async () => {
+    const test = await serveTestApi();
+
+    const response = await call(test, "/api/instance");
+
+    expect(apiResponseSchemas.instance.parse(response.json())).toEqual(testInstance);
   });
 
   it("lists sessions and pages through a session's events", async () => {

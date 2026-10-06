@@ -1,4 +1,4 @@
-import { planLabel } from "@mastermind/core/auth";
+import { planLabel } from "@mastermind/core/contracts";
 import { clockTime } from "@mastermind/core/status";
 import type { EventLine, StatusHeader, StatusSnapshot } from "@mastermind/core/status";
 import type { LiveCounts } from "../messages.js";

@@ -25,6 +25,10 @@ export const durationSchema = z
 export const subscriptionPlanSchema = z.enum(["pro", "max"]);
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>;
 
+const planNames: Record<SubscriptionPlan, string> = { pro: "Pro", max: "Max" };
+
+export const planLabel = (plan: SubscriptionPlan): string => planNames[plan];
+
 export const maxWorkersSchema = z.union([z.literal("auto"), z.int().min(1)], {
   error: 'expected "auto" or a whole number of at least 1',
 });

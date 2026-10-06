@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  actionInputSchemas,
   ActionName,
   ActionResults,
   BusEventOf,
@@ -39,6 +40,7 @@ export type AnyActionDefinition = ActionDefinition<z.ZodType, unknown, BusEventT
 
 export type ContractedActions<Names extends ActionName> = {
   [Name in Names]: {
+    input: (typeof actionInputSchemas)[Name];
     handler(...args: never[]): ActionResults[Name] | Promise<ActionResults[Name]>;
   };
 };

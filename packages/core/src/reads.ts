@@ -3,6 +3,7 @@ import type { ChatState } from "./chat.js";
 import type {
   ApiSummary,
   ChatView,
+  InstanceInfo,
   Session,
   SessionEvent,
   SessionsQuery,
@@ -14,11 +15,13 @@ import type { Db } from "./db/index.js";
 
 export interface ReadSources {
   db: Db;
+  instance: InstanceInfo;
   summary: () => Summary;
   chat: Pick<ChatState, "status">;
 }
 
 export interface ReadModels {
+  instance(): InstanceInfo;
   summary(): ApiSummary;
   tasks(): TaskView[];
   task(taskId: string): TaskView;
@@ -35,8 +38,10 @@ function taskViews(tasks: readonly Task[]): TaskView[] {
   return tasks.map((task) => ({ ...task, unblocks: unblocks.get(task.id) ?? [] }));
 }
 
-export function createReadModels({ db, summary, chat }: ReadSources): ReadModels {
+export function createReadModels({ db, instance, summary, chat }: ReadSources): ReadModels {
   return {
+    instance: () => instance,
+
     summary() {
       const rebaseQueue = db.tasks
         .list()

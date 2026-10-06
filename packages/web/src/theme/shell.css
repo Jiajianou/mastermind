@@ -1,0 +1,168 @@
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 8px 24px;
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-panel-border);
+}
+
+.project-name {
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-min-height);
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.tab:hover {
+  background: var(--color-raised);
+  color: var(--color-text);
+}
+
+.tab[aria-current="page"] {
+  background: var(--color-raised);
+  border-bottom-color: var(--color-frost);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.top-bar-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-left: auto;
+}
+
+.run-status {
+  position: relative;
+}
+
+.run-status-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-min-height);
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.run-status-link:hover {
+  background: var(--color-raised);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+}
+
+.status-ok {
+  background: var(--color-frost);
+}
+
+.status-attention {
+  background: var(--color-peach);
+}
+
+.tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  max-width: min(360px, 90vw);
+  padding: 10px 12px;
+  background: var(--color-raised);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-panel);
+  font-size: 13px;
+}
+
+.run-status:hover .tooltip,
+.run-status:focus-within .tooltip {
+  display: flex;
+}
+
+.tooltip-account {
+  font-weight: 500;
+}
+
+.pause-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-failure {
+  color: var(--color-peach);
+  font-size: 13px;
+}
+
+.banners {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 24px 0;
+}
+
+.banner {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-peach);
+  border-radius: var(--radius-panel);
+}
+
+.banner strong {
+  color: var(--color-peach);
+}
+
+.content {
+  padding: 24px;
+}
+
+.screen-title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .top-bar,
+  .banners,
+  .content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .top-bar-end {
+    margin-left: 0;
+  }
+}

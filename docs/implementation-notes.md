@@ -873,3 +873,63 @@ points change or sharpen PLAN.md, and later tasks must follow them:
     says to answer from the state block when it covers the question and to use the read tools for anything it doesn't.
   - Replies after a change may be one or two sentences, without guessing what mastermind will do next. Replies after
     creating a task are still three or four sentences; further tuning was left for M3, when the chat UI shows them.
+
+## m3-web-shell
+
+- **Layout.** `packages/web/src/`: `api/` (`token.ts`, `client.ts`), `store/` (`state.ts`, `reducer.ts`, `store.ts`,
+  `hooks.tsx`, `status.ts`), `live/connection.ts`, `components/` (top bar, status link, Pause, banners), `screens/`
+  (`Screen`, a titled placeholder each route uses until its own task replaces it; Settings stays a bare heading
+  until M8) and `theme/` (`tokens.css` holds the 15.1 values verbatim as CSS variables, `base.css`, `shell.css`).
+  `testing/fixtures.ts` builds contract objects for the web tests.
+- **Router.** `react-router` 8 in declarative mode (`BrowserRouter`), path routes `/`, `/overview`, `/tasks`,
+  `/sessions`, `/review`, `/settings`, anything else redirects to `/`. Path routing, not hash routing, because the
+  fragment carries the token; the server already falls back to `index.html` for unknown GETs. Active tabs get
+  `aria-current="page"`, a bold label and an underline, not only a colour.
+- **Fonts.** `@fontsource/ibm-plex-sans` (400, 500, 600) and `@fontsource/ibm-plex-mono` (400, 500), bundled by Vite
+  into `dist/assets`, so the app needs no network.
+- **Store: hand-written, no library.** One `createStore` (getState, dispatch, subscribe) over a pure
+  `reduce(state, action)`, where an action is any `BusEvent` plus `snapshot.loaded`, `connection.changed` and
+  `flags.changed`. State is normalised (tasks by id, sessions by id, session events, checks by task then id, rebases,
+  terminals, proposals, chat). Reducers copy only the path they change, so every untouched entity keeps its
+  reference. `useLive(selector)` is `useSyncExternalStore`, and `useTask(taskId)` / `useSession(sessionId)` select a
+  single entity, so a pane re-renders only when its own task or session changes (`store/hooks.test.tsx` proves it).
+  Selectors must return stored values, never build new objects. Zustand or Redux would add a dependency for the same
+  twenty lines.
+- **Reducer rules worth knowing.** `task.updated` is ignored when the stored task has a newer `updatedAt`;
+  `session.started` never reopens a session already known; session events and chat messages are de-duplicated by id
+  and kept in id order; `chat.delta` builds a per-turn draft that the turn's `conductor` message or `chat.turn
+  replying:false` removes; `config.updated` only feeds the chat model today; terminal output keeps the last 200 000
+  characters. The tasks read is parsed with `taskSchema`, so `unblocks` is dropped and later screens derive it from
+  deps (an event never carries it, so storing it would go stale).
+- **Live connection** (`connectLive`). Each attempt first reads `GET /api/instance` (new: project name and account,
+  `instanceInfoSchema`), because a browser reports a refused WebSocket upgrade as a bare close and a wrong token would
+  otherwise look like a stopped server: a 401 there shows "No access … open the link printed in the terminal" and
+  stops retrying. Then the socket opens; once it is open the snapshot (summary, tasks, sessions since local midnight,
+  chat) loads, and stream events that arrived meanwhile are held and applied after it. An unexpected close retries
+  after 250 ms, 0.5, 1, 2 and 4 s; when all fail the page shows the stopped banner (about 8 s after a hard kill).
+  `service.stopping` shows it at once. Unexpected stream messages are logged to the console and skipped. A snapshot
+  that fails after its socket already closed is ignored, so it can't start a second retry or close the next socket.
+  A snapshot after a reconnect keeps the stored object of every task and session that didn't change, so only panes
+  whose entity changed re-render. `live/connection.test.ts` covers these paths with a fake socket and stubbed fetch.
+- **Top bar.** Project name, tabs, the status link and Pause/Resume. The status word is Running, Paused, Usage
+  limit, Sign-in needed, Connecting, Reconnecting, Stopped or No access, with `· Max` (or Pro) once known and a dot
+  whose colour only repeats the word. The status links to `/settings` (15.2 item 9) and has a real tooltip
+  (`role="tooltip"`, `aria-describedby`, shown on hover and focus) with the account and "Ctrl+C twice in the terminal
+  stops mastermind and every session it started." Pause posts `pause`/`resume` and applies the returned flags; a
+  failure shows next to the button.
+- **Banners.** Sign-in needed uses 4.3's wording; usage limit shows the local resume time (with a weekday when it is
+  not today); stopped is 3.4's sentence. While stopped or without access, only that banner shows.
+- **Contracts.** `planLabel` moved from `auth.ts` to `contracts/config.ts` so the browser can use it.
+  `actionInputSchemas` maps every action to its input schema and `ActionInputs` is derived from it; the web client's
+  `act(name, input)` is typed by it, and `ContractedActions` now requires each action definition to use exactly that
+  schema, so the contract can't drift from core. `actionResultSchemas` (checked against `ActionResults` with
+  `satisfies`) lets the web client validate every action result; `accessTokenSchema` (64 hex characters) validates the fragment and the stored token. `ApiServerOptions` and
+  `ReadSources` gained `instance`.
+- **Dev server.** `pnpm --filter @mastermind/web dev` proxies `/api` (HTTP and the WebSocket) to
+  `MASTERMIND_URL`, default `http://127.0.0.1:4700`. Open `http://localhost:5173/#t=<token>` with the running
+  instance's token; Host and Origin are `localhost`, which the server accepts.
+- **Playwright harness.** `test/e2e/web/harness.ts` is a `mastermind` fixture: a temp repo on branch `dev`, an
+  isolated HOME with fake-claude, the built binary started through `test/support/mastermind.ts`, and the printed link
+  opened in the page. Cleanup runs the shared `runCleanups` after each test. `global-setup.ts` runs the fake-claude
+  PATH guard and fails early if `pnpm build` hasn't produced `packages/cli/dist` with the web app. The stopped banner
+  is tested for SIGTERM (the `service.stopping` frame) and SIGKILL (no frame, reconnects fail).

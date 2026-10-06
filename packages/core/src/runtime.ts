@@ -159,6 +159,10 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     actions,
     gate,
     chat: runner,
+    instance: {
+      project: basename(repoRoot),
+      account: { email: startup.auth.email, plan: startup.auth.plan },
+    },
     summary: () => scheduler.summary(),
     webRoot: options.webRoot,
     onError,

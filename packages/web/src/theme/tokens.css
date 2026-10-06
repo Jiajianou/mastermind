@@ -1,0 +1,22 @@
+:root {
+  --color-page: #1b1f27;
+  --color-panel: #232833;
+  --color-raised: #2c3240;
+  --color-panel-border: #363d4d;
+  --color-control-border: #4a5266;
+  --color-text: #eceff4;
+  --color-text-muted: #aeb6c6;
+  --color-frost: #88c0d0;
+  --color-on-frost: #1b1f27;
+  --color-added-line: #22394a;
+  --color-peach: #e8a37c;
+  --color-removed-line: #45302a;
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-panel: 8px;
+  --radius-control: 6px;
+  --control-min-height: 44px;
+  --focus-ring: 2px solid var(--color-frost);
+}
