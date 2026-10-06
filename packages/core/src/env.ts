@@ -20,7 +20,26 @@ const nestedSessionVariables = [
   "AI_AGENT",
 ];
 
-const removedVariables = new Set([...providerVariables, ...nestedSessionVariables]);
+// Set when mastermind is started from inside git (a hook or an alias), these would point a child's git at the
+// owner's repository instead of the task clone it runs in.
+const gitRepositoryVariables = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_SHALLOW_FILE",
+  "GIT_GRAFT_FILE",
+  "GIT_PREFIX",
+];
+
+const removedVariables = new Set([
+  ...providerVariables,
+  ...nestedSessionVariables,
+  ...gitRepositoryVariables,
+]);
 
 // Every ANTHROPIC_* variable carries an API credential, points at an endpoint or provider, or remaps a model
 // alias, so a prefix match also catches provider variables that newer Claude Code versions add.

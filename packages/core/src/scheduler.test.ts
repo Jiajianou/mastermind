@@ -391,4 +391,12 @@ describe("scheduler loop", () => {
     ]);
     expect(errors).toEqual([]);
   });
+
+  it("waits until the reset time the CLI reported, if it lies in the future", () => {
+    const { scheduler } = startLoop();
+    const resetAt = new Date(Date.now() + 90 * minute);
+
+    expect(scheduler.reportUsageLimit(resetAt)).toEqual(resetAt);
+    expect(scheduler.summary().resumeAt).toBe(resetAt.toISOString());
+  });
 });

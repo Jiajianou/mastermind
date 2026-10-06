@@ -139,7 +139,7 @@ export interface Scheduler {
   start(): void;
   stop(): void;
   wake(): void;
-  reportUsageLimit(): Date;
+  reportUsageLimit(resetAt?: Date): Date;
   reportSuccess(): void;
   summary(): Summary;
 }
@@ -247,12 +247,15 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
 
     wake,
 
-    reportUsageLimit() {
+    reportUsageLimit(resetAt) {
       const now = clock.now();
       const current = activeResumeAt(db.flags.get(), now);
       if (current !== null) return new Date(current);
       consecutiveLimits += 1;
-      const resumeAt = new Date(now.getTime() + backoffDelayMs(consecutiveLimits));
+      const resumeAt =
+        resetAt !== undefined && resetAt.getTime() > now.getTime()
+          ? resetAt
+          : new Date(now.getTime() + backoffDelayMs(consecutiveLimits));
       setBackoff(scope, resumeAt);
       if (interval !== null) armResume(resumeAt);
       return resumeAt;

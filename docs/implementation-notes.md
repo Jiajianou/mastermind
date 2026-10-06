@@ -379,3 +379,75 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Tests** live in one file, `sessions/parser.test.ts`, so the acceptance filter `parser` runs all of them. Every
   `.jsonl` sample must have an expected table, and every line in the samples must be recognised or a listed noise
   type, so a new recorded sample or a changed CLI shape fails loudly.
+
+## m1-sessions
+
+- **Where it lives.** `@mastermind/core/git` (`src/git/`, a new package export) runs git through the process
+  registry (`collectOutput`, kind `utility`): `execFile`-style argv, never a shell, and still detached and tracked
+  so Ctrl+C twice reaches it. `GitError` carries the args, exit and stderr. The session code is in
+  `@mastermind/core/sessions`: `spawner.ts` (shared by every role), `manager.ts` (workers), `settlement.ts` (pure
+  outcome rules), `settings.ts`, `path-guard.ts`, `setup.ts`, `prompts.ts` and `actions.ts` (`stopSessionAction`).
+- **Clones** (`createTaskClone`): `clone --local --single-branch --branch <main>`, `switch --create task/<id>`,
+  `remote remove origin`, `/.mastermind-result.md` appended to the clone's `.git/info/exclude`, and the repo's
+  effective `user.name`/`user.email` copied into the clone's config, because a clone doesn't inherit the repo's own
+  `.git/config` and every commit must carry the owner's identity (decision 18). The fetches use `+` refspecs (a
+  rebased task branch is not a fast-forward of the last fetched ref) and `--no-write-fetch-head`, so the owner's
+  repo gets no `FETCH_HEAD`. `deleteClone` refuses any path that isn't inside `worktreeDir`.
+- **Workspace reuse.** A task whose `worktree` still exists reuses it (retries, resumes), and `commands.setup` runs
+  only when a clone is created. A directory left at `<worktreeDir>/<id>` that the task doesn't reference (a crash
+  mid-clone) is deleted and cloned again. The task's `worktree`, `branch` and `base_commit` are stored after setup,
+  so a crash during setup clones and sets up again. A failed setup doesn't stop the worker; its prompt says that
+  setup failed and where the log is. Setup logs are `.mastermind/logs/checks/<task>-setup-<time>.log`; the raw
+  stdout of each session is `.mastermind/logs/sessions/<id>.jsonl` (stderr, if any, beside it as `<id>.stderr`).
+- **Mastermind's own commits** (`commitLeftovers`) run with `-c core.hooksPath=/dev/null --no-verify`, because a
+  `prepare-commit-msg` or `commit-msg` hook in the managed repo could add a trailer or reject the WIP message.
+- **end_commit is recorded after the WIP commit**, not before as 8.4 lists the steps, so that "changes since the
+  previous round" (9.1) diffs against everything that round produced.
+- **Spawn flags.** The worker gets 8.3 plus the CLI notes' additions: `--strict-mcp-config`,
+  `--replay-user-messages` and `--permission-prompts none`. `--settings` holds attribution off, the decision 9
+  sandbox block (or `{enabled: false}` when the owner turned it off, so a user-level sandbox setting can't apply),
+  deny rules and the path guard hook. **Presets reach the sandbox through config**: `prepareProject` wrote them into
+  `.mastermind/config.yaml` on the first run, so `sandbox.allowWrite` and `allowedDomains` are used as configured.
+- **Deny rules** cover Edit and Write under the owner's repo and `~/.claude` (each also under its real path, for
+  `/tmp` → `/private/tmp`). A protected path that contains the worktree is skipped, since deny beats allow.
+- **Path guard.** The CLI notes found deny rules can't confine Edit and Write to the worktree, so every editing
+  session gets a `PreToolUse` hook on `Edit|Write|MultiEdit|NotebookEdit`. `SessionManagerOptions.pathGuardCommand`
+  is **required**: the argv prefix of a command that reads the hook JSON on stdin, prints
+  `pathGuardResponse(stdin, worktree)` and exits 0; the worktree is appended as the last argument and the whole
+  command is shell-quoted. The CLI must provide it (for example a hidden `mastermind path-guard <worktree>`
+  subcommand run with `process.execPath`); fake-claude ignores hooks, so only the unit tests exercise the guard.
+- **Permission mode check.** If the first `init` reports a `permissionMode` other than the requested one (auto on
+  a model without it), the spawner stops the session and it ends `failed` with a reason naming both modes. That
+  counts an attempt but doesn't back off, since it is a configuration problem.
+- **Ending a run.** At the `result` line stdin is closed; the run is classified when the process exits. If it
+  lingers more than 30 s after its result it is stopped, and the exit code is then treated as 0 so the result line
+  alone decides. Outcomes (`settleWorkerRun`):
+  - succeeded: WIP commit, `end_commit`, task → `checking`, back-off sequence reset.
+  - rate_limited: task → `pending`, no attempt, back-off until the rejected `rate_limit_event`'s `resetsAt` if it
+    is in the future (`Scheduler.reportUsageLimit(resetAt?)` gained this optional argument), else the default
+    sequence.
+  - auth_failed: `authRequired` and `paused` set (4.3), `auth.updated` and `scheduler.updated` emitted, task →
+    `pending` with no attempt. Running `claude auth status` first, as the CLI notes suggest, and resuming after a
+    good check are left to the auth-expiry flow (M8).
+  - failed (unrecognised): **counts an attempt** (`blocked` at `maxAttempts`), as this task's goal says, **and**
+    backs off globally, as the CLI notes say, since it may be an unseen limit text. Counting attempts replaces the
+    notes' separate per-task count of consecutive unrecognised failures. The reason is stored as an `error` event
+    (`Session failed: …`), which is where a blocked task's message comes from.
+  - stopped (`stopSession`): task → `pending` and **held**, so it doesn't restart by itself; releasing it resumes
+    the session. No attempt is counted and nothing is committed.
+- **Resuming.** Rate-limited, auth-failed and stopped runs set `resume_session` only if the conversation got
+  going (an assistant or tool_use line). A run that failed before any of that, such as "Not logged in", may have
+  no stored conversation, and `--resume` would fail with "No conversation found". A resumed start passes `--resume
+  <id>` instead of `--session-id`, keeps the same `claude_session_id` on its new session row, sends `You were
+  interrupted. Check the worktree state and continue.` and clears `resume_session`.
+- **Session rows.** The row is created (with the task's move to `running`) before the spawn, so no early line can
+  arrive without a session id; pid and pgid are filled in once the child starts. If the spawn itself fails, the
+  session ends `failed` and the task returns to `pending` unchanged. `attempt` is `task.attempts + 1`.
+  `input_tokens` is input plus cache reads plus cache creation from each `result`'s usage, summed over the
+  process's results; `output_tokens` is the output total.
+- **Git location variables.** `cleanEnv` also drops `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and the other
+  repository-locating variables, and the git runner uses `cleanEnv` too. If mastermind is started from inside git
+  (a hook or an alias), these would otherwise point mastermind's own git, the setup command and the worker's git
+  at the owner's repository instead of the task clone, which breaks decision 20.
+- **Not done here.** Descendant pgids are still not recorded while a session runs (m1-db's note), which the
+  recovery task may want for its reaper.

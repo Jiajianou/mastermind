@@ -12,6 +12,7 @@
     "./db": "./src/db/index.ts",
     "./env": "./src/env.ts",
     "./events": "./src/events.ts",
+    "./git": "./src/git/index.ts",
     "./procs": "./src/procs.ts",
     "./scheduler": "./src/scheduler.ts",
     "./sessions": "./src/sessions/index.ts"
