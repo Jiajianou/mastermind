@@ -13,7 +13,9 @@
     "./env": "./src/env.ts",
     "./events": "./src/events.ts",
     "./git": "./src/git/index.ts",
+    "./lock": "./src/lock.ts",
     "./procs": "./src/procs.ts",
+    "./recovery": "./src/recovery.ts",
     "./scheduler": "./src/scheduler.ts",
     "./sessions": "./src/sessions/index.ts"
   },

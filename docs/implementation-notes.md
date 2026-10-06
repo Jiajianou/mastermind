@@ -451,3 +451,51 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   at the owner's repository instead of the task clone, which breaks decision 20.
 - **Not done here.** Descendant pgids are still not recorded while a session runs (m1-db's note), which the
   recovery task may want for its reaper.
+
+## m1-recovery-lock
+
+- **Where it lives.** `@mastermind/core/lock` (`src/lock.ts`) and `@mastermind/core/recovery` (`src/recovery.ts`),
+  both new package exports. `procs.ts` now exports `readLiveProcess(pid)` (`ps -p <pid> -ww -o pgid=,stat=,command=`,
+  `null` for a missing or zombie process) and `killTreesSync`, the same descendant-group kill the registry uses.
+- **Lock file.** `.mastermind/lock` is JSON `{"pid": …, "port": …}`; the port is `null` until the server has one
+  (`InstanceLock.setPort`, step 7 of 3.1), because the lock is taken at step 2. `acquireLock` creates
+  `.mastermind/` itself, since first-run setup comes later. Creation is atomic: the record is written to a temp file
+  and hard-linked into place, so the lock appears whole or not at all (EEXIST means taken). Port updates are a
+  temp file plus rename. The API is synchronous, because the Ctrl+C kill path must release it synchronously.
+- **Stale and live.** A lock is stale if its pid is dead (`kill(pid, 0)` gives ESRCH), its content is unreadable,
+  or its pid is our own (a pid reused from an earlier run). A stale lock is renamed aside and deleted only if the
+  moved file is still the one that was judged stale; otherwise it is another instance's fresh lock and is put back.
+  A live lock returns `{kind: "held", pid, link}`; the link is `http://127.0.0.1:<port>/#t=<token>` built from
+  `.mastermind/token`, or `null` while the holder has no port or token yet. `alreadyRunningMessage` gives the 3.1
+  text (`…, still starting` without a link). Holder liveness is the pid alone, as the task says; a reused pid can
+  wrongly look live until that process exits.
+- **Release** (`releaseSync`) deletes the file only if it still holds this instance's exact record, so an instance
+  whose lock was taken over never deletes the new holder's lock. `readLock(stateDir)` is for clients (m2-cli-client)
+  looking for the running instance's port.
+- **Recovery order** (`recoverPreviousRun({ db, git })`): reap every `running` session's leftover process first,
+  then commit the clones of `running` tasks, then one transaction runs `db.killRunning()` (sessions, checks and
+  rebases → `killed`) and requeues the tasks. Work is saved only after its writer is dead, and a crash part-way
+  leaves rows as they were, so the next start simply repeats recovery.
+- **Reaping.** A session's group is killed only if `readLiveProcess(pid)` finds the process and its command line
+  contains the session's `claude_session_id`. That covers `--session-id <id>` and the `--resume <id>` of a resumed
+  run. The kill uses the live process's pgid and the descendant-group tree kill, so Bash tool groups under it die
+  too. Sessions of every role are reaped and marked killed.
+- **Saving work.** Only tasks left `running` are committed (`WIP: interrupted`, through `commitLeftovers`, so hooks
+  are off and there are no trailers). Clones of tasks in `checking` or `rebasing` are left alone: they may hold
+  build output or a rebase in progress. A failed commit (for example a stale `index.lock` from a killed git) is
+  reported in `failures` and the task is still requeued.
+- **Requeue.** `running` tasks go to `pending` with attempts and `held` unchanged. `resume_session` is the latest
+  worker or fixer session's claude id **only if that conversation got going** (a stored assistant or tool_use line
+  in any run with that id, re-read with the stream parser), matching m1-sessions' rule for usage limits; otherwise
+  it is `null` and the task starts fresh, because `--resume` of a conversation that never started fails.
+  Thinking-only assistant lines are not stored as events, so a run killed after thinking but before its first
+  text or tool call also starts fresh; that is the safe side of the rule.
+- **Not done here.** Tasks left in `checking` or `rebasing` keep their status with their checks and rebases marked
+  killed; the checks pipeline and rebase queue (M5) must re-run them on start. Check and rebase processes have no
+  pid in the database, so an orphaned `make test` from a hard-killed run is not reaped, and neither is a Bash tool
+  group whose claude parent also died (descendant pgids are still not recorded). The report (`reaped`, `saved`,
+  `requeued`, `killed`, `failures`) is for m1-startup to print; recovery emits no bus events because it runs before
+  the server starts.
+- **Test.** The recovery test runs a real "previous mastermind" (`test/integration/recovery/previous-run.ts`, via
+  `node --import tsx`) whose session manager starts a fake-claude worker, then SIGKILLs that process so the fake is
+  a true orphan before recovery runs against the same database file.

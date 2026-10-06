@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { onCleanup } from "./cleanup.js";
 
@@ -86,6 +87,21 @@ export function trackChild(child: ChildProcess): void {
   onCleanup(() => {
     if (child.pid !== undefined) killProcessTree([child.pid]);
   });
+}
+
+export async function startUnrelatedProcess(): Promise<number> {
+  const child = spawn("sleep", ["300"], { detached: true, stdio: "ignore" });
+  trackChild(child);
+  await once(child, "spawn");
+  if (child.pid === undefined) throw new Error("sleep started without a pid");
+  return child.pid;
+}
+
+export async function exitedPid(): Promise<number> {
+  const child = spawn("true", { stdio: "ignore" });
+  await once(child, "exit");
+  if (child.pid === undefined) throw new Error("true ran without a pid");
+  return child.pid;
 }
 
 type Pending = false | null | undefined;

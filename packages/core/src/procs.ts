@@ -16,10 +16,17 @@ export type ProcessKind = z.infer<typeof processKindSchema>;
 export type ExitResult =
   { kind: "exited"; code: number } | { kind: "signaled"; signal: NodeJS.Signals };
 
-export interface TrackedGroup {
-  kind: ProcessKind;
+export interface ProcessGroup {
   pid: number;
   pgid: number;
+}
+
+export interface TrackedGroup extends ProcessGroup {
+  kind: ProcessKind;
+}
+
+export interface LiveProcess extends ProcessGroup {
+  command: string;
 }
 
 export type LineHandler = (line: string) => void;
@@ -200,6 +207,24 @@ export async function stopGroup(
   return child.exited;
 }
 
+export function readLiveProcess(pid: number): LiveProcess | null {
+  let output: string;
+  try {
+    output = execFileSync("ps", ["-p", String(pid), "-ww", "-o", "pgid=,stat=,command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    if (error instanceof Error && "status" in error && error.status === 1) return null;
+    throw error;
+  }
+  const match = /^\s*(\d+)\s+(\S+)\s(.*)$/.exec(output.trim());
+  if (match === null) return null;
+  const [, pgid, stat, command] = match;
+  if (stat?.startsWith("Z") === true) return null;
+  return { pid, pgid: Number(pgid), command: command ?? "" };
+}
+
 function readLines(stream: Readable, onLine: LineHandler): void {
   let partial = "";
   stream.setEncoding("utf8");
@@ -267,7 +292,7 @@ function growTree(table: readonly ProcessRow[], tree: Tree, ownGroup: number): P
 // would orphan `make` and everything under it. One `ps` snapshot finds every descendant group; the second pass
 // catches anything forked while the first pass was killing. If `ps` itself fails, the tracked groups are still
 // killed directly so the Ctrl+C path always finishes.
-function killTreesSync(roots: readonly TrackedGroup[]): KillFailure[] {
+export function killTreesSync(roots: readonly ProcessGroup[]): KillFailure[] {
   const failures = new Map<KillFailure["target"], KillFailure>();
   const record = (failure: KillFailure | null) => {
     if (failure !== null) failures.set(failure.target, failure);
