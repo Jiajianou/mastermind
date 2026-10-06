@@ -3,7 +3,18 @@ import type { TestProjectInlineConfiguration } from "vitest/config";
 
 const liveProjects: TestProjectInlineConfiguration[] =
   process.env.MASTERMIND_LIVE === "1"
-    ? [{ test: { name: "live", environment: "node", include: ["test/live/**/*.test.ts"] } }]
+    ? [
+        {
+          test: {
+            name: "live",
+            environment: "node",
+            setupFiles: ["test/support/setup.ts"],
+            testTimeout: 360_000,
+            hookTimeout: 30_000,
+            include: ["test/live/**/*.test.ts"],
+          },
+        },
+      ]
     : [];
 
 export default defineConfig({

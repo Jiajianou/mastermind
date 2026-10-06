@@ -836,3 +836,40 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   Conductor and workers; tasks, holds and a past session seeded in SQLite before start). The `logs -f` test waits
   for the seeded history to print (so the stream is already open), then releases the task and sees the new
   worker's events arrive. `packages/cli/src/client/chat.test.ts` is a table for the turn follower.
+
+## m2-verify
+
+- **Done-when test.** `test/e2e/m2-chat.test.ts` runs the built binary with a fake-claude Conductor and fake workers.
+  `mastermind chat "add a task to create hello.txt"` makes a `create_tasks` call, and the test waits until a worker
+  session for the new task is running and has spoken. Then it asks `mastermind chat "what's running?"`. The fake
+  Conductor's answer depends on the state it was given: its scenario turn only matches when the `<state>` digest in
+  the prompt lists `hello` as a running worker, and otherwise a fallback answers "Nothing is running." So the scripted
+  answer passes only if mastermind fed the real state into the turn. The test also checks the tool calls
+  (`create_tasks`, then `list_sessions`) and that one persistent Conductor process served both turns.
+- **Shared helpers.** `test/support/mastermind.ts` has `startMastermind` (start a binary and wait for the web app
+  link, with a choice of launcher), `openProjectDb` and `conductorToolCalls`. `conductorToolCalls` reads tool names
+  from the stored stream lines of every conductor session with the production stream parser. `cli-client.test.ts` and
+  `m1-runtime.test.ts` now use these helpers instead of their own copies.
+- **Live test.** `pnpm test:live` (vitest project `live`, only defined when `MASTERMIND_LIVE=1`, so verify and CI
+  never see it) runs `test/live/conductor.live.test.ts`. It runs the CLI from source through tsx, so it always uses
+  the current `prompts/conductor.md` without a rebuild. A temp `claude` wrapper on PATH sends `auth …`, `--version`
+  and any run whose `--append-system-prompt-file` is `conductor.md` to the real CLI. Every other run (the workers)
+  goes to fake-claude. It uses the real HOME, because the real CLI needs the owner's sign-in. The repo's
+  `mastermind.yaml` points `worktreeDir` at a temp dir, so nothing is written under `~/.mastermind`. The test asserts
+  on tool calls only: the first turn includes `create_tasks`, and the status turn makes no calls outside Read, Grep,
+  Glob and the read tools of 6.3. The Conductor uses the configured default model (opus). Before running it from
+  inside Claude Code, unset the nested-session variables listed in `docs/claude-cli-notes.md`.
+- **Defect fixed: the real Conductor could not reply at all.** On the first live run, every turn failed with `API
+  Error: 400 tools.15.custom.input_schema: JSON schema is invalid`. The model-name pattern `^[\w.[\]-]+$` reaches the
+  API inside `set_config`'s JSON schema, and the API's validator reads the `[` inside the class as the start of a
+  nested class. The pattern is now `^(?:[\w.\]-]|\[)+$`, which accepts the same names, including ids such as
+  `claude-sonnet-5[1m]`. Escaping `[` inside the class would also work, but ESLint's `no-useless-escape` rejects it.
+  The fake-claude tests could not catch this, because fake-claude never validates tool schemas.
+- **Live outcome (2026-10-06, Claude Code 2.1.283, Max, opus).** After the fix it passed on all three runs, the last
+  one with the revised prompt. "add a task to create hello.txt" made exactly one `create_tasks` call (task
+  `hello-txt`, acceptance `test -f hello.txt`, touches `hello.txt`). "what's running?" made no tool calls and answered
+  correctly from the digest ("hello-txt is running. It's on its first attempt…"). The prompt gained two small changes:
+  - The old rule "use the read tools before you answer" conflicted with the fresh `<state>` block, so the prompt now
+    says to answer from the state block when it covers the question and to use the read tools for anything it doesn't.
+  - Replies after a change may be one or two sentences, without guessing what mastermind will do next. Replies after
+    creating a task are still three or four sentences; further tuning was left for M3, when the chat UI shows them.

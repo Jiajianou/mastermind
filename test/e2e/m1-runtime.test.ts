@@ -11,11 +11,11 @@ import { createEventBus } from "@mastermind/core/events";
 import { readLock } from "@mastermind/core/lock";
 import { startupBanner } from "@mastermind/core/startup";
 import { describe, expect, it } from "vitest";
-import { onCleanup } from "../support/cleanup.js";
 import { spawnBuiltCli } from "../support/cli.js";
 import type { CliProcess } from "../support/cli.js";
 import { isolatedEnv } from "../support/isolated-env.js";
 import type { IsolatedEnv } from "../support/isolated-env.js";
+import { openProjectDb } from "../support/mastermind.js";
 import { findPids, isAlive, waitFor } from "../support/processes.js";
 import { createTempRepo } from "../support/temp-repo.js";
 import type { TempRepo } from "../support/temp-repo.js";
@@ -65,14 +65,6 @@ async function repoWithTasks(): Promise<TempRepo> {
     db.close();
   }
   return repo;
-}
-
-function openProjectDb(repo: TempRepo): Db {
-  const db = openDb(projectPaths(repo.path).database);
-  onCleanup(() => {
-    db.close();
-  });
-  return db;
 }
 
 function startMastermind(repo: TempRepo, env: IsolatedEnv, stdin = ""): Mastermind {

@@ -38,9 +38,11 @@ export function resolveMaxWorkers(maxWorkers: MaxWorkers, plan: SubscriptionPlan
 export const workerPermissionsSchema = z.enum(["bypass", "auto", "allowlist"]);
 export type WorkerPermissions = z.infer<typeof workerPermissionsSchema>;
 
+// The pattern reaches the Claude API in set_config's JSON schema, whose validator reads a `[` inside a character
+// class as a nested class and then rejects the Conductor's whole tool list, so `[` stays outside the class.
 export const modelSchema = z
   .string()
-  .regex(/^[\w.[\]-]+$/, "expected a model name such as opus, sonnet or haiku");
+  .regex(/^(?:[\w.\]-]|\[)+$/, "expected a model name such as opus, sonnet or haiku");
 
 const nonEmptyString = z.string().trim().min(1);
 

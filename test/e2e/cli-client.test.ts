@@ -10,10 +10,11 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { makeTempDir } from "../support/cleanup.js";
 import { spawnBuiltCli } from "../support/cli.js";
-import type { CliProcess, CliRun } from "../support/cli.js";
 import type { Scenario } from "../support/fake-claude.js";
 import { isolatedEnv } from "../support/isolated-env.js";
 import type { IsolatedEnv } from "../support/isolated-env.js";
+import { startMastermind } from "../support/mastermind.js";
+import type { RunningMastermind } from "../support/mastermind.js";
 import { waitFor } from "../support/processes.js";
 import { createTempRepo } from "../support/temp-repo.js";
 import type { TempRepo } from "../support/temp-repo.js";
@@ -43,15 +44,10 @@ interface Seed {
   pastSession?: { taskId: string; note: string };
 }
 
-interface Running {
+interface Running extends RunningMastermind {
   repo: TempRepo;
   env: IsolatedEnv;
-  mastermind: CliProcess;
-  spawn(args: readonly string[]): CliProcess;
-  run(args: readonly string[]): Promise<CliRun>;
 }
-
-const printedLink = /Web app → http:\/\/127\.0\.0\.1:\d+\//;
 
 async function seedDatabase(repo: TempRepo, seed: Seed): Promise<void> {
   const { stateDir, database } = projectPaths(repo.path);
@@ -84,32 +80,7 @@ async function runningMastermind(scenario: Scenario, seed?: Seed): Promise<Runni
   if (seed !== undefined) await seedDatabase(repo, seed);
   const env = await isolatedEnv();
   await env.writeScenario(scenario);
-
-  const mastermind = spawnBuiltCli([repo.path], env.env);
-  mastermind.child.stdin.end();
-  await waitFor(() => printedLink.test(mastermind.output.stdout), 20_000).catch(
-    (error: unknown) => {
-      const { stdout, stderr } = mastermind.output;
-      throw new Error(`mastermind did not start:\n${stdout}${stderr}`, { cause: error });
-    },
-  );
-
-  const spawn = (args: readonly string[]): CliProcess => {
-    const client = spawnBuiltCli([...args, "--repo", repo.path], env.env);
-    client.child.stdin.end();
-    return client;
-  };
-  return {
-    repo,
-    env,
-    mastermind,
-    spawn,
-    async run(args) {
-      const { output, closed } = spawn(args);
-      const code = await closed;
-      return { code, ...output };
-    },
-  };
+  return { repo, env, ...(await startMastermind(repo, env.env)) };
 }
 
 async function tasksJson(running: Running): Promise<TaskView[]> {

@@ -18,7 +18,7 @@ describe("loadConfig", () => {
   it("layers .mastermind/config.yaml over mastermind.yaml over the built-in defaults", async () => {
     const context = await makeProject({
       "mastermind.yaml":
-        "maxAttempts: 5\nport: 4800\nmodels: { worker: sonnet }\nsandbox: { allowedDomains: [a.dev] }\n",
+        "maxAttempts: 5\nport: 4800\nmodels: { worker: 'claude-sonnet-5[1m]' }\nsandbox: { allowedDomains: [a.dev] }\n",
       ".mastermind/config.yaml":
         "maxAttempts: 7\nmodels:\n  judge: sonnet\nsandbox:\n  allowedDomains: [b.dev]\n",
     });
@@ -30,7 +30,7 @@ describe("loadConfig", () => {
       maxAttempts: 7,
       port: 4800,
       models: {
-        worker: "sonnet",
+        worker: "claude-sonnet-5[1m]",
         fixer: "opus",
         reviewer: "sonnet",
         judge: "sonnet",
@@ -49,6 +49,7 @@ describe("loadConfig", () => {
     },
     { file: ".mastermind/config.yaml", yaml: "maxWorkers: 0\n", key: "maxWorkers" },
     { file: ".mastermind/config.yaml", yaml: "models: { wroker: opus }\n", key: "models.wroker" },
+    { file: ".mastermind/config.yaml", yaml: "models: { judge: opus 4 }\n", key: "models.judge" },
     { file: "mastermind.yaml", yaml: "workerPermissions: yolo\n", key: "workerPermissions" },
     {
       file: "mastermind.yaml",
