@@ -99,6 +99,19 @@ const cases: Case[] = [
     },
   },
   {
+    name: "session.history.loaded merges the stored timeline with live events, without doubles",
+    before: stateWith({ sessionEvents: { 1: [sessionEvent(4), sessionEvent(5)] } }),
+    action: {
+      type: "session.history.loaded",
+      sessionId: 1,
+      events: [sessionEvent(2), sessionEvent(3), sessionEvent(4)],
+    },
+    after: (next) => {
+      expect(next.sessionEvents[1]?.map((event) => event.id)).toEqual([2, 3, 4, 5]);
+      expect(next.historyLoaded[1]).toBe(true);
+    },
+  },
+  {
     name: "check.updated keeps each of a task's checks by id",
     before: stateWith({ checks: { alpha: { 1: check(1) }, beta: {} } }),
     action: {
@@ -299,6 +312,7 @@ describe("store reducer", () => {
     const kinds: StoreAction["type"][] = [
       ...busEventSchema.options.map((option) => option.shape.type.value),
       "snapshot.loaded",
+      "session.history.loaded",
       "connection.changed",
       "flags.changed",
     ];

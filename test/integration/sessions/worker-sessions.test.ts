@@ -294,8 +294,8 @@ describe("worker sessions", () => {
     });
 
     await harness.manager.stopSession(session.id);
-    await waitFor(() => harness.db.sessions.get(session.id)?.status === "stopped");
 
+    expect(harness.db.sessions.get(session.id)?.status).toBe("stopped");
     expect(harness.db.tasks.get("stoppable")).toMatchObject({
       status: "pending",
       held: true,

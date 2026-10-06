@@ -26,7 +26,7 @@ export interface MastermindOptions {
 export const test = base.extend<MastermindOptions & { mastermind: ServedMastermind }>({
   repoFiles: [{ "README.md": "# Demo\n" }, { option: true }],
   scenario: [null, { option: true }],
-  mastermind: async ({ page, repoFiles, scenario }, use) => {
+  mastermind: async ({ page, repoFiles, scenario }, use, testInfo) => {
     try {
       const repo = await createTempRepo({ files: repoFiles });
       await repo.git("switch", "--quiet", "--create", "dev");
@@ -45,6 +45,10 @@ export const test = base.extend<MastermindOptions & { mastermind: ServedMastermi
         origin,
         token,
       });
+      if (testInfo.status !== testInfo.expectedStatus) {
+        const { stdout, stderr } = mastermind.output;
+        await testInfo.attach("mastermind output", { body: `${stdout}\n${stderr}` });
+      }
     } finally {
       await runCleanups();
     }

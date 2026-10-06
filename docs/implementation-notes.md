@@ -988,3 +988,56 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   (and it stays answered after a reload); a streamed reply with Stop, markdown, the action line, the pill and model
   persistence; confirming a set_config decision box. The Playwright fixture gained `repoFiles` and `scenario`
   options and exposes `repoPath`.
+
+## m3-overview-sessions
+
+- **Where it lives.** `screens/OverviewScreen.tsx` and `screens/SessionsScreen.tsx` compose `src/overview/` (`board.ts`:
+  count tiles, rebase queue, Needs you; `up-next.ts`; one component per panel and `SessionCard`) and `src/sessions/`
+  (`activity.ts`, `duration.ts`, `session-list.ts`, `links.ts`, `use-session-events.ts`, `use-follow-scroll.ts`, and
+  `SessionList`, `SessionHeader`, `Timeline`, `SessionFacts`, `StopSessionButton`, `FileChanges`, `FixerReason`,
+  `Elapsed`). Styles are `theme/overview.css` and `theme/sessions.css`; `base.css` gained `.button-link`, `+`/`−`
+  colours and themed `<progress>`/`<meter>`. `useRequest` moved from `chat/` to `components/` and `useNow` (a ticking
+  clock) lives there too; only the small `Elapsed` component ticks, so screens don't re-render every second.
+- **Up next is derived live, with the scheduler's own rules.** The pure readiness logic moved from `scheduler.ts` to
+  `contracts/queue.ts` (`touchesOverlap`, `byPriority`, `taskQueue`), so core and the browser share it. `taskQueue`
+  returns every pending task in start order with what it waits on (`held`, unmet `deps` with their statuses or
+  `missing`, or the task whose `touches` it shares); a ready task claims its paths, so a lower-priority task sharing
+  them waits on it, exactly as `pickReady` starts them (`pickReady` is now `taskQueue` filtered and sliced). The panel
+  adds one line when paused, signed out or at the usage limit. `summary.upNext` is not used: it is only read with
+  the snapshot and would go stale.
+- **Tiles.** Remaining is `pending`; Running is `running`, `checking` and `rebasing` (work in flight); Done and
+  Blocked are their statuses; "N of M done" counts all tasks. `review` is not a tile: it appears under Needs you, with
+  blocked tasks and the chat's pending decisions (same count as the chat pill). Rebase queue is tasks in `rebasing`,
+  oldest `updatedAt` first, as the summary read does. Links go to `/review?task=`, `/tasks?task=`, `/review?session=`
+  (View diff) and `/sessions?session=` (Activity), for M4/M7 to honour.
+- **Session history.** The snapshot carries no events, so `useSessionEvents` reads `GET
+  /api/sessions/:id/events` (new `api.sessionEvents`) once per session and dispatches `session.history.loaded`, which
+  merges by id with events already streamed in. `historyLoaded` records which sessions are loaded and is reset by
+  every snapshot, so a reconnect re-reads any history it missed. No polling anywhere.
+- **Activity from events (until M4's changes API).** `sessionActivity` parses each stored payload with
+  `streamLineSchema` (cached per event object in a WeakMap): files and `+`/`−` come from Edit (`old_string`/`new_string`
+  line counts), MultiEdit and Write (content lines) tool inputs, relative to the init line's cwd; commits count
+  `commit` events; context is the last assistant line's input plus cache tokens, against 200k (1M for `[1m]` models).
+  These are estimates: a Write over an existing file counts all its lines as added.
+- **Fixer reason.** Sessions carry no reason, so a fixer card shows "Attempt N ·" a failed rebase ("Rebase
+  conflict"), else the latest failed check ("Acceptance check failed: …"), else "Fixing failed checks". M5 may want a
+  stored reason.
+- **Sessions screen.** The selection is `?session=<id>`; without one it is the oldest active session, else the most
+  recently finished. Lists leave out conductor sessions. Timeline rows are a table (time, type, summary); `error` rows
+  are peach and keep the word `error`, and the last row of a running session is highlighted with a "now" tag and
+  `aria-current`. Auto-scroll follows the bottom until the owner scrolls more than 24 px up; "Jump to latest" resumes.
+  Stop session posts `stopSession` and applies the returned session at once (the `session.ended` event follows).
+- **Tests.** `overview/overview.test.ts` (start order, every waiting reason, tiles, rebase queue, Needs you) and
+  `sessions/sessions.test.ts` (elapsed with fixed clocks, activity from realistic payloads, grouping by local day,
+  fixer reasons). `test/e2e/web/overview.spec.ts` creates a task over the API with a fake worker that writes, commits
+  and then runs 60 paced commands: the card's branch, latest action and `hello.txt +2 −0`; the timeline growing,
+  pausing on a wheel scroll up and resuming with Jump to latest; Stop session leaving the task held in Up next.
+- **Fix: a timing-bound timeline test.** It waited for more than 30 rows with Playwright's default 5 s poll, while the
+  fake worker needed about 5 s of scripted pacing to get there; right after the gate, under load, it fell short.
+  The worker now adds rows for far longer than the test runs, and the test waits for the condition it actually
+  needs (the first row scrolled out of view) with a 20 s timeout for waits that depend on the worker's pace. The
+  Playwright harness attaches mastermind's stdout and stderr to a failed test.
+- **Review fixes.** `SessionManager.stopSession` now resolves only after the stopped session is settled (status
+  `stopped`, task held), so the `stopSession` action really returns the stopped session, as its description says;
+  before, it returned the row while it was still `running`. `useSessionEvents` drops a history read that began
+  before a disconnect, so it can't mark a session's history loaded with events missing from the gap.

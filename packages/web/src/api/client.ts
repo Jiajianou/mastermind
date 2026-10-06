@@ -5,7 +5,13 @@ import {
   apiResponseSchemas,
   taskSchema,
 } from "@mastermind/core/contracts";
-import type { ActionInputs, ActionName, ActionResults, ApiError } from "@mastermind/core/contracts";
+import type {
+  ActionInputs,
+  ActionName,
+  ActionResults,
+  ApiError,
+  SessionEvent,
+} from "@mastermind/core/contracts";
 import { z } from "zod";
 
 export class UnauthorizedError extends Error {
@@ -60,6 +66,7 @@ export type ActionArgs<Name extends ActionName> = undefined extends ActionInputs
 
 export interface ApiClient {
   read<Name extends ReadName>(name: Name, query?: ReadQuery): Promise<ReadResults[Name]>;
+  sessionEvents(sessionId: number): Promise<SessionEvent[]>;
   act<Name extends ActionName>(name: Name, ...args: ActionArgs<Name>): Promise<ActionResults[Name]>;
 }
 
@@ -133,6 +140,11 @@ export function createApiClient(token: string | null): ApiClient {
       const { path, schema } = readRoutes[name];
       const search = query === undefined ? "" : `?${new URLSearchParams(query).toString()}`;
       return request("GET", `${path}${search}`, schema);
+    },
+
+    sessionEvents(sessionId) {
+      const path = `/api/sessions/${String(sessionId)}/events`;
+      return request("GET", path, apiResponseSchemas.sessionEvents);
     },
 
     act<Name extends ActionName>(name: Name, ...[input]: ActionArgs<Name>) {

@@ -1,7 +1,7 @@
 import type { PlanMeta } from "@mastermind/core/contracts";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
 import type { PlanItem } from "./entries.js";
-import { useRequest } from "./use-request.js";
+import { useRequest } from "../components/use-request.js";
 
 export function PlanList({ items, tasks }: { items: PlanItem[]; tasks: PlanMeta["tasks"] }) {
   const api = useApi();

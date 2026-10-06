@@ -5,7 +5,8 @@ import type { Db } from "./db/index.js";
 import { builtinActions, createActionRegistry } from "./actions/index.js";
 import type { ActionRegistry } from "./actions/index.js";
 import { createEventBus } from "./events.js";
-import { createScheduler, selectReady, summarize, touchesOverlap } from "./scheduler.js";
+import { touchesOverlap } from "./contracts/index.js";
+import { createScheduler, selectReady, summarize } from "./scheduler.js";
 import type { Scheduler, SchedulerState } from "./scheduler.js";
 
 const noon = "2026-10-06T12:00:00.000Z";

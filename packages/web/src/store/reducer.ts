@@ -18,6 +18,24 @@ function appendEvent(state: LiveState, event: SessionEvent): LiveState {
   return { ...state, sessionEvents: { ...state.sessionEvents, [event.sessionId]: next } };
 }
 
+function withHistory(
+  state: LiveState,
+  sessionId: number,
+  history: readonly SessionEvent[],
+): LiveState {
+  const stored = state.sessionEvents[sessionId] ?? [];
+  const known = new Set(stored.map((event) => event.id));
+  const missing = history.filter((event) => !known.has(event.id));
+  const historyLoaded: LiveState["historyLoaded"] = { ...state.historyLoaded, [sessionId]: true };
+  if (missing.length === 0) return { ...state, historyLoaded };
+  const events = [...stored, ...missing].sort((a, b) => a.id - b.id);
+  return {
+    ...state,
+    historyLoaded,
+    sessionEvents: { ...state.sessionEvents, [sessionId]: events },
+  };
+}
+
 function upsertMessage(
   messages: readonly ChatMessage[],
   message: ChatMessage,
@@ -72,6 +90,7 @@ function applySnapshot(
         keepUnchanged(state.sessions[session.id], session),
       ]),
     ),
+    historyLoaded: {},
     chat: { model: chat.model, replying: chat.replying, messages: chat.messages, drafts: {} },
   };
 }
@@ -80,6 +99,8 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
   switch (action.type) {
     case "snapshot.loaded":
       return applySnapshot(state, action.snapshot);
+    case "session.history.loaded":
+      return withHistory(state, action.sessionId, action.events);
     case "connection.changed":
       return state.connection === action.connection
         ? state

@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
 import { modelChoices } from "./models.js";
-import { useRequest } from "./use-request.js";
+import { useRequest } from "../components/use-request.js";
 
 export function ModelMenu({ disabled }: { disabled: boolean }) {
   const api = useApi();

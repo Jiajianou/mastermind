@@ -8,6 +8,7 @@ export * from "./conductor.js";
 export * from "./common.js";
 export * from "./config.js";
 export * from "./events.js";
+export * from "./queue.js";
 export * from "./review.js";
 export * from "./runtime.js";
 export * from "./sessions.js";

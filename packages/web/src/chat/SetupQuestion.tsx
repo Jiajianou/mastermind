@@ -1,7 +1,7 @@
 import type { Config } from "@mastermind/core/contracts";
 import { useState } from "react";
 import { useApi, useDispatch } from "../store/hooks.js";
-import { useRequest } from "./use-request.js";
+import { useRequest } from "../components/use-request.js";
 
 type Commands = Pick<Config["commands"], "build" | "test">;
 

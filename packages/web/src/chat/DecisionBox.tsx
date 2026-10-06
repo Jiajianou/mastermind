@@ -1,7 +1,7 @@
 import type { ProposalStatus } from "@mastermind/core/contracts";
 import { Link } from "react-router";
 import { useApi, useDispatch } from "../store/hooks.js";
-import { useRequest } from "./use-request.js";
+import { useRequest } from "../components/use-request.js";
 
 const outcomeWords: Record<Exclude<ProposalStatus, "pending">, string> = {
   confirmed: "Confirmed",

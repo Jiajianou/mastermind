@@ -43,6 +43,7 @@ export interface LiveState {
   tasks: Readonly<Record<string, Task>>;
   sessions: Readonly<Record<number, Session>>;
   sessionEvents: Readonly<Record<number, readonly SessionEvent[]>>;
+  historyLoaded: Readonly<Record<number, true>>;
   checks: Readonly<Record<string, Readonly<Record<number, Check>>>>;
   rebases: Readonly<Record<string, Rebase>>;
   terminals: Readonly<Record<string, TerminalState>>;
@@ -62,6 +63,7 @@ export interface Snapshot {
 export type StoreAction =
   | BusEvent
   | { type: "snapshot.loaded"; snapshot: Snapshot }
+  | { type: "session.history.loaded"; sessionId: number; events: readonly SessionEvent[] }
   | { type: "connection.changed"; connection: Connection }
   | { type: "flags.changed"; flags: RuntimeFlags };
 
@@ -73,6 +75,7 @@ export const initialState: LiveState = {
   tasks: {},
   sessions: {},
   sessionEvents: {},
+  historyLoaded: {},
   checks: {},
   rebases: {},
   terminals: {},

@@ -4,7 +4,7 @@ import { useApi, useLive } from "../store/hooks.js";
 import { completeMention, mentionAt, suggestTaskIds } from "./mentions.js";
 import type { Mention } from "./mentions.js";
 import { ModelMenu } from "./ModelMenu.js";
-import { useRequest } from "./use-request.js";
+import { useRequest } from "../components/use-request.js";
 import { useSend } from "./use-send.js";
 
 export interface ComposerProps {

@@ -68,7 +68,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     onError,
     resultGraceMs: options.resultGraceMs,
   });
-  const live = new Map<number, LiveSession>();
+  const live = new Map<number, { session: LiveSession; settled: Promise<void> }>();
 
   function requireTask(taskId: string): Task {
     const task = db.tasks.get(taskId);
@@ -268,18 +268,19 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         abandonStart(session, task);
         throw error;
       }
-      live.set(session.id, started);
-      started.finished
+      const settled = started.finished
         .finally(() => live.delete(session.id))
         .then((report) => settle(task.id, started.session, workspace.path, report))
         .catch(onError);
+      live.set(session.id, { session: started, settled });
     },
 
     async stopSession(sessionId) {
-      const session = live.get(sessionId);
-      if (session === undefined)
+      const running = live.get(sessionId);
+      if (running === undefined)
         throw ActionError.fromMessage("not_found", `no running session ${String(sessionId)}`);
-      await session.stop();
+      await running.session.stop();
+      await running.settled;
     },
   };
 }

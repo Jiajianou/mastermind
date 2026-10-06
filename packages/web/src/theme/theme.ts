@@ -7,3 +7,5 @@ import "./tokens.css";
 import "./base.css";
 import "./shell.css";
 import "./chat.css";
+import "./overview.css";
+import "./sessions.css";
