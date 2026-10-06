@@ -6,6 +6,7 @@ import { createRuntime } from "@mastermind/core/runtime";
 import type { Startup } from "@mastermind/core/startup";
 import { createCtrlCGuard } from "./ctrl-c.js";
 import { exitCodes, runKillPath } from "./kill-path.js";
+import type { KillPathSteps } from "./kill-path.js";
 import { startPlainLog } from "./plain-log.js";
 import { createTerminalCommands } from "./terminal-commands.js";
 import { renderStatusApp } from "./tui/app.js";
@@ -27,6 +28,50 @@ function pathGuardCommand(): string[] {
   return [process.execPath, ...process.execArgv, entry, "path-guard"];
 }
 
+// Synchronous writes, because stdout is asynchronous for pipes on macOS and process.exit would cut it off.
+const syncOutput: Pick<KillPathSteps, "write" | "writeError" | "exit"> = {
+  write: (text) => {
+    writeSync(1, text);
+  },
+  writeError: (text) => {
+    writeSync(2, text);
+  },
+  exit: (code) => process.exit(code),
+};
+
+const startupSignals = {
+  SIGINT: exitCodes.interrupt,
+  SIGHUP: exitCodes.hangup,
+  SIGTERM: exitCodes.terminate,
+} as const;
+
+// Before the runtime traps signals, Node's default handlers would exit and orphan detached children such as the
+// login hand-off. Nothing is running yet, so one signal is enough.
+export function exitOnSignalsDuringStartup(
+  registry: ProcessRegistry,
+  release: () => void,
+): () => void {
+  const handlers = Object.entries(startupSignals).map(([signal, exitCode]) => {
+    const handler = (): void => {
+      runKillPath(
+        {
+          killProcesses: () => registry.killAllSync(),
+          markKilled: () => ({ sessions: 0, checks: 0, rebases: 0 }),
+          restoreTerminal: () => undefined,
+          release,
+          ...syncOutput,
+        },
+        { exitCode },
+      );
+    };
+    process.on(signal, handler);
+    return { signal, handler };
+  });
+  return () => {
+    for (const { signal, handler } of handlers) process.off(signal, handler);
+  };
+}
+
 const describe = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 
@@ -46,14 +91,7 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
         release: () => {
           runtime.closeSync();
         },
-        // Synchronous writes, because stdout is asynchronous for pipes on macOS and process.exit would cut it off.
-        write: (text) => {
-          writeSync(1, text);
-        },
-        writeError: (text) => {
-          writeSync(2, text);
-        },
-        exit: (code) => process.exit(code),
+        ...syncOutput,
       },
       { exitCode, reason },
     );

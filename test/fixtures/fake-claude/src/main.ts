@@ -18,12 +18,18 @@ function print(result: CommandResult): number {
   return result.exitCode;
 }
 
-function runAuth(raw: RawArgs, config: FakeConfig, state: FakeState): number {
+const waitForBrowserSignIn = (): Promise<never> =>
+  new Promise(() => {
+    setInterval(() => undefined, 1 << 30);
+  });
+
+async function runAuth(raw: RawArgs, config: FakeConfig, state: FakeState): Promise<number> {
   const subcommand = raw.positionals[1];
   switch (subcommand) {
     case "status":
       return print(authStatus(state, process.env, raw.switches.has("--json")));
     case "login":
+      if (config.loginWaits) return waitForBrowserSignIn();
       return print(authLogin(state, config.loginAccount, config.loginFails));
     case "logout":
       return print(authLogout(state));

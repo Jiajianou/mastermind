@@ -10,7 +10,7 @@ import {
   StartupError,
 } from "@mastermind/core/startup";
 import type { Startup } from "@mastermind/core/startup";
-import { runInForeground } from "./foreground.js";
+import { exitOnSignalsDuringStartup, runInForeground } from "./foreground.js";
 import { createTerminalPrompts } from "./terminal-prompts.js";
 
 export interface ForegroundOptions {
@@ -29,7 +29,10 @@ const runsUntilKilled = new Promise<never>(() => undefined);
 export async function runForeground(path: string, options: ForegroundOptions): Promise<number> {
   const registry = createProcessRegistry();
   const homeDir = homedir();
-  let startup: Startup;
+  let startup: Startup | null = null;
+  const stopTrapping = exitOnSignalsDuringStartup(registry, () => {
+    startup?.close();
+  });
   try {
     startup = await startMastermind({
       path,
@@ -40,10 +43,6 @@ export async function runForeground(path: string, options: ForegroundOptions): P
       registry,
       prompts: createTerminalPrompts(process.stdin, process.stdout),
     });
-  } catch (error) {
-    return reportFailure(error);
-  }
-  try {
     await runInForeground({
       startup,
       registry,
@@ -53,8 +52,10 @@ export async function runForeground(path: string, options: ForegroundOptions): P
     });
   } catch (error) {
     registry.killAllSync();
-    startup.close();
+    startup?.close();
     return reportFailure(error);
+  } finally {
+    stopTrapping();
   }
   return runsUntilKilled;
 }

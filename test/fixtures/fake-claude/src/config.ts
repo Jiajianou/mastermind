@@ -24,6 +24,7 @@ const fakeEnvSchema = z.object({
   FAKE_CLAUDE_ACCOUNT: accountKindSchema.default("max"),
   FAKE_CLAUDE_LOGIN_ACCOUNT: accountKindSchema.default("max"),
   FAKE_CLAUDE_LOGIN_FAIL: flagSchema.default(false),
+  FAKE_CLAUDE_LOGIN_WAIT: flagSchema.default(false),
   FAKE_CLAUDE_STATE: z.string().min(1).optional(),
   FAKE_CLAUDE_SCENARIO: z.string().min(1).optional(),
   FAKE_CLAUDE_LOG: z.string().min(1).optional(),
@@ -34,6 +35,7 @@ export interface FakeConfig {
   initialAccount: AccountKind;
   loginAccount: AccountKind;
   loginFails: boolean;
+  loginWaits: boolean;
   stateDir: string | undefined;
   scenarioPath: string | undefined;
   logPath: string | undefined;
@@ -50,6 +52,7 @@ export function readConfig(env: NodeJS.ProcessEnv): FakeConfig {
     initialAccount: values.FAKE_CLAUDE_ACCOUNT,
     loginAccount: values.FAKE_CLAUDE_LOGIN_ACCOUNT,
     loginFails: values.FAKE_CLAUDE_LOGIN_FAIL,
+    loginWaits: values.FAKE_CLAUDE_LOGIN_WAIT,
     stateDir: values.FAKE_CLAUDE_STATE,
     scenarioPath: values.FAKE_CLAUDE_SCENARIO,
     logPath: values.FAKE_CLAUDE_LOG,

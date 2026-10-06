@@ -8,6 +8,7 @@ import { trackChild } from "./processes.js";
 // settings.
 const cliPackage = fileURLToPath(new URL("../../packages/cli/", import.meta.url));
 const cliSource = fileURLToPath(new URL("../../packages/cli/src/index.ts", import.meta.url));
+const builtCli = fileURLToPath(new URL("../../packages/cli/dist/index.js", import.meta.url));
 
 export interface CliRun {
   code: number | null;
@@ -26,12 +27,12 @@ export interface CliProcess {
   closed: Promise<number | null>;
 }
 
-export function spawnCli(args: readonly string[], env: Record<string, string>): CliProcess {
-  const child = spawn(process.execPath, ["--import", "tsx", cliSource, ...args], {
-    cwd: cliPackage,
-    env,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+function spawnNode(
+  nodeArgs: readonly string[],
+  cwd: string,
+  env: Record<string, string>,
+): CliProcess {
+  const child = spawn(process.execPath, nodeArgs, { cwd, env, stdio: ["pipe", "pipe", "pipe"] });
   trackChild(child);
   const output = { stdout: "", stderr: "" };
   child.stdout.setEncoding("utf8").on("data", (chunk: string) => (output.stdout += chunk));
@@ -40,6 +41,14 @@ export function spawnCli(args: readonly string[], env: Record<string, string>): 
     child.once("close", resolve);
   });
   return { child, output, closed };
+}
+
+export function spawnCli(args: readonly string[], env: Record<string, string>): CliProcess {
+  return spawnNode(["--import", "tsx", cliSource, ...args], cliPackage, env);
+}
+
+export function spawnBuiltCli(args: readonly string[], env: Record<string, string>): CliProcess {
+  return spawnNode([builtCli, ...args], cliPackage, env);
 }
 
 export async function runCli(args: readonly string[], options: CliRunOptions): Promise<CliRun> {

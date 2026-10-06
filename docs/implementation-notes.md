@@ -75,7 +75,8 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Environment knobs** (all optional): `FAKE_CLAUDE_SCENARIO` (scenario JSON path; a missing file means "reply
   `Done.`"), `FAKE_CLAUDE_LOG` (JSONL log), `FAKE_CLAUDE_STATE` (state dir for auth and session ids),
   `FAKE_CLAUDE_VERSION` (default `2.1.283`), `FAKE_CLAUDE_ACCOUNT` (initial account, default `max`),
-  `FAKE_CLAUDE_LOGIN_ACCOUNT` (account a login produces, default `max`) and `FAKE_CLAUDE_LOGIN_FAIL=1`.
+  `FAKE_CLAUDE_LOGIN_ACCOUNT` (account a login produces, default `max`), `FAKE_CLAUDE_LOGIN_FAIL=1` and
+  `FAKE_CLAUDE_LOGIN_WAIT=1` (the login never finishes, like one waiting on the browser).
 - **Accounts.** `max pro team enterprise free signed-out oauth-token console api-key api-key-helper bedrock vertex`.
   Only `max`, signed out and `oauth-token` come from recorded samples. The others are plausible guesses (for example
   `authMethod: "console"`, `"api_key"` with `apiKeySource`, `"third_party"` with `apiProvider: "bedrock"`), shaped so
@@ -599,3 +600,25 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   CLI tests. ESLint applies the React hooks rules to `packages/cli/src/**/*.tsx`.
 - **Dependencies.** `ink` 8 and `react` 19 are CLI dependencies (external to the tsup bundle);
   `ink-testing-library` and `@types/react` are CLI dev dependencies.
+
+## m1-verify
+
+- **Where it lives.** `test/e2e/m1-runtime.test.ts` runs the built binary (`packages/cli/dist/index.js`, through
+  `spawnBuiltCli` in `test/support/cli.ts`) against temp repos and fake-claude, with plain-log output (no TTY). Tasks
+  are seeded through `importTasks` on the action registry before mastermind starts; the repo sets `maxWorkers: 2`.
+  The e2e project needs a fresh `pnpm build` first (the gate builds before `test:e2e`).
+- **The dependent task.** The scheduler only starts a task whose deps are `done`, and in M1 nothing moves a task
+  from `checking` to `done` (that is M5's checks pipeline and rebase queue). So the test plays that part: once both
+  parallel tasks are `checking`, it checks the dependent has not started, sets the two to `done` in SQLite, and
+  waits for the dependent to reach `checking`. Order is asserted from session rows: the two parallel sessions
+  overlap, and the dependent's session starts after the deps were finished.
+- **Resume.** The fake's scenario answers `--resume` invocations with a short finishing turn, so after the restart
+  the killed tasks reach `checking` with `attempts` 0, and the log shows `--resume` with the killed claude ids.
+- **Defect fixed: signals during startup.** The runtime only trapped signals once startup had finished, so a SIGINT,
+  SIGHUP or SIGTERM during startup (the login hand-off, a git call, building the runtime) hit Node's default
+  handler: mastermind died and left its detached children, such as a login waiting on the browser, orphaned.
+  `runForeground` now traps all three from the start (`exitOnSignalsDuringStartup` in `foreground.ts`) and runs the
+  kill path on the first one, since nothing is running yet: kill the registry's children, close the startup if it
+  finished, exit 129/130/143. The trap is removed in the same tick the runtime installs its own handlers. A signal
+  that lands inside `startMastermind` after the lock is taken leaves a stale lock, which the next start takes over.
+  fake-claude gained `FAKE_CLAUDE_LOGIN_WAIT=1` to test this (`test/integration/kill-path.test.ts`).

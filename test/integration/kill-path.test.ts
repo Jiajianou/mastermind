@@ -26,9 +26,9 @@ async function seedTasks(repoPath: string): Promise<void> {
   db.close();
 }
 
-function startMastermind(repoPath: string, env: Record<string, string>) {
+function startMastermind(repoPath: string, env: Record<string, string>, stdin = "") {
   const cli = spawnCli([repoPath], env);
-  cli.child.stdin.end();
+  cli.child.stdin.end(stdin);
   const exited = new Promise<{ code: number | null; at: number }>((resolve) => {
     cli.child.once("exit", (code) => {
       resolve({ code, at: performance.now() });
@@ -37,8 +37,8 @@ function startMastermind(repoPath: string, env: Record<string, string>) {
   return { ...cli, exited };
 }
 
-describe("Ctrl+C twice", () => {
-  it("kills every session and check within 500 ms, marks them killed and releases the lock", async () => {
+describe("the kill path", () => {
+  it("on Ctrl+C twice, kills every session and check within 500 ms, marks them killed and releases the lock", async () => {
     const setupMarker = `setup-${randomUUID()}`;
     const toolMarker = `tool-${randomUUID()}`;
     const repo = await createTempRepo({
@@ -117,5 +117,27 @@ describe("Ctrl+C twice", () => {
       "killed",
     ]);
     expect(db.checks.listForTask("slow-setup").map((check) => check.status)).toEqual(["killed"]);
+  });
+
+  it("during startup, a single Ctrl+C kills the waiting login hand-off and exits", async () => {
+    const repo = await createTempRepo();
+    await repo.git("switch", "--quiet", "--create", "dev");
+    const env = await isolatedEnv({
+      account: "signed-out",
+      env: { FAKE_CLAUDE_LOGIN_WAIT: "1" },
+    });
+
+    const mastermind = startMastermind(repo.path, env.env, "\n");
+    const loginPids = await waitFor(async () => {
+      const loggingIn = (await env.invocations()).some(({ argv }) => argv.includes("login"));
+      const pids = env.livePids();
+      return loggingIn && pids.length > 0 && pids;
+    }, 20_000);
+    mastermind.child.kill("SIGINT");
+    const exit = await mastermind.exited;
+
+    expect(exit.code).toBe(130);
+    expect(loginPids.filter(isAlive)).toEqual([]);
+    expect(env.livePids()).toEqual([]);
   });
 });
