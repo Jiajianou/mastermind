@@ -10,7 +10,11 @@ import type {
   ActionName,
   ActionResults,
   ApiError,
+  FileContent,
+  FileSide,
   SessionEvent,
+  TaskChanges,
+  TaskTree,
 } from "@mastermind/core/contracts";
 import { z } from "zod";
 
@@ -67,6 +71,9 @@ export type ActionArgs<Name extends ActionName> = undefined extends ActionInputs
 export interface ApiClient {
   read<Name extends ReadName>(name: Name, query?: ReadQuery): Promise<ReadResults[Name]>;
   sessionEvents(sessionId: number): Promise<SessionEvent[]>;
+  changes(taskId: string): Promise<TaskChanges>;
+  file(taskId: string, path: string, side: FileSide): Promise<FileContent>;
+  tree(taskId: string): Promise<TaskTree>;
   act<Name extends ActionName>(name: Name, ...args: ActionArgs<Name>): Promise<ActionResults[Name]>;
 }
 
@@ -85,6 +92,10 @@ function routeAction(name: ActionName, input: object): { path: string; body: Req
   });
   const body = Object.fromEntries([...fields].filter(([field]) => !params.has(field)));
   return { path, body };
+}
+
+function taskPath(taskId: string, resource: "changes" | "file" | "tree"): string {
+  return `/api/tasks/${encodeURIComponent(taskId)}/${resource}`;
 }
 
 function failureMessage(method: string, path: string, status: number, body: ApiError | null) {
@@ -145,6 +156,19 @@ export function createApiClient(token: string | null): ApiClient {
     sessionEvents(sessionId) {
       const path = `/api/sessions/${String(sessionId)}/events`;
       return request("GET", path, apiResponseSchemas.sessionEvents);
+    },
+
+    changes(taskId) {
+      return request("GET", taskPath(taskId, "changes"), apiResponseSchemas.changes);
+    },
+
+    file(taskId, path, side) {
+      const search = new URLSearchParams({ path, side }).toString();
+      return request("GET", `${taskPath(taskId, "file")}?${search}`, apiResponseSchemas.file);
+    },
+
+    tree(taskId) {
+      return request("GET", taskPath(taskId, "tree"), apiResponseSchemas.tree);
     },
 
     act<Name extends ActionName>(name: Name, ...[input]: ActionArgs<Name>) {

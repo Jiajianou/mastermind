@@ -18,6 +18,18 @@ function appendEvent(state: LiveState, event: SessionEvent): LiveState {
   return { ...state, sessionEvents: { ...state.sessionEvents, [event.sessionId]: next } };
 }
 
+function touchWorkspace(state: LiveState, taskId: string, path?: string): LiveState {
+  const known = state.workspaces[taskId];
+  const revision = (known?.revision ?? 0) + 1;
+  const files = path === undefined ? (known?.files ?? {}) : { ...known?.files, [path]: revision };
+  return { ...state, workspaces: { ...state.workspaces, [taskId]: { revision, files } } };
+}
+
+function withEdit(state: LiveState, sessionId: number, path: string): LiveState {
+  if (state.editing[sessionId] === path) return state;
+  return { ...state, editing: { ...state.editing, [sessionId]: path } };
+}
+
 function withHistory(
   state: LiveState,
   sessionId: number,
@@ -118,12 +130,25 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     }
     case "session.started":
       return action.sessionId in state.sessions ? state : withSession(state, action.session);
-    case "session.ended":
-      return withSession(state, action.session);
-    case "session.event":
-      return appendEvent(state, action.event);
+    case "session.ended": {
+      const ended = withSession(state, action.session);
+      return action.taskId === null ? ended : touchWorkspace(ended, action.taskId);
+    }
+    case "session.event": {
+      const appended = appendEvent(state, action.event);
+      if (action.path !== undefined) return withEdit(appended, action.sessionId, action.path);
+      if (action.event.type === "commit" && action.taskId !== null)
+        return touchWorkspace(appended, action.taskId);
+      return appended;
+    }
     case "file.changed":
-      return state;
+      return touchWorkspace(
+        withEdit(state, action.sessionId, action.path),
+        action.taskId,
+        action.path,
+      );
+    case "changes.loaded":
+      return { ...state, changes: { ...state.changes, [action.taskId]: action.view } };
     case "check.updated": {
       const checks = { ...state.checks[action.taskId], [action.check.id]: action.check };
       return { ...state, checks: { ...state.checks, [action.taskId]: checks } };

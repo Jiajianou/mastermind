@@ -24,7 +24,7 @@ function isTaskSession(session: Session): boolean {
   return session.role !== "conductor";
 }
 
-export function activeSessions(sessions: readonly Session[]): Session[] {
+export function activeSessions<Entry extends Session>(sessions: readonly Entry[]): Entry[] {
   return sessions
     .filter((session) => isTaskSession(session) && session.status === "running")
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id - b.id);

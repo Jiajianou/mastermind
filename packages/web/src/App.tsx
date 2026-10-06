@@ -4,6 +4,7 @@ import { Banners } from "./components/Banners.js";
 import { TopBar } from "./components/TopBar.js";
 import { ChatScreen } from "./screens/ChatScreen.js";
 import { OverviewScreen } from "./screens/OverviewScreen.js";
+import { ReviewScreen } from "./screens/ReviewScreen.js";
 import { Screen } from "./screens/Screen.js";
 import { SessionsScreen } from "./screens/SessionsScreen.js";
 import { LiveProvider } from "./store/hooks.js";
@@ -21,7 +22,7 @@ export function App({ store, api }: { store: Store; api: ApiClient }) {
             <Route path="overview" element={<OverviewScreen />} />
             <Route path="tasks" element={<Screen title="Tasks" />} />
             <Route path="sessions" element={<SessionsScreen />} />
-            <Route path="review" element={<Screen title="Review" />} />
+            <Route path="review" element={<ReviewScreen />} />
             <Route path="settings" element={<Screen title="Settings" />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

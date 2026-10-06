@@ -132,6 +132,21 @@ export function sessionActivity(events: readonly SessionEvent[]): SessionActivit
   return { latest: events.at(-1) ?? null, files: [...files.values()], commits, contextTokens };
 }
 
+function initCwd(events: readonly SessionEvent[]): string | null {
+  for (const event of events) {
+    const line = streamLine(event);
+    if (line?.type === "system" && line.subtype === "init") return line.cwd;
+  }
+  return null;
+}
+
+export function lastEditedPath(events: readonly SessionEvent[]): string | null {
+  const edit = events.findLast((event) => event.type === "edit");
+  const tool = edit === undefined ? null : toolInput(streamLine(edit));
+  const change = tool === null ? null : editChange(tool.name, tool.input);
+  return change === null ? null : relativeTo(initCwd(events), change.path);
+}
+
 export function contextWindow(model: string | null): number {
   return model?.includes("[1m]") === true ? 1_000_000 : 200_000;
 }

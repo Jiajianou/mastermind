@@ -1110,3 +1110,49 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   changes on the second. The web reducer ignores `file.changed` for now; the terminal view does too.
 - **Review.** Untracked files are line-counted in batches of 32 so build output can't exhaust file descriptors, and a
   file deleted between `git status` (or the path check) and the open is dropped from changes or reported `missing`.
+
+## m4-review-ui
+
+- **Where it lives.** `screens/ReviewScreen.tsx` composes `src/review/`: pure `file-list.ts` (directory groups,
+  `M`/`A`/`D`/`R` markers, the editing tag, the default file), `selection.ts` (tabs and the chosen session),
+  `problem.ts`, `location.ts`, `file-text.ts`; hooks `use-task-changes.ts`, `use-file-sides.ts`, `use-task-tree.ts`,
+  `use-editing.ts`, `use-coalesced-load.ts`; and the components (`SessionTabs`, `ReviewToggles`, `FileList`,
+  `FileView`, `FileContents`, `SessionReview`, `SessionGrid`, `SessionPane`, `DiffEditor`, `CodeEditor`). Styles are
+  `theme/review.css`; the Monaco theme is `theme/monaco-theme.ts`.
+- **URL state.** `/review?session=N&mode=file&file=path`, `?view=all` for the grid, and `?task=id` (Overview's
+  links) picks that task's running session, else its latest. Without either it is the oldest running session, else
+  the latest finished today. Tabs are the running task sessions plus the chosen one if it has finished. The toggles
+  are `<button aria-pressed>` groups labelled Show (Diff/File) and Sessions (One/All).
+- **Live refresh without polling.** The store gained `workspaces` (per task: a `revision`, and per path the revision
+  of its last `file.changed`), `editing` (session → path from `session.event.path`, or `file.changed`) and `changes`
+  (per task, the last changes read or why it failed, new action `changes.loaded`). `ReviewScreen` mounts one
+  `ChangesLoaders` entry per task on screen, so each task's changes are read once however many tabs or panes show
+  them. `file.changed`, a `commit` event
+  and `session.ended` move the task's revision; the changes list is read again on each move and after every
+  reconnect, and the open file when its own path moves or when its entry in the changes list changes (which also
+  catches edits made by shell commands). Reads go through `useCoalescedLoad`: one read at a time, and triggers that
+  arrive meanwhile collapse into one more read, so a burst of edits can't starve the view or land out of order.
+  The file is refreshed on `file.changed` rather than on the `session.event` that names it, because that line is
+  printed before Claude Code writes the file (see m4-git-service).
+- **Editing tag.** The file named by the latest edit of a running session. After a reload the stream's paths are
+  gone, so `lastEditedPath` in `sessions/activity.ts` reads it from the stored events, relative to the init cwd.
+- **Monaco, bundled.** `monaco-editor` 0.57 directly rather than `@monaco-editor/react` (PLAN 17), whose loader
+  fetches Monaco from a CDN by default; two small components own the editors instead. It is used through its ESM entry points: `editor/editor.api`,
+  `features/register.all` (editor contributions, diff editor, codicons) and a chosen list of tokenizer-only
+  languages in `monaco-languages.ts`. The JSON, CSS, HTML and TypeScript language services are left out: they need
+  their own workers and would show diagnostics in a read-only view. Only `editor.worker` is bundled (Vite
+  `?worker`). Monaco is lazy-loaded (`React.lazy`), so only the Review screens pay for its ~1 MB gzipped chunk;
+  nothing is fetched from a CDN. The theme reads the Arctic CSS variables at load time, so `tokens.css` stays the
+  only place the colours live; added/removed lines use the plan's line backgrounds and the gutter shows `+`/`−`.
+- **Diff.** Side by side in the one-session view (inline when narrow), base commit on the left and the file on disk
+  on the right, read-only, with `uncommitted`/`committed`/`unchanged` next to the path and `base abc1234 → on disk`.
+  A renamed file's base side is read from its old path. Binary and oversized sides show a message instead.
+- **All sessions.** A two-column grid (one column under 960 px) of running sessions. Each pane shows the latest
+  edited file as a compact inline diff with unchanged regions folded, and **Open** goes to that session and file.
+  A problem gives the pane a peach border and a `⚠` label with words: the latest event is an error, the rebase
+  failed, or the latest run of some check failed (so a fixer's pane shows why it is fixing).
+- **Tests.** `review/review.test.ts` (file groups, markers, editing tag, tree mode, default file, session problems,
+  tab selection) and reducer cases for the new store state. `test/e2e/web/review.spec.ts` uses a fake worker that
+  commits one file and then edits README.md every 600 ms: the edit appears in the diff with `uncommitted` and keeps
+  advancing without a reload; File mode lists the full tree and opens a plain editor; All shows the pane and Open
+  leads back to the diff.

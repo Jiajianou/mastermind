@@ -69,7 +69,7 @@ const cases: Case[] = [
     },
   },
   {
-    name: "session.ended records how the session ended",
+    name: "session.ended records how the session ended and moves its task's workspace",
     before: stateWith({ sessions: { 1: session(1) } }),
     action: {
       type: "session.ended",
@@ -79,6 +79,7 @@ const cases: Case[] = [
     },
     after: (next) => {
       expect(next.sessions[1]?.status).toBe("failed");
+      expect(next.workspaces.alpha?.revision).toBe(1);
     },
   },
   {
@@ -99,11 +100,56 @@ const cases: Case[] = [
     },
   },
   {
-    name: "file.changed leaves the store as it is, since file contents are fetched on demand",
-    before: stateWith({ sessionEvents: { 1: [sessionEvent(1)] } }),
-    action: { type: "file.changed", sessionId: 1, taskId: "alpha", path: "src/app.ts" },
+    name: "session.event marks the file a session is editing now",
+    before: stateWith({ editing: { 2: "other.ts" } }),
+    action: {
+      type: "session.event",
+      sessionId: 1,
+      taskId: "alpha",
+      event: sessionEvent(1),
+      path: "src/app.ts",
+    },
     after: (next, before) => {
-      expect(next).toBe(before);
+      expect(next.editing).toEqual({ 1: "src/app.ts", 2: "other.ts" });
+      expect(next.workspaces).toBe(before.workspaces);
+    },
+  },
+  {
+    name: "a commit moves the task's workspace so its changes are read again",
+    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 } } } }),
+    action: {
+      type: "session.event",
+      sessionId: 1,
+      taskId: "alpha",
+      event: { ...sessionEvent(1), type: "commit" },
+    },
+    after: (next) => {
+      expect(next.workspaces.alpha).toEqual({ revision: 4, files: { "a.ts": 2 } });
+    },
+  },
+  {
+    name: "file.changed moves the workspace and that file, so an open copy of it is read again",
+    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 } } } }),
+    action: { type: "file.changed", sessionId: 1, taskId: "alpha", path: "src/app.ts" },
+    after: (next) => {
+      expect(next.workspaces.alpha).toEqual({ revision: 4, files: { "a.ts": 2, "src/app.ts": 4 } });
+      expect(next.editing[1]).toBe("src/app.ts");
+    },
+  },
+  {
+    name: "changes.loaded stores a task's changes or why they could not be read",
+    before: stateWith({ changes: { beta: { kind: "failed", message: "gone" } } }),
+    action: {
+      type: "changes.loaded",
+      taskId: "alpha",
+      view: {
+        kind: "loaded",
+        changes: { taskId: "alpha", since: "base", fromCommit: "abc1234", files: [] },
+      },
+    },
+    after: (next, before) => {
+      expect(next.changes.alpha?.kind).toBe("loaded");
+      expect(next.changes.beta).toBe(before.changes.beta);
     },
   },
   {
@@ -321,6 +367,7 @@ describe("store reducer", () => {
       ...busEventSchema.options.map((option) => option.shape.type.value),
       "snapshot.loaded",
       "session.history.loaded",
+      "changes.loaded",
       "connection.changed",
       "flags.changed",
     ];
