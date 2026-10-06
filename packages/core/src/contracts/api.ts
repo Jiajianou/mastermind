@@ -44,6 +44,7 @@ import { messageSessionResultSchema, sessionEventSchema, sessionSchema } from ".
 import type { MessageSessionResult, Session } from "./sessions.js";
 import { taskIdSchema, taskSchema } from "./tasks.js";
 import type { Task } from "./tasks.js";
+import { taskTerminalSchema, terminalSchema, terminalViewSchema } from "./terminals.js";
 
 export const apiErrorCodeSchema = z.enum([
   ...actionErrorCodeSchema.options,
@@ -267,6 +268,9 @@ export const apiResponseSchemas = {
   changes: taskChangesSchema,
   file: fileContentSchema,
   tree: taskTreeSchema,
+  taskTerminal: taskTerminalSchema,
+  terminalView: terminalViewSchema,
+  terminal: terminalSchema,
 };
 
 export const accessTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);

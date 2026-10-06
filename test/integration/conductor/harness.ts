@@ -29,6 +29,7 @@ import type { Scheduler } from "@mastermind/core/scheduler";
 import { requestChangesAction, reviewNoteActions } from "@mastermind/core/review";
 import { messageSessionAction } from "@mastermind/core/sessions";
 import type { SessionManager } from "@mastermind/core/sessions";
+import { createTerminals } from "@mastermind/core/terminals";
 import { z } from "zod";
 import { onCleanup } from "../../support/cleanup.js";
 import type { Scenario } from "../../support/fake-claude.js";
@@ -155,6 +156,7 @@ export async function conductorHarness(
     actions,
     gate,
     chat: runner,
+    terminals: createTerminals({ db, bus, registry, env: env.env }),
     instance: testInstance,
     summary: () => scheduler.summary(),
     config: () => config,

@@ -1,4 +1,4 @@
-import type { Check, Task } from "@mastermind/core/contracts";
+import type { Check, Task, TaskTerminal } from "@mastermind/core/contracts";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -8,6 +8,11 @@ import { DecideScreen } from "../screens/DecideScreen.js";
 import { LiveProvider } from "../store/hooks.js";
 import { createStore } from "../store/store.js";
 import { check, notes, stateWith, task } from "../testing/fixtures.js";
+
+// jsdom has no canvas or matchMedia for xterm; the terminal itself is covered by the Playwright spec.
+vi.mock("../components/XtermView.js", () => ({
+  XtermView: ({ label }: { label: string }) => <div role="region" aria-label={label} />,
+}));
 
 const posted: string[] = [];
 
@@ -26,7 +31,7 @@ const checks: Check[] = [
 
 const failedLog = Array.from({ length: 80 }, (_, line) => `line ${String(line + 1)}`).join("\n");
 
-function serve(afterRerun: Task): void {
+function serve(afterRerun: Task, terminal: TaskTerminal = { available: true, view: null }): void {
   vi.stubGlobal("fetch", (path: string, init: RequestInit) => {
     if (init.method === "POST") {
       posted.push(path);
@@ -42,6 +47,7 @@ function serve(afterRerun: Task): void {
         Response.json({ taskId: "alpha", since: "base", fromCommit: "a".repeat(40), files: [] }),
       );
     if (path === "/api/tasks/alpha/notes") return Promise.resolve(Response.json(notes()));
+    if (path === "/api/tasks/alpha/terminal") return Promise.resolve(Response.json(terminal));
     return Promise.reject(new TypeError(`no stub for ${path}`));
   });
 }
@@ -99,5 +105,20 @@ describe("Test and decide screen", () => {
     );
     for (const name of ["Re-run all", "Discard branch", "Approve and rebase"])
       expect(screen.getByRole("button", { name })).toHaveProperty("disabled", true);
+  });
+
+  it("says why Try it yourself is unavailable and still shows the checks", async () => {
+    const message = "Try it yourself needs node-pty, which could not be loaded: no binary";
+    serve(inReview, { available: false, message });
+    renderDecide();
+
+    const tryIt = screen.getByRole("region", { name: "Try it yourself" });
+    expect((await within(tryIt).findByRole("status")).textContent).toBe(message);
+    expect(within(tryIt).getByRole("button", { name: "Open terminal" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(within(tryIt).queryByRole("region", { name: "Terminal" })).toBeNull();
+    await within(screen.getByRole("region", { name: "Checks" })).findByText("Rebase onto main");
   });
 });

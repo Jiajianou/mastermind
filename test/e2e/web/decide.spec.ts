@@ -180,3 +180,24 @@ test("Discard branch removes another task's work and leaves main alone", async (
   expect(await mastermind.git("for-each-ref", "refs/mastermind/")).toBe("");
   expect(await mastermind.git("rev-parse", "main")).toBe(initial);
 });
+
+test("Try it yourself runs a command in the task's clone until Stop", async ({
+  page,
+  mastermind,
+}) => {
+  await startTask(page, mastermind, "keep");
+  await openReadyTask(page, "keep", "Review");
+  const { worktree } = await readTask(page, mastermind, "keep");
+  const tryIt = page.getByRole("region", { name: "Try it yourself" });
+
+  await tryIt.getByRole("button", { name: "Open terminal" }).click();
+  const terminal = tryIt.getByRole("region", { name: "Terminal" });
+  await terminal.click();
+  await page.keyboard.type("echo hi-from-try-it && pwd");
+  await page.keyboard.press("Enter");
+
+  await expect(terminal).toContainText(`hi-from-try-it${worktree ?? ""}`);
+  await tryIt.getByRole("button", { name: "Stop" }).click();
+  await expect(tryIt).toContainText("The terminal has ended.");
+  await expect(tryIt.getByRole("button", { name: "Open a new terminal" })).toBeEnabled();
+});

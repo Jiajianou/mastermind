@@ -204,3 +204,36 @@
     max-height: 280px;
   }
 }
+
+.try-it {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.try-it p {
+  margin: 0;
+}
+
+.try-it-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.try-it h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.xterm-view {
+  height: 320px;
+  padding: 6px;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-control);
+  background: var(--color-page);
+  overflow: hidden;
+}

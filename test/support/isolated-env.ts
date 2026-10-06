@@ -65,6 +65,8 @@ export async function isolatedEnv(options: IsolatedEnvOptions = {}): Promise<Iso
   const env: Record<string, string> = {
     ...inheritedEnv(),
     HOME: home,
+    // The owner's shell would read the owner's rc files (or, for zsh, prompt to create them in the empty HOME).
+    SHELL: "/bin/sh",
     PATH: [binDir, process.env.PATH ?? ""].join(delimiter),
     CLAUDE_CONFIG_DIR: join(home, ".claude"),
     FAKE_CLAUDE_STATE: join(root, "fake-claude-state"),

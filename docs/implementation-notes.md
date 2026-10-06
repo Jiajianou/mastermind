@@ -1476,3 +1476,46 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   N−1, `?since=round:N`) from round 2 on; the session Review screen has the same toggle for a later-round session.
   The store's `changes` are keyed by task and `since`, and notes are a new store slice (`notes.loaded`). The Request
   changes screen is `/review/decide/:taskId/request-changes`; after sending it returns to Test and decide.
+
+## m6-try-it
+
+- **Where it lives.** Core: `src/terminals.ts` (`createTerminals`, a new package export `@mastermind/core/terminals`),
+  `api/terminal-routes.ts` and `contracts/terminals.ts`. Web: `components/TryIt.tsx` (the panel), `XtermView.tsx`
+  (xterm with the fit addon), `terminal-input.ts` (the input queue) and `store/terminals.ts` (the reducer rules).
+  The panel sits at the top of Test and decide's right column, above "Failed test".
+- **node-pty 1.2.0-beta.15, pinned.** 1.1.0 (the latest stable) ships its macOS `spawn-helper` prebuild without
+  the executable bit, so every spawn fails with `posix_spawnp failed`, and it has no Linux prebuilds. The beta has
+  both. It is imported lazily (`import("node-pty")`, once, on the first terminal read or open), so a missing or
+  broken binary only affects this panel: `GET /api/tasks/:taskId/terminal` answers `{available: false, message}`,
+  opening answers 409 with the same message, and everything else keeps working. `createTerminals` takes a
+  `loadPty` so tests can simulate the failure. node-pty is a dependency of core and the CLI (kept external by tsup).
+- **The shell.** One terminal per task, running the owner's `$SHELL` (else `/bin/sh`) interactively, with no
+  arguments, in the task's clone (`task.worktree`, which the checks have rebased onto main), with `cleanEnv`'s
+  environment and `TERM=xterm-256color`. Opening while one is running returns that one, so a second tab joins it.
+  A task can be tried while it has a workspace and isn't done, the same rule as comments. When a `task.updated`
+  shows the task has lost its workspace (rebased onto main or discarded), its terminal is killed, since its cwd is
+  about to be deleted. The isolated test environment sets `SHELL=/bin/sh`, so no test reads the owner's rc files
+  and zsh never offers its new-user setup in the empty HOME.
+- **Not actions.** The terminal routes are plain routes, not actions, so the Conductor can never get a shell
+  (section 20: it has no shell tools). Routes: `GET` and `POST /api/tasks/:taskId/terminal` (read; open with
+  `{cols, rows}`), `POST /api/terminals/:terminalId/{input,resize,stop}`.
+- **Input over POST, not the WebSocket.** The stream stays one-way (server to browser). Keystrokes go through an
+  input queue that sends one request at a time and batches whatever is typed meanwhile, so they reach the shell in
+  order; chunks are at most 16 KiB and never split a surrogate pair.
+- **Output.** `terminal.output` gained `offset` (characters before the chunk). The server keeps the last 200 000
+  characters (`terminalScrollbackLimit`, shared with the web store) so a reload or a second tab shows the
+  scrollback. The browser stores one terminal per task (`terminals[taskId]: {id, status, output, received}`) and
+  applies each character exactly once whether it came from the read or the stream; `XtermView` writes only what it
+  has not shown, and redraws when the terminal changes. A new event `terminal.updated` carries the terminal when it
+  opens and when it exits; the terminal view and CLI clients ignore it.
+- **Stop and the kill path.** Each pty is tracked in the process registry as kind `terminal` (node-pty makes the
+  shell a session leader, so its pid is its group), so `killAllSync` kills its whole tree, including jobs the
+  shell put in groups of their own. Stop does the same tree kill, then `pty.kill("SIGKILL")`, and answers once the
+  pty has exited. The runtime's `killProcessesSync` runs the registry kill and then `pty.kill("SIGKILL")` for each
+  open terminal, as 3.3 step 1 says.
+- **Tests.** `test/integration/try-it.test.ts`: `echo hi && pwd` streams over the WebSocket with the clone as cwd
+  (and the read returns the same scrollback); Stop kills the shell and a command running in it and later input is
+  refused; without node-pty the read explains and the rest of the API answers; and Ctrl+C twice on a real
+  `mastermind .` kills an open terminal and its command. The web store has reducer cases for the offsets, the
+  Decide screen test covers the unavailable message (xterm is mocked there: jsdom has no canvas or `matchMedia`),
+  and `decide.spec.ts` types a command into the real terminal and stops it.

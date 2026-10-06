@@ -15,6 +15,8 @@ import type {
   SessionEvent,
   Task,
   TaskChanges,
+  TerminalStatus,
+  TerminalView,
 } from "@mastermind/core/contracts";
 
 export type Connection = "connecting" | "live" | "reconnecting" | "stopped" | "unauthorized";
@@ -26,8 +28,10 @@ export interface SchedulerState {
 }
 
 export interface TerminalState {
-  taskId: string;
+  id: string;
+  status: TerminalStatus;
   output: string;
+  received: number;
 }
 
 export interface ChatState {
@@ -85,6 +89,7 @@ export type StoreAction =
   | { type: "changes.loaded"; key: string; view: ChangesView }
   | { type: "notes.loaded"; notes: ReviewNotes }
   | { type: "checks.loaded"; taskId: string; checks: readonly Check[] }
+  | { type: "terminal.loaded"; taskId: string; view: TerminalView }
   | { type: "connection.changed"; connection: Connection }
   | { type: "flags.changed"; flags: RuntimeFlags };
 

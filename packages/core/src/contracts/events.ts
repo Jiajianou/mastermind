@@ -6,6 +6,7 @@ import { configSchema } from "./config.js";
 import { commentSchema, findingSchema } from "./review.js";
 import { sessionEventSchema, sessionSchema } from "./sessions.js";
 import { taskSchema } from "./tasks.js";
+import { terminalSchema } from "./terminals.js";
 
 export const busEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("task.updated"), taskId: z.string(), task: taskSchema }),
@@ -50,8 +51,10 @@ export const busEventSchema = z.discriminatedUnion("type", [
     type: z.literal("terminal.output"),
     taskId: z.string(),
     terminalId: z.string(),
+    offset: z.int().min(0),
     data: z.string(),
   }),
+  z.object({ type: z.literal("terminal.updated"), taskId: z.string(), terminal: terminalSchema }),
   z.object({ type: z.literal("chat.message"), message: chatMessageSchema }),
   z.object({ type: z.literal("chat.delta"), turnId: z.string(), text: z.string() }),
   z.object({ type: z.literal("chat.turn"), turnId: z.string(), replying: z.boolean() }),

@@ -17,7 +17,11 @@ import type {
   ReviewNotes,
   SessionEvent,
   TaskChanges,
+  TaskTerminal,
   TaskTree,
+  Terminal,
+  TerminalSize,
+  TerminalView,
 } from "@mastermind/core/contracts";
 import { z } from "zod";
 
@@ -80,6 +84,11 @@ export interface ApiClient {
   checks(taskId: string): Promise<Check[]>;
   notes(taskId: string): Promise<ReviewNotes>;
   checkLog(checkId: number): Promise<CheckLog>;
+  taskTerminal(taskId: string): Promise<TaskTerminal>;
+  openTerminal(taskId: string, size: TerminalSize): Promise<TerminalView>;
+  terminalInput(terminalId: string, data: string): Promise<Terminal>;
+  resizeTerminal(terminalId: string, size: TerminalSize): Promise<Terminal>;
+  stopTerminal(terminalId: string): Promise<Terminal>;
   act<Name extends ActionName>(name: Name, ...args: ActionArgs<Name>): Promise<ActionResults[Name]>;
 }
 
@@ -100,10 +109,16 @@ function routeAction(name: ActionName, input: object): { path: string; body: Req
   return { path, body };
 }
 
-type TaskResource = "changes" | "file" | "tree" | "checks" | "notes";
+type TaskResource = "changes" | "file" | "tree" | "checks" | "notes" | "terminal";
 
 function taskPath(taskId: string, resource: TaskResource): string {
   return `/api/tasks/${encodeURIComponent(taskId)}/${resource}`;
+}
+
+type TerminalCommand = "input" | "resize" | "stop";
+
+function terminalPath(terminalId: string, command: TerminalCommand): string {
+  return `/api/terminals/${encodeURIComponent(terminalId)}/${command}`;
 }
 
 function failureMessage(method: string, path: string, status: number, body: ApiError | null) {
@@ -191,6 +206,28 @@ export function createApiClient(token: string | null): ApiClient {
     checkLog(checkId) {
       const path = `/api/checks/${String(checkId)}/log`;
       return request("GET", path, apiResponseSchemas.checkLog);
+    },
+
+    taskTerminal(taskId) {
+      return request("GET", taskPath(taskId, "terminal"), apiResponseSchemas.taskTerminal);
+    },
+
+    openTerminal(taskId, size) {
+      return request("POST", taskPath(taskId, "terminal"), apiResponseSchemas.terminalView, size);
+    },
+
+    terminalInput(terminalId, data) {
+      return request("POST", terminalPath(terminalId, "input"), apiResponseSchemas.terminal, {
+        data,
+      });
+    },
+
+    resizeTerminal(terminalId, size) {
+      return request("POST", terminalPath(terminalId, "resize"), apiResponseSchemas.terminal, size);
+    },
+
+    stopTerminal(terminalId) {
+      return request("POST", terminalPath(terminalId, "stop"), apiResponseSchemas.terminal);
     },
 
     act<Name extends ActionName>(name: Name, ...[input]: ActionArgs<Name>) {

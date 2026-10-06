@@ -16,3 +16,4 @@ export * from "./runtime.js";
 export * from "./sessions.js";
 export * from "./stream-json.js";
 export * from "./tasks.js";
+export * from "./terminals.js";

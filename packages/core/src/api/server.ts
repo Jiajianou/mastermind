@@ -14,12 +14,14 @@ import type { EventBus } from "../events.js";
 import type { Git } from "../git/index.js";
 import type { ProposalGate } from "../proposals.js";
 import { createReadModels } from "../reads.js";
+import type { Terminals } from "../terminals.js";
 import { registerActionRoutes } from "./action-routes.js";
 import { apiError, errorReply } from "./errors.js";
 import { bearerRejection, siteRejection } from "./local-request.js";
 import type { Rejection } from "./local-request.js";
 import { registerReadRoutes } from "./read-routes.js";
 import { createEventStream } from "./stream.js";
+import { registerTerminalRoutes } from "./terminal-routes.js";
 
 export interface ApiServerOptions {
   db: Db;
@@ -28,6 +30,7 @@ export interface ApiServerOptions {
   actions: ActionRegistry;
   gate: ProposalGate;
   chat: ChatState;
+  terminals: Terminals;
   instance: InstanceInfo;
   summary: () => Summary;
   config: () => Config;
@@ -101,6 +104,7 @@ export async function createApiServer(options: ApiServerOptions): Promise<ApiSer
     const reads = createReadModels(options);
     registerReadRoutes(api, reads);
     registerActionRoutes(api, actions);
+    registerTerminalRoutes(api, options.terminals);
     registerMcpRoutes(api, {
       actions,
       gate,

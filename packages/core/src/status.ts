@@ -267,6 +267,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "comment.deleted":
       case "finding.updated":
       case "terminal.output":
+      case "terminal.updated":
       case "chat.message":
       case "chat.delta":
       case "chat.turn":

@@ -5,9 +5,20 @@ import type {
   Session,
   SessionEvent,
 } from "@mastermind/core/contracts";
-import type { ChatState, LiveState, SchedulerState, Snapshot, StoreAction } from "./state.js";
+import type {
+  ChatState,
+  LiveState,
+  SchedulerState,
+  Snapshot,
+  StoreAction,
+  TerminalState,
+} from "./state.js";
+import { appendOutput, withStatus, withView } from "./terminals.js";
 
-export const terminalOutputLimit = 200_000;
+function withTerminal(state: LiveState, taskId: string, terminal: TerminalState): LiveState {
+  if (state.terminals[taskId] === terminal) return state;
+  return { ...state, terminals: { ...state.terminals, [taskId]: terminal } };
+}
 
 function withSession(state: LiveState, session: Session): LiveState {
   return { ...state, sessions: { ...state.sessions, [session.id]: session } };
@@ -216,11 +227,24 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     case "main.moved":
     case "checkout.updated":
       return state;
-    case "terminal.output": {
-      const output = `${state.terminals[action.terminalId]?.output ?? ""}${action.data}`;
-      const terminal = { taskId: action.taskId, output: output.slice(-terminalOutputLimit) };
-      return { ...state, terminals: { ...state.terminals, [action.terminalId]: terminal } };
-    }
+    case "terminal.output":
+      return withTerminal(
+        state,
+        action.taskId,
+        appendOutput(state.terminals[action.taskId], action),
+      );
+    case "terminal.updated":
+      return withTerminal(
+        state,
+        action.taskId,
+        withStatus(state.terminals[action.taskId], action.terminal),
+      );
+    case "terminal.loaded":
+      return withTerminal(
+        state,
+        action.taskId,
+        withView(state.terminals[action.taskId], action.view),
+      );
     case "chat.message": {
       const { message } = action;
       return withChat(state, {

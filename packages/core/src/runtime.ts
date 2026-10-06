@@ -34,6 +34,7 @@ import { createSessionManager, messageSessionAction, stopSessionAction } from ".
 import type { Startup } from "./startup/index.js";
 import { createStatusStore } from "./status.js";
 import type { StatusStore } from "./status.js";
+import { createTerminals } from "./terminals.js";
 
 export interface RuntimeOptions {
   startup: Startup;
@@ -189,6 +190,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     onError,
   });
   for (const action of chatActions(runner)) actions.register(action);
+  const terminals = createTerminals({ db, bus, registry, env });
 
   const mainCommit = await shortCommit(startup, config.mainBranch);
   const api = await serveApi({
@@ -198,6 +200,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     actions,
     gate,
     chat: runner,
+    terminals,
     instance: {
       project: basename(repoRoot),
       account: { email: startup.auth.email, plan: startup.auth.plan },
@@ -261,13 +264,18 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       return actions.run(db.flags.get().paused ? resume : pause, {});
     },
 
-    killProcessesSync: () => registry.killAllSync(),
+    killProcessesSync() {
+      const report = registry.killAllSync();
+      terminals.killAllSync();
+      return report;
+    },
 
     markKilledSync: () => db.killRunning(),
 
     closeSync() {
       if (proposalSweep !== null) clearInterval(proposalSweep);
       stopEventLines();
+      terminals.dispose();
       runner.dispose();
       api.closeSync();
       rebaseQueue.stop();

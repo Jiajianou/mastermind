@@ -19,11 +19,14 @@ import { createProcessRegistry } from "@mastermind/core/procs";
 import { createProposalGate, proposalActions } from "@mastermind/core/proposals";
 import { createScheduler } from "@mastermind/core/scheduler";
 import { stopSessionAction } from "@mastermind/core/sessions";
+import { createTerminals } from "@mastermind/core/terminals";
+import type { LoadPty } from "@mastermind/core/terminals";
 import { makeTempDir, onCleanup } from "../../support/cleanup.js";
 
 export interface TestApi {
   api: ServedApi;
   db: Db;
+  root: string;
   git: Git;
   stateDir: string;
   webRoot: string;
@@ -82,9 +85,14 @@ export async function freePort(): Promise<number> {
 export interface TestApiOptions {
   port?: PortChoice;
   staleToken?: string;
+  loadPty?: LoadPty;
 }
 
-export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): Promise<TestApi> {
+export async function serveTestApi({
+  port,
+  staleToken,
+  loadPty,
+}: TestApiOptions = {}): Promise<TestApi> {
   const root = await makeTempDir("api");
   const stateDir = join(root, ".mastermind");
   if (staleToken !== undefined) {
@@ -106,10 +114,8 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
   onCleanup(() => {
     registry.killAllSync();
   });
-  const git = createGit({
-    registry,
-    env: { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1" },
-  });
+  const env = { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1" };
+  const git = createGit({ registry, env });
   const configContext = { repoRoot: root, homeDir: root };
   let config = await loadConfig(configContext);
   const actions = createActionRegistry(
@@ -161,6 +167,16 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     onError: (error) => errors.push(error),
   });
   const webRoot = await writeWebApp(root);
+  const terminals = createTerminals({
+    db,
+    bus,
+    registry,
+    env: { ...env, SHELL: "/bin/sh" },
+    ...(loadPty === undefined ? {} : { loadPty }),
+  });
+  onCleanup(() => {
+    terminals.dispose();
+  });
   const api = await serveApi({
     db,
     git,
@@ -171,6 +187,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
       status: () => ({ model: config.models.conductor, replying: false }),
       activeTurn: () => null,
     },
+    terminals,
     instance: testInstance,
     summary: () => scheduler.summary(),
     config: () => config,
@@ -186,6 +203,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
   return {
     api,
     db,
+    root,
     git,
     stateDir,
     webRoot,

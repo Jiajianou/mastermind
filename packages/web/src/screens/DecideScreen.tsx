@@ -1,5 +1,6 @@
 import type { Task } from "@mastermind/core/contracts";
 import { useParams, useSearchParams } from "react-router";
+import { TryIt } from "../components/TryIt.js";
 import { CheckList } from "../decide/CheckList.js";
 import { latestFailure, roundChecks } from "../decide/checks.js";
 import { DecideFiles } from "../decide/DecideFiles.js";
@@ -43,6 +44,7 @@ function Decide({ task, file, since }: { task: Task; file: string | null; since:
           <p className="decide-diff panel editor-message muted">{noWorkText(task)}</p>
         )}
         <div className="decide-side">
+          <TryIt task={task} />
           <FailedTest failure={latestFailure(checks, task.round)} />
         </div>
       </div>

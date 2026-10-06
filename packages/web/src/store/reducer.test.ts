@@ -1,5 +1,5 @@
-import { busEventSchema } from "@mastermind/core/contracts";
-import type { Rebase } from "@mastermind/core/contracts";
+import { busEventSchema, terminalScrollbackLimit } from "@mastermind/core/contracts";
+import type { Rebase, Terminal } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
 import {
   at,
@@ -16,8 +16,8 @@ import {
   summary,
   task,
 } from "../testing/fixtures.js";
-import { reduce, terminalOutputLimit } from "./reducer.js";
-import type { LiveState, StoreAction } from "./state.js";
+import { reduce } from "./reducer.js";
+import type { LiveState, StoreAction, TerminalState } from "./state.js";
 
 interface Case {
   name: string;
@@ -25,6 +25,20 @@ interface Case {
   action: StoreAction;
   after: (next: LiveState, before: LiveState) => void;
 }
+
+const terminal = (id: string): Terminal => ({
+  id,
+  taskId: "alpha",
+  cwd: "/clones/alpha",
+  status: "running",
+});
+
+const terminalState = (output: string): TerminalState => ({
+  id: "t1",
+  status: "running",
+  output,
+  received: output.length,
+});
 
 const rebase: Rebase = { id: 4, taskId: "alpha", status: "running", logPath: null, ts: at(5) };
 
@@ -273,15 +287,55 @@ const cases: Case[] = [
     },
   },
   {
-    name: "terminal.output appends to the terminal and keeps only the most recent output",
-    before: stateWith({
-      terminals: { t1: { taskId: "alpha", output: "x".repeat(terminalOutputLimit) } },
-    }),
-    action: { type: "terminal.output", taskId: "alpha", terminalId: "t1", data: "$ make\n" },
+    name: "terminal.output appends only the unseen part and keeps the most recent output",
+    before: stateWith({ terminals: { alpha: terminalState("x".repeat(terminalScrollbackLimit)) } }),
+    action: {
+      type: "terminal.output",
+      taskId: "alpha",
+      terminalId: "t1",
+      offset: terminalScrollbackLimit - 2,
+      data: "xx$ make\n",
+    },
     after: (next) => {
-      const output = next.terminals.t1?.output ?? "";
-      expect(output).toHaveLength(terminalOutputLimit);
-      expect(output.endsWith("x$ make\n")).toBe(true);
+      const terminal = next.terminals.alpha;
+      expect(terminal?.output).toHaveLength(terminalScrollbackLimit);
+      expect(terminal?.output.endsWith("xxx$ make\n")).toBe(true);
+      expect(terminal?.received).toBe(terminalScrollbackLimit + 7);
+    },
+  },
+  {
+    name: "terminal.output already held in the stored output changes nothing",
+    before: stateWith({ terminals: { alpha: terminalState("$ make\nok\n") } }),
+    action: { type: "terminal.output", taskId: "alpha", terminalId: "t1", offset: 7, data: "ok\n" },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "terminal.loaded keeps output and an exit the stream already delivered",
+    before: stateWith({
+      terminals: { alpha: { ...terminalState("$ make\nok\n"), status: "exited" } },
+    }),
+    action: {
+      type: "terminal.loaded",
+      taskId: "alpha",
+      view: { terminal: terminal("t1"), output: "$ make\n", received: 7 },
+    },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "terminal.updated for a new terminal of the task replaces the old one",
+    before: stateWith({ terminals: { alpha: { ...terminalState("old\n"), status: "exited" } } }),
+    action: { type: "terminal.updated", taskId: "alpha", terminal: terminal("t2") },
+    after: (next) => {
+      expect(next.terminals.alpha).toEqual({
+        id: "t2",
+        status: "running",
+        output: "",
+        received: 0,
+      });
     },
   },
   {
@@ -455,6 +509,7 @@ describe("store reducer", () => {
       "changes.loaded",
       "notes.loaded",
       "checks.loaded",
+      "terminal.loaded",
       "connection.changed",
       "flags.changed",
     ];

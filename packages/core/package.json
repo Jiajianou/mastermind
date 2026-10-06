@@ -29,7 +29,8 @@
     "./sessions": "./src/sessions/index.ts",
     "./startup": "./src/startup/index.ts",
     "./status": "./src/status.ts",
-    "./task-files": "./src/task-files.ts"
+    "./task-files": "./src/task-files.ts",
+    "./terminals": "./src/terminals.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
@@ -38,6 +39,7 @@
     "@fastify/static": "^10.1.5",
     "@modelcontextprotocol/sdk": "~1.31.0",
     "fastify": "^5.12.5",
+    "node-pty": "1.2.0-beta.15",
     "ws": "^8.22.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
