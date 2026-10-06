@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+tasks.yaml
+*.md
+.implement/
+.mastermind/
+coverage/
+dist/
+test-results/
+playwright-report/
+test/fixtures/claude-samples/

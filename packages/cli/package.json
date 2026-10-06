@@ -1,0 +1,23 @@
+{
+  "name": "@mastermind/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mastermind": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mastermind/core": "workspace:*",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

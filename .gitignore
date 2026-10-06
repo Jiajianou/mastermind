@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.implement/
+.mastermind/
+test-results/
+playwright-report/
