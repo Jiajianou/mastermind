@@ -69,19 +69,27 @@ export function initLine(context: SessionContext): object {
   };
 }
 
-function messageUsage(): object {
+// The context size is input plus cache creation plus cache reads; a scenario may set it to test the rollover.
+function messageUsage(contextTokens = 9226): object {
+  const input = Math.min(10, contextTokens);
+  const creation = Math.min(1024, contextTokens - input);
   return {
-    input_tokens: 10,
-    cache_creation_input_tokens: 1024,
-    cache_read_input_tokens: 8192,
-    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1024 },
+    input_tokens: input,
+    cache_creation_input_tokens: creation,
+    cache_read_input_tokens: contextTokens - input - creation,
+    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: creation },
     output_tokens: 24,
     service_tier: "standard",
     inference_geo: "not_available",
   };
 }
 
-function apiMessage(model: string, messageId: string, content: object[]): object {
+function apiMessage(
+  model: string,
+  messageId: string,
+  content: object[],
+  contextTokens?: number,
+): object {
   return {
     model,
     id: messageId,
@@ -92,7 +100,7 @@ function apiMessage(model: string, messageId: string, content: object[]): object
     stop_reason: null,
     stop_sequence: null,
     stop_details: null,
-    usage: messageUsage(),
+    usage: messageUsage(contextTokens),
     input_transformations: [],
     diagnostics: null,
     context_management: null,
@@ -135,6 +143,7 @@ export function assistantLine(
   context: SessionContext,
   messageId: string,
   block: AssistantBlock,
+  contextTokens?: number,
 ): object {
   const content =
     block.type === "tool_use"
@@ -142,7 +151,7 @@ export function assistantLine(
       : block;
   return {
     type: "assistant",
-    message: apiMessage(context.model, messageId, [content]),
+    message: apiMessage(context.model, messageId, [content], contextTokens),
     parent_tool_use_id: null,
     ...stamp(context),
     timestamp: timestamp(),

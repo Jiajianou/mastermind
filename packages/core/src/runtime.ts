@@ -13,9 +13,11 @@ import {
   conductorMcpConfigPath,
   conductorSystemPromptPath,
   createChatRunner,
+  createConductorSummariser,
   postEventLines,
   readDigestInput,
   writeConductorMcpConfig,
+  wakeOnEventLines,
   writeConductorSystemPrompt,
 } from "./conductor/index.js";
 import { projectPaths, resolveConfig, setConfig } from "./config/index.js";
@@ -25,6 +27,7 @@ import type { KilledCounts } from "./db/index.js";
 import type { Environment } from "./env.js";
 import { createEventBus } from "./events.js";
 import type { EventBus } from "./events.js";
+import type { AuthVerdict } from "./auth.js";
 import { GitError } from "./git/index.js";
 import { notifyOwner } from "./notify.js";
 import type { NativeNotifier } from "./notify.js";
@@ -34,7 +37,14 @@ import { approve, createRebaseQueue, discardAction } from "./rebase/index.js";
 import { requestChangesAction, reviewNoteActions } from "./review/index.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
-import { createSessionManager, messageSessionAction, stopSessionAction } from "./sessions/index.js";
+import {
+  createOneShotRunner,
+  createSessionManager,
+  createSessionSpawner,
+  messageSessionAction,
+  stopSessionAction,
+} from "./sessions/index.js";
+import { createSignInMonitor } from "./sign-in.js";
 import type { Startup } from "./startup/index.js";
 import { createStatusStore } from "./status.js";
 import type { StatusStore } from "./status.js";
@@ -60,6 +70,7 @@ export interface Runtime {
   store: StatusStore;
   start(): void;
   togglePause(): Promise<RuntimeFlags>;
+  signIn(): Promise<AuthVerdict | null>;
   killProcessesSync(): KillReport;
   markKilledSync(): KilledCounts;
   closeSync(): void;
@@ -116,8 +127,19 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     bus,
     clock,
     maxWorkers: () => config.maxWorkers,
-    startTask: (task) => manager.startTask(task),
+    startTask: async (task) => {
+      if (await signIn.ensureSignedIn()) await manager.startTask(task);
+    },
     onError,
+  });
+  // The startup's auth gate has just accepted the sign-in.
+  const signIn = createSignInMonitor({
+    db,
+    bus,
+    cli: startup.cli,
+    clock,
+    onError,
+    lastCheckedAt: clock.now(),
   });
   const manager = createSessionManager({
     db,
@@ -145,6 +167,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     clock,
     maxAttempts: () => config.maxAttempts,
     fixers: manager,
+    signedIn: () => signIn.ensureSignedIn(),
     onError,
   });
   const gitWork = {
@@ -194,6 +217,23 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     model: () => config.models.conductor,
     digest: () => buildDigest(readDigestInput({ db, clock, summary: () => scheduler.summary() })),
     backoff: scheduler,
+    summariser: createConductorSummariser({
+      db,
+      repoRoot,
+      model: () => config.models.judge,
+      oneShot: createOneShotRunner({
+        db,
+        bus,
+        backoff: scheduler,
+        spawner: createSessionSpawner({
+          db,
+          bus,
+          cli: startup.cli,
+          logsDir: join(stateDir, "logs"),
+          onError,
+        }),
+      }),
+    }),
     onError,
   });
   for (const action of chatActions(runner)) actions.register(action);
@@ -243,6 +283,13 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   );
 
   const stopEventLines = postEventLines({ db, bus, mainBranch: () => config.mainBranch });
+  const stopWaking = wakeOnEventLines({
+    bus,
+    wakeOnEvents: () => config.conductor.wakeOnEvents,
+    wake: () => {
+      runner.wake();
+    },
+  });
   const stopNotifications = notifyOwner({
     bus,
     project: basename(repoRoot),
@@ -268,6 +315,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     store,
 
     start() {
+      signIn.start();
       scheduler.start();
       pipeline.start();
       rebaseQueue.start();
@@ -279,6 +327,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       return actions.run(db.flags.get().paused ? resume : pause, {});
     },
 
+    signIn: () => signIn.signIn(),
+
     killProcessesSync() {
       const report = registry.killAllSync();
       terminals.killAllSync();
@@ -289,7 +339,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     closeSync() {
       if (proposalSweep !== null) clearInterval(proposalSweep);
+      signIn.stop();
       stopEventLines();
+      stopWaking();
       stopNotifications();
       terminals.dispose();
       runner.dispose();

@@ -1,15 +1,17 @@
+import { describeAuth } from "@mastermind/core/auth";
 import { cleanEnv } from "@mastermind/core/env";
 import type { Environment } from "@mastermind/core/env";
 import type { ProcessRegistry, SpawnRequest } from "@mastermind/core/procs";
 import type { Runtime } from "@mastermind/core/runtime";
 
-export type TerminalCommand = "open" | "copy" | "pause";
+export type TerminalCommand = "open" | "copy" | "pause" | "sign-in";
 
 export interface TerminalCommandsOptions {
   runtime: Runtime;
   registry: ProcessRegistry;
   env: Environment;
   platform: NodeJS.Platform;
+  handOffTerminal: <T>(work: () => Promise<T>) => Promise<T>;
   onError: (error: unknown) => void;
 }
 
@@ -30,7 +32,7 @@ function clipboardFor(platform: NodeJS.Platform, env: Environment): Launch {
 export function createTerminalCommands(
   options: TerminalCommandsOptions,
 ): (command: TerminalCommand) => void {
-  const { runtime, registry, env, platform, onError } = options;
+  const { runtime, registry, env, platform, handOffTerminal, onError } = options;
   const childEnv = cleanEnv(env);
   const { store } = runtime;
 
@@ -52,6 +54,16 @@ export function createTerminalCommands(
     if (await launch(clipboardFor(platform, env), link)) store.notice("Copied the web app link");
   }
 
+  async function signIn(): Promise<void> {
+    const verdict = await handOffTerminal(() => runtime.signIn());
+    if (verdict === null || verdict.kind === "accepted") return;
+    store.notice(
+      verdict.kind === "not-signed-in"
+        ? "Still not signed in to Claude. Press Enter to try again."
+        : describeAuth(verdict),
+    );
+  }
+
   return (command) => {
     const { link } = store.getSnapshot().header;
     switch (command) {
@@ -63,6 +75,9 @@ export function createTerminalCommands(
         return;
       case "pause":
         runtime.togglePause().catch(onError);
+        return;
+      case "sign-in":
+        signIn().catch(onError);
         return;
     }
   };

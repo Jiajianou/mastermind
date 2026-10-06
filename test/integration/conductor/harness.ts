@@ -10,14 +10,16 @@ import {
   conductorMcpConfigPath,
   conductorSystemPromptPath,
   createChatRunner,
+  createConductorSummariser,
   postEventLines,
   readDigestInput,
   writeConductorMcpConfig,
+  wakeOnEventLines,
   writeConductorSystemPrompt,
 } from "@mastermind/core/conductor";
 import type { ChatRunner } from "@mastermind/core/conductor";
 import { loadConfig, projectPaths, setConfig } from "@mastermind/core/config";
-import type { BusEvent, ChatMessage, Config } from "@mastermind/core/contracts";
+import type { BusEvent, ChatMessage, Config, ConfigLayer } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
@@ -29,7 +31,11 @@ import { createProposalGate, proposalActions } from "@mastermind/core/proposals"
 import { createScheduler } from "@mastermind/core/scheduler";
 import type { Scheduler } from "@mastermind/core/scheduler";
 import { requestChangesAction, reviewNoteActions } from "@mastermind/core/review";
-import { messageSessionAction } from "@mastermind/core/sessions";
+import {
+  createOneShotRunner,
+  createSessionSpawner,
+  messageSessionAction,
+} from "@mastermind/core/sessions";
 import type { SessionManager } from "@mastermind/core/sessions";
 import { createTerminals } from "@mastermind/core/terminals";
 import { z } from "zod";
@@ -72,6 +78,8 @@ export interface ConductorHarness {
 export interface ConductorHarnessOptions {
   scenario: Scenario;
   idleMs?: number;
+  rolloverTokens?: number;
+  config?: ConfigLayer;
   messageSession?: SessionManager["messageSession"];
   startRound?: SessionManager["startRound"];
 }
@@ -86,6 +94,7 @@ export async function conductorHarness(
   await env.writeScenario(options.scenario);
   const { stateDir } = projectPaths(repo.path);
   const configContext = { repoRoot: repo.path, homeDir: env.home };
+  if (options.config !== undefined) await setConfig(configContext, options.config);
   let config = await loadConfig(configContext);
 
   const db = openDb(join(env.root, "db.sqlite"));
@@ -136,23 +145,44 @@ export async function conductorHarness(
   const mcpConfigPath = conductorMcpConfigPath(stateDir);
   const systemPromptFile = conductorSystemPromptPath(stateDir);
   await writeConductorSystemPrompt(promptsDir, systemPromptFile);
+  const cli = createClaudeCli({ registry, env: env.env });
+  const logsDir = join(stateDir, "logs");
   const runner = createChatRunner({
     db,
     bus,
-    cli: createClaudeCli({ registry, env: env.env }),
+    cli,
     repoRoot: repo.path,
     systemPromptFile,
-    logsDir: join(stateDir, "logs"),
+    logsDir,
     mcpConfigPath,
     model: () => config.models.conductor,
     digest: () =>
       buildDigest(readDigestInput({ db, clock: systemClock, summary: () => scheduler.summary() })),
     backoff: scheduler,
+    summariser: createConductorSummariser({
+      db,
+      repoRoot: repo.path,
+      model: () => config.models.judge,
+      oneShot: createOneShotRunner({
+        db,
+        bus,
+        backoff: scheduler,
+        spawner: createSessionSpawner({ db, bus, cli, logsDir, onError }),
+      }),
+    }),
     onError,
     ...(options.idleMs === undefined ? {} : { idleMs: options.idleMs }),
+    ...(options.rolloverTokens === undefined ? {} : { rolloverTokens: options.rolloverTokens }),
   });
   for (const action of chatActions(runner)) actions.register(action);
   const stopEventLines = postEventLines({ db, bus, mainBranch: () => config.mainBranch });
+  const stopWaking = wakeOnEventLines({
+    bus,
+    wakeOnEvents: () => config.conductor.wakeOnEvents,
+    wake: () => {
+      runner.wake();
+    },
+  });
 
   const api = await serveApi({
     db,
@@ -174,6 +204,7 @@ export async function conductorHarness(
   await writeConductorMcpConfig(mcpConfigPath, { port: api.port, token: api.token });
   onCleanup(() => {
     stopEventLines();
+    stopWaking();
     runner.dispose();
     scheduler.stop();
     registry.killAllSync();

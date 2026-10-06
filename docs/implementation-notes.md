@@ -1671,3 +1671,58 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   `settings.spec.ts` (the worker model persists to config.yaml; a change confirmed in the chat shows in Settings)
   and `notifications.spec.ts` (a usage-limit pause is a browser notification with a tab open, and an OS one after
   the tab closes).
+
+## m8-conductor-rollover
+
+- **Where it lives.** `src/sign-in.ts` (`createSignInMonitor`, a new `@mastermind/core/sign-in` export),
+  `conductor/rollover.ts` (`createConductorSummariser`), `conductor/wake.ts` (`wakeOnEventLines`), the runner's
+  `wake()` and rollover, and `setSignInRequired` in `actions/runtime.ts` (the one writer of `authRequired` plus
+  `paused`, used by session settlements and the monitor). CLI: `Footer`'s sign-in line, Enter in `StatusApp`, the
+  `sign-in` terminal command and `TerminalView.handOff`.
+- **Sign-in checks.** The monitor runs `claude auth status` every 15 minutes, and before a worker or fixer starts
+  when the last check is more than 5 minutes old (`ensureSignedIn`, called by the runtime's `startTask` and by the
+  fixer launcher, whose "waiting" result already requeues on `auth.updated`). The startup's auth gate counts as the
+  first check. Reviewer and judge one-shots are not gated: they follow a worker or check closely and classify their
+  own auth failures. A refused check sets `authRequired` and `paused`; any good check clears both (so signing in
+  from another terminal also resumes), and the monitor runs one at start if `authRequired` survived a restart. An
+  unreadable status leaves the flags alone and goes to `onError`. **Resuming clears `paused` too**, as 4.3 says, so a
+  manual pause made before the expiry is lost; the flags have no record of who paused.
+- **A session's auth failure still sets `authRequired` directly, without running the status check first** as the CLI
+  notes suggest: spike 4 showed the status command doesn't validate the token (an invalid OAuth token reports
+  `loggedIn: true`), so a check could clear a real failure and requeue the task into the same failure forever. The
+  task is requeued without an attempt, as before (m1-sessions).
+- **Terminal.** While `authRequired` is set, the footer shows `Your Claude sign-in expired. Press Enter to sign in
+  again.` and Enter runs `runtime.signIn()`: the login hand-off (`claude auth login --claudeai`, inherited stdio)
+  then a check. Ink is unmounted and leaves raw mode for the hand-off (`handOff` clears, unmounts, pauses stdin) and
+  is mounted again afterwards, because a live Ink frame redrawing every second would garble the login's output. A
+  sign-in that still isn't accepted posts a notice and the prompt stays. The plain-log view has no key input, so
+  without a TTY the owner signs in from another terminal and the 15-minute check resumes work. The web banner and the
+  chat line already followed `auth.updated` (m3, m2-conductor).
+- **Rollover.** After a turn, if the conversation's context tokens (stored per turn, m2-conductor) reached
+  `conductorRolloverTokens` (100,000, half the 200k window; a fixed number rather than a share of
+  `modelUsage.contextWindow`, so 1M-context models also stay cheap), a judge one-shot (`models.judge`,
+  `--json-schema {summary}`, no tools) summarises the chat messages of that conversation plus the summary it started
+  from, at most the latest 120,000 characters. On success the live process is ended, the old `conductor_sessions`
+  row ends **with the summary stored on it**, and the next turn starts a fresh conversation whose first prompt is
+  `<summary>…</summary>` followed by the usual `<state>` digest and updates. The chat messages are untouched, so the
+  owner sees one continuous chat. A failed judge call keeps the conversation and is tried again only after a later
+  turn changes the token count (a crash also backs off globally, as every unrecognised one-shot failure does). A
+  restart whose stored tokens are over the threshold rolls over before its first turn. One-shot requests now accept
+  `taskId: null` for this taskless judge.
+- **Turns during a rollover** wait for it. The owner's message is stored under the old conversation id, so
+  `chat.listForConversation` also takes messages whose turn belongs to the conversation.
+- **wakeOnEvents** takes the event line kinds (`review`, `blocked`, `rebased`, `sign_in`, `usage_limit`,
+  `owner_on_main`); the config schema now validates them (`eventLineKindSchema` moved to `contracts/config.ts`). A
+  matching line wakes the Conductor on the next macrotask, so lines posted together share one turn, and a wake during
+  a turn waits for it to end. A wake turn posts no user message: its prompt is the digest, the updates and `<wake/>`,
+  which `prompts/conductor.md` explains. Nothing wakes while signed out, during a usage-limit back-off, or when no
+  event line arrived since the last prompt.
+- **fake-claude.** The `text` step takes `contextTokens`, the context size its assistant line reports.
+- **Tests.** `test/integration/conductor/rollover.test.ts` (rollover with fake token counts, and a failed summary
+  keeps the conversation), `conductor/wake.test.ts`, `test/integration/auth-expiry.test.ts` (a worker hits an expired
+  sign-in mid-run: requeued without an attempt, paused, sign-in line and notification, then a fake login resumes it
+  with `--resume`; and a stale check before a start finds the sign-in gone and starts nothing until the login), and
+  `packages/cli/src/tui/status-app.test.tsx` (Enter signs in only while the sign-in has expired).
+- **Review.** A wake that arrives during a turn survives that turn's continuation (an owner message written as it
+  ended) and runs after it. `TerminalView.restore` does nothing once Ink is unmounted, so the kill path during the
+  login hand-off leaves the login's output alone.

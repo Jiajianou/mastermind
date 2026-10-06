@@ -8,8 +8,9 @@ import type { Columns, DbContext } from "./rows.js";
 export interface ConductorSessionRepository {
   open(id: string): ConductorSession;
   current(): ConductorSession | null;
+  latestSummary(): string | null;
   setTokens(id: string, tokens: number): ConductorSession;
-  end(id: string): ConductorSession;
+  end(id: string, summary?: string): ConductorSession;
 }
 
 const conductorSessionRowSchema = z
@@ -35,6 +36,9 @@ export function createConductorSessionRepository({
   const selectSession = database.prepare("SELECT * FROM conductor_sessions WHERE id = ?");
   const selectCurrent = database.prepare(
     "SELECT * FROM conductor_sessions WHERE ended_at IS NULL ORDER BY started_at DESC, rowid DESC LIMIT 1",
+  );
+  const selectLatestSummary = database.prepare(
+    "SELECT * FROM conductor_sessions WHERE summary IS NOT NULL ORDER BY ended_at DESC, rowid DESC LIMIT 1",
   );
 
   function getExisting(id: string): ConductorSession {
@@ -62,8 +66,15 @@ export function createConductorSessionRepository({
         : readRow("conductor_sessions", conductorSessionRowSchema, row);
     },
 
+    latestSummary() {
+      const row = selectLatestSummary.get();
+      return row === undefined
+        ? null
+        : readRow("conductor_sessions", conductorSessionRowSchema, row).summary;
+    },
+
     setTokens: (id, tokens) => update(id, { tokens }),
 
-    end: (id) => update(id, { ended_at: timestamp(clock) }),
+    end: (id, summary) => update(id, { ended_at: timestamp(clock), summary }),
   };
 }

@@ -1,5 +1,6 @@
 import type { StatusStore } from "@mastermind/core/status";
 import { render, useInput } from "ink";
+import type { Instance } from "ink";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { CtrlCGuard } from "../ctrl-c.js";
 import type { TerminalCommand } from "../terminal-commands.js";
@@ -42,6 +43,10 @@ export function StatusApp({ store, guard, onCommand }: StatusAppProps) {
       guard.press();
       return;
     }
+    if (key.return && snapshot.summary.authRequired) {
+      onCommand("sign-in");
+      return;
+    }
     const command = key.ctrl || key.meta ? undefined : commandKeys[input];
     if (command !== undefined) onCommand(command);
   });
@@ -51,6 +56,7 @@ export function StatusApp({ store, guard, onCommand }: StatusAppProps) {
 
 export interface TerminalView {
   restore(): void;
+  handOff<T>(work: () => Promise<T>): Promise<T>;
 }
 
 export function renderStatusApp(
@@ -58,17 +64,32 @@ export function renderStatusApp(
   stdin: NodeJS.ReadStream,
   stdout: NodeJS.WriteStream,
 ): TerminalView {
-  const instance = render(<StatusApp {...props} />, {
-    stdin,
-    stdout,
-    exitOnCtrlC: false,
-    patchConsole: true,
-  });
+  const mount = () =>
+    render(<StatusApp {...props} />, { stdin, stdout, exitOnCtrlC: false, patchConsole: true });
+  let instance: Instance | null = mount();
+
+  // Ctrl+C twice can restore the terminal while the login hand-off already holds it.
+  function restore(): void {
+    if (instance === null) return;
+    instance.clear();
+    instance.unmount();
+    instance = null;
+    stdin.setRawMode(false);
+  }
+
   return {
-    restore() {
-      instance.clear();
-      instance.unmount();
-      stdin.setRawMode(false);
+    restore,
+
+    // The login hand-off owns the terminal with inherited stdio, so Ink leaves raw mode and stops drawing until it
+    // returns.
+    async handOff(work) {
+      restore();
+      stdin.pause();
+      try {
+        return await work();
+      } finally {
+        instance = mount();
+      }
     },
   };
 }

@@ -19,7 +19,9 @@ import type { ChildHandle, ExitResult } from "../procs.js";
 import { attributionOff, classifyExit, createStreamParser } from "../sessions/index.js";
 import type { EventDetails, ParsedEvent, StreamParser, UsageBackoff } from "../sessions/index.js";
 import { summariseActions } from "./action-line.js";
-import { turnPrompt } from "./prompt.js";
+import { turnPrompt, wakeText, withSummary } from "./prompt.js";
+import { conductorRolloverTokens } from "./rollover.js";
+import type { ConductorSummariser } from "./rollover.js";
 import { createTurnRecorder } from "./turn.js";
 import type { TurnRecorder } from "./turn.js";
 
@@ -45,12 +47,15 @@ export interface ChatRunnerOptions {
   model: () => string;
   digest: () => string;
   backoff: Pick<UsageBackoff, "reportUsageLimit">;
+  summariser: ConductorSummariser;
   onError: (error: unknown) => void;
   idleMs?: number;
+  rolloverTokens?: number;
 }
 
 export interface ChatRunner {
   send(text: string): ChatTurn;
+  wake(): void;
   stop(): boolean;
   status(): ChatStatus;
   activeTurn(): ChatTurnRef | null;
@@ -71,6 +76,8 @@ interface ConductorProcess {
   session: Session;
   conversationId: string;
   model: string;
+  resumed: boolean;
+  prompted: boolean;
   parser: StreamParser;
   rawLog: WriteStream;
   stderr: string[];
@@ -134,6 +141,7 @@ function failureText(outcome: ExitOutcome): string | null {
 // resumed by its session id.
 export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   const { db, bus, cli, onError, idleMs = conductorIdleMs } = options;
+  const rolloverTokens = options.rolloverTokens ?? conductorRolloverTokens;
   const sessionLogsDir = join(options.logsDir, "sessions");
   const post = (message: NewChatMessage) => postChatMessage({ db, bus }, message);
 
@@ -143,6 +151,10 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   let previousExit: Promise<void> = Promise.resolve();
   let turn: Turn | null = null;
   let deferred: DeferredTurn | null = null;
+  let rollover: Promise<void> | null = null;
+  let rolloverTried: { conversationId: string; tokens: number } | null = null;
+  let wakeQueued = false;
+  let wakeTimer: ReturnType<typeof setTimeout> | undefined;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let interruptTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -156,6 +168,46 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     if (conversation.id !== conversationId) return;
     if (conversation.stored) db.conductorSessions.end(conversation.id);
     conversation = { id: randomUUID(), stored: false };
+  }
+
+  function rolloverDue(): number | null {
+    if (!conversation.stored) return null;
+    const stored = db.conductorSessions.current();
+    const tokens = stored?.id === conversation.id ? stored.tokens : null;
+    if (tokens === null || tokens < rolloverTokens) return null;
+    const tried =
+      rolloverTried?.conversationId === conversation.id && rolloverTried.tokens === tokens;
+    return tried ? null : tokens;
+  }
+
+  // The conversation is replaced only once its summary exists, so a judge call that fails leaves the chat where it
+  // was, and the rollover is tried again after the next turn.
+  async function rollOver(conversationId: string, tokens: number): Promise<void> {
+    rolloverTried = { conversationId, tokens };
+    const summary = await options.summariser.summarise(conversationId);
+    if (summary === null || disposed || conversation.id !== conversationId) return;
+    if (live !== null) await endProcess(live);
+    db.conductorSessions.end(conversationId, summary);
+    conversation = { id: randomUUID(), stored: false };
+  }
+
+  function rollOverIfDue(): Promise<void> {
+    const tokens = rollover === null ? rolloverDue() : null;
+    if (tokens !== null)
+      rollover = rollOver(conversation.id, tokens)
+        .catch(onError)
+        .finally(() => {
+          rollover = null;
+        });
+    return rollover ?? Promise.resolve();
+  }
+
+  // A wake turn needs event lines the Conductor hasn't seen, and a Claude that can answer.
+  function wakeAllowed(): boolean {
+    const { authRequired, backoffResumeAt } = db.flags.get();
+    const backingOff = backoffResumeAt !== null && Date.parse(backoffResumeAt) > Date.now();
+    const news = db.chat.list(cursor).some((message) => message.kind === "system");
+    return news && !disposed && !authRequired && !backingOff;
   }
 
   function printOptions(model: string): PrintOptions {
@@ -276,12 +328,20 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     bus.emit({ type: "chat.turn", turnId: current.ref.turnId, replying: false });
     // A message written just as the turn ended was not folded into it; the CLI answers it as its own turn.
     const undelivered = current.written - current.delivered;
+    if (end.kind === "result" && !current.stopRequested && undelivered > 0) {
+      startTurn(current.process, undelivered);
+      return;
+    }
     const next = deferred;
     deferred = null;
-    if (end.kind === "result" && !current.stopRequested && undelivered > 0)
-      startTurn(current.process, undelivered);
-    else if (next !== null) openTurn(next.ref, next.texts.join("\n\n"));
-    else scheduleIdle();
+    const wake = wakeQueued && wakeAllowed();
+    wakeQueued = false;
+    if (next !== null) openTurn(next.ref, next.texts.join("\n\n"));
+    else if (wake) openTurn(newTurnRef(), wakeText);
+    else {
+      scheduleIdle();
+      void rollOverIfDue();
+    }
   }
 
   function promptFor(text: string): string {
@@ -380,6 +440,8 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
       session,
       conversationId: conversation.id,
       model,
+      resumed: conversation.stored,
+      prompted: false,
       parser: createStreamParser(),
       rawLog: createWriteStream(join(sessionLogsDir, `${String(session.id)}.jsonl`)),
       stderr: [],
@@ -438,6 +500,8 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
 
   async function begin(current: Turn, prompt: string): Promise<void> {
     try {
+      await rollOverIfDue();
+      current.ref = { ...current.ref, conductorSession: conversation.id };
       const proc = await ensureProcess();
       if (disposed || turn !== current) return;
       if (current.stopRequested) {
@@ -445,7 +509,13 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
         return;
       }
       current.process = proc;
-      for (const text of [prompt, ...current.queued.splice(0)]) deliver(current, proc, text);
+      // A new conversation starts from the summary of the ones before it (PLAN 6.2).
+      const opening =
+        proc.resumed || proc.prompted
+          ? prompt
+          : withSummary(db.conductorSessions.latestSummary(), prompt);
+      proc.prompted = true;
+      for (const text of [opening, ...current.queued.splice(0)]) deliver(current, proc, text);
     } catch (error) {
       onError(error);
       finish(current, { kind: "failed", reason: errorMessage(error) });
@@ -491,6 +561,25 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
       return true;
     },
 
+    // Coalesces the event lines posted together into one turn, and waits for a running turn to end.
+    wake() {
+      if (turn !== null) {
+        wakeQueued = true;
+        return;
+      }
+      if (wakeTimer !== undefined) return;
+      wakeTimer = setTimeout(() => {
+        wakeTimer = undefined;
+        if (!wakeAllowed()) return;
+        if (turn !== null) {
+          wakeQueued = true;
+          return;
+        }
+        clearTimeout(idleTimer);
+        openTurn(newTurnRef(), wakeText);
+      }, 0);
+    },
+
     status: () => ({ model: options.model(), replying: turn !== null }),
 
     activeTurn: () => turn?.ref ?? null,
@@ -498,6 +587,7 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     dispose() {
       disposed = true;
       clearTimeout(idleTimer);
+      clearTimeout(wakeTimer);
       clearTimeout(interruptTimer);
     },
   };

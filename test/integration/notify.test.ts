@@ -59,6 +59,7 @@ async function serveWithNotifications(): Promise<Notified> {
     clock: systemClock,
     maxAttempts: () => 3,
     fixers: { startFixer: () => Promise.reject(new Error("no fixer in this test")) },
+    signedIn: () => Promise.resolve(true),
     onError: (error) => errors.push(error),
   });
 

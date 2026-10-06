@@ -93,7 +93,12 @@ export function StatusView({ snapshot, armed, now }: StatusViewProps) {
         ))}
       </Box>
       <Box marginTop={1}>
-        <Footer armed={armed} paused={summary.paused} counts={liveCounts(snapshot)} />
+        <Footer
+          armed={armed}
+          paused={summary.paused}
+          signInNeeded={summary.authRequired}
+          counts={liveCounts(snapshot)}
+        />
       </Box>
     </Box>
   );

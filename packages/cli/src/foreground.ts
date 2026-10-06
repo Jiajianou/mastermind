@@ -129,6 +129,7 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
     registry,
     env,
     platform: process.platform,
+    handOffTerminal: (work) => (view === null ? work() : view.handOff(work)),
     onError: reportError,
   });
   const { stdin, stdout } = process;

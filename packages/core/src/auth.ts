@@ -134,6 +134,8 @@ function describeWrongKind(wrongKind: WrongKindReason): string {
 export const signInPrompt =
   "Mastermind needs a Claude Pro or Max account. Press Enter to sign in in your browser · Esc to quit";
 
+export const signInExpiredPrompt = "Your Claude sign-in expired. Press Enter to sign in again.";
+
 export const switchAccountWarning =
   "Signing in with a different account signs Claude Code out everywhere on this machine.";
 

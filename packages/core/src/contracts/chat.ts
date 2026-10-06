@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isoTimestampSchema, jsonValueSchema } from "./common.js";
-import { modelSchema } from "./config.js";
+import { eventLineKindSchema, modelSchema } from "./config.js";
 
 export const chatMessageKindSchema = z.enum([
   "user",
@@ -61,18 +61,11 @@ export const sendChatInputSchema = z.strictObject({
 export const chatTurnSchema = z.object({ turnId: z.string(), message: chatMessageSchema });
 export type ChatTurn = z.infer<typeof chatTurnSchema>;
 
-export const eventLineKindSchema = z.enum([
-  "review",
-  "blocked",
-  "rebased",
-  "sign_in",
-  "usage_limit",
-  "owner_on_main",
-]);
-export type EventLineKind = z.infer<typeof eventLineKindSchema>;
-
 export const eventLineMetaSchema = z.discriminatedUnion("event", [
-  z.object({ event: z.enum(["review", "blocked", "rebased"]), taskId: z.string() }),
+  z.object({
+    event: eventLineKindSchema.extract(["review", "blocked", "rebased"]),
+    taskId: z.string(),
+  }),
   z.object({ event: z.literal("sign_in") }),
   z.object({ event: z.literal("owner_on_main"), branch: z.string() }),
   z.object({ event: z.literal("usage_limit"), resumeAt: isoTimestampSchema }),

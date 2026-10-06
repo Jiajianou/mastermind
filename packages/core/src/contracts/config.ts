@@ -72,9 +72,19 @@ const sandboxSchema = z.strictObject({
   allowedDomains: z.array(nonEmptyString),
   allowWrite: z.array(nonEmptyString),
 });
+export const eventLineKindSchema = z.enum([
+  "review",
+  "blocked",
+  "rebased",
+  "sign_in",
+  "usage_limit",
+  "owner_on_main",
+]);
+export type EventLineKind = z.infer<typeof eventLineKindSchema>;
+
 const conductorSchema = z.strictObject({
   confirm: z.array(nonEmptyString),
-  wakeOnEvents: z.array(nonEmptyString),
+  wakeOnEvents: z.array(eventLineKindSchema),
 });
 
 export const configSchema = z.strictObject({

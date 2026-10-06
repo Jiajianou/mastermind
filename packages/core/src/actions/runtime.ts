@@ -5,14 +5,25 @@ import type { ActionScope } from "./registry.js";
 
 export type SchedulerScope = Pick<ActionScope<"scheduler.updated">, "db" | "emit">;
 
-function setSchedulerFlags(scope: SchedulerScope, change: Partial<RuntimeFlags>): RuntimeFlags {
-  const flags = scope.db.flags.set(change);
+function emitScheduler(scope: SchedulerScope, flags: RuntimeFlags): RuntimeFlags {
   scope.emit({ type: "scheduler.updated", paused: flags.paused, resumeAt: flags.backoffResumeAt });
   return flags;
 }
 
+const setSchedulerFlags = (scope: SchedulerScope, change: Partial<RuntimeFlags>): RuntimeFlags =>
+  emitScheduler(scope, scope.db.flags.set(change));
+
 export function setBackoff(scope: SchedulerScope, resumeAt: Date | null): RuntimeFlags {
   return setSchedulerFlags(scope, { backoffResumeAt: resumeAt?.toISOString() ?? null });
+}
+
+export type SignInScope = Pick<ActionScope<"scheduler.updated" | "auth.updated">, "db" | "emit">;
+
+// An expired sign-in pauses work, and a good check resumes it (PLAN 4.3).
+export function setSignInRequired(scope: SignInScope, required: boolean): RuntimeFlags {
+  const flags = scope.db.flags.set({ authRequired: required, paused: required });
+  scope.emit({ type: "auth.updated", authRequired: flags.authRequired });
+  return emitScheduler(scope, flags);
 }
 
 export const pause = defineAction({

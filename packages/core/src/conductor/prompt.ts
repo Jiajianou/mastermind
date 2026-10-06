@@ -21,3 +21,9 @@ export function turnPrompt({ digest, updates, text }: TurnPromptInput): string {
         ];
   return ["<state>", digest, "</state>", ...updateBlock, "", text].join("\n");
 }
+
+export const wakeText = "<wake/>";
+
+export function withSummary(summary: string | null, prompt: string): string {
+  return summary === null ? prompt : ["<summary>", summary, "</summary>", prompt].join("\n");
+}

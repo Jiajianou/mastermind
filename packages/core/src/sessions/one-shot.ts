@@ -15,8 +15,8 @@ export type OneShotRole = Extract<SessionRole, "reviewer" | "judge">;
 
 export interface OneShotRequest<Schema extends z.ZodType> {
   role: OneShotRole;
-  taskId: string;
-  round: number;
+  taskId: string | null;
+  round: number | null;
   cwd: string;
   prompt: string;
   schema: Schema;

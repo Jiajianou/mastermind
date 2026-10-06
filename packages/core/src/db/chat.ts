@@ -41,6 +41,7 @@ export interface ChatRepository {
   append(message: NewChatMessage): ChatMessage;
   get(id: number): ChatMessage | null;
   list(afterId?: number): ChatMessage[];
+  listForConversation(conductorSession: string): ChatMessage[];
 }
 
 export interface ProposalRepository {
@@ -95,6 +96,13 @@ const proposalRowSchema = z
 export function createChatRepository({ database, clock }: DbContext): ChatRepository {
   const selectMessage = database.prepare("SELECT * FROM chat_messages WHERE id = ?");
   const selectMessages = database.prepare("SELECT * FROM chat_messages WHERE id > ? ORDER BY id");
+  // A message sent while a rollover runs is stored under the old conversation, but its turn belongs to the new one.
+  const selectConversation = database.prepare(
+    `SELECT * FROM chat_messages
+      WHERE conductor_session = :id
+         OR turn_id IN (SELECT turn_id FROM chat_messages WHERE conductor_session = :id AND turn_id IS NOT NULL)
+      ORDER BY id`,
+  );
 
   return {
     append(message) {
@@ -116,6 +124,14 @@ export function createChatRepository({ database, clock }: DbContext): ChatReposi
 
     list(afterId = 0) {
       return readRows("chat_messages", chatMessageRowSchema, selectMessages.all(afterId));
+    },
+
+    listForConversation(conductorSession) {
+      return readRows(
+        "chat_messages",
+        chatMessageRowSchema,
+        selectConversation.all({ id: conductorSession }),
+      );
     },
   };
 }

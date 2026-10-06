@@ -29,6 +29,7 @@ export interface FixerLauncherOptions {
   clock: Clock;
   maxAttempts: () => number;
   fixers: Pick<SessionManager, "startFixer">;
+  signedIn: () => Promise<boolean>;
   onError: (error: unknown) => void;
 }
 
@@ -141,7 +142,7 @@ export function createFixerLauncher(options: FixerLauncherOptions): FixerLaunche
         block(taskId, from, decision.attempts, request.reason);
         return "blocked";
       }
-      if (!claudeAllowed()) return "waiting";
+      if (!claudeAllowed() || !(await options.signedIn())) return "waiting";
       try {
         const fixer = await options.fixers.startFixer({
           taskId,

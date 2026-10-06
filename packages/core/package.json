@@ -27,6 +27,7 @@
     "./review": "./src/review/index.ts",
     "./runtime": "./src/runtime.ts",
     "./scheduler": "./src/scheduler.ts",
+    "./sign-in": "./src/sign-in.ts",
     "./sessions": "./src/sessions/index.ts",
     "./startup": "./src/startup/index.ts",
     "./status": "./src/status.ts",

@@ -1,3 +1,4 @@
+import { setSignInRequired } from "../actions/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import type { SettlementEffect } from "./settlement.js";
@@ -25,16 +26,17 @@ export function applySettlementEffect(effect: SettlementEffect, targets: EffectT
     case "backoff":
       backoff.reportUsageLimit();
       return;
-    case "auth-required": {
-      const flags = db.flags.set({ authRequired: true, paused: true });
-      bus.emit({ type: "auth.updated", authRequired: flags.authRequired });
-      bus.emit({
-        type: "scheduler.updated",
-        paused: flags.paused,
-        resumeAt: flags.backoffResumeAt,
-      });
+    case "auth-required":
+      setSignInRequired(
+        {
+          db,
+          emit: (event) => {
+            bus.emit(event);
+          },
+        },
+        true,
+      );
       return;
-    }
     case "none":
       return;
   }

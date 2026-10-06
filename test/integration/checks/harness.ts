@@ -130,6 +130,7 @@ export async function checksHarness(options: ChecksHarnessOptions): Promise<Chec
     clock: systemClock,
     maxAttempts: () => config.maxAttempts,
     fixers: manager,
+    signedIn: () => Promise.resolve(true),
     onError,
   });
   const gitWork = {

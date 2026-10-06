@@ -7,8 +7,10 @@ describe("the Ctrl+C footer", () => {
 
   it("always shows how to quit, and offers resume while paused", () => {
     const counts = { sessions: 2, checks: 1 };
-    const running = render(<Footer armed={false} paused={false} counts={counts} />);
-    const paused = render(<Footer armed={false} paused counts={counts} />);
+    const running = render(
+      <Footer armed={false} paused={false} signInNeeded={false} counts={counts} />,
+    );
+    const paused = render(<Footer armed={false} paused signInNeeded={false} counts={counts} />);
 
     expect(running.lastFrame()).toBe(
       "p pause · o open · c copy link · Ctrl+C twice to quit (stops all sessions)",
@@ -21,7 +23,7 @@ describe("the Ctrl+C footer", () => {
     [{ sessions: 2, checks: 1 }, "This kills 2 sessions and 1 check immediately."],
     [{ sessions: 1, checks: 0 }, "This kills 1 session and 0 checks immediately."],
   ])("warns with the live counts once armed (%o)", (counts, kills) => {
-    const { lastFrame } = render(<Footer armed paused={false} counts={counts} />);
+    const { lastFrame } = render(<Footer armed paused={false} signInNeeded counts={counts} />);
 
     expect(lastFrame()).toBe(`Press Ctrl+C again to quit. ${kills} Worktrees are kept.`);
   });

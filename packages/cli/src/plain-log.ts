@@ -32,5 +32,7 @@ export function startPlainLog(
       unsubscribeStore();
       unsubscribeGuard();
     },
+
+    handOff: (work) => work(),
   };
 }

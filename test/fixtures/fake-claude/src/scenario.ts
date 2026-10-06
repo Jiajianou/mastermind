@@ -17,7 +17,12 @@ export interface MessageBranch {
 }
 
 export type Step =
-  | { kind: "text"; text: string; streamMs?: number | undefined }
+  | {
+      kind: "text";
+      text: string;
+      streamMs?: number | undefined;
+      contextTokens?: number | undefined;
+    }
   | { kind: "read"; path: string }
   | { kind: "write"; path: string; content: string }
   | {
@@ -60,6 +65,7 @@ export const stepSchema: z.ZodType<Step> = z.lazy(() =>
       kind: z.literal("text"),
       text: z.string(),
       streamMs: z.number().int().positive().optional(),
+      contextTokens: z.number().int().positive().optional(),
     }),
     z.strictObject({ kind: z.literal("read"), path: z.string() }),
     z.strictObject({ kind: z.literal("write"), path: z.string(), content: z.string() }),

@@ -58,7 +58,7 @@ async function emitAssistant(
   runtime: TurnRuntime,
   progress: TurnProgress,
   block: AssistantBlock,
-  streamMs?: number,
+  { streamMs, contextTokens }: { streamMs?: number; contextTokens?: number } = {},
 ): Promise<void> {
   const { context, output } = runtime;
   const messageId = newMessageId();
@@ -71,7 +71,7 @@ async function emitAssistant(
       output.line(delta);
     }
   }
-  output.line(assistantLine(context, messageId, block));
+  output.line(assistantLine(context, messageId, block, contextTokens));
   if (partial) {
     const stopReason = block.type === "text" ? "end_turn" : "tool_use";
     for (const line of partialClosingLines(context, stopReason)) output.line(line);
@@ -223,7 +223,7 @@ async function runStep(runtime: TurnRuntime, step: Step, progress: TurnProgress)
 
   switch (step.kind) {
     case "text":
-      await emitAssistant(runtime, progress, { type: "text", text: step.text }, step.streamMs);
+      await emitAssistant(runtime, progress, { type: "text", text: step.text }, step);
       progress.lastText = step.text;
       return;
     case "read":

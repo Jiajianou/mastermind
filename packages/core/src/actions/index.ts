@@ -19,8 +19,8 @@ export type {
   ConfigWriter,
   ContractedActions,
 } from "./registry.js";
-export { setBackoff } from "./runtime.js";
-export type { SchedulerScope } from "./runtime.js";
+export { setBackoff, setSignInRequired } from "./runtime.js";
+export type { SchedulerScope, SignInScope } from "./runtime.js";
 export { assertValidBatch } from "./tasks.js";
 export { readTasksFile, writeTasksFile } from "./tasks-file.js";
 export type { TasksFile } from "./tasks-file.js";
