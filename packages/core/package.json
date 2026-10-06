@@ -5,12 +5,15 @@
   "type": "module",
   "exports": {
     "./contracts": "./src/contracts/index.ts",
+    "./actions": "./src/actions/index.ts",
     "./auth": "./src/auth.ts",
     "./claude": "./src/claude.ts",
     "./config": "./src/config/index.ts",
     "./db": "./src/db/index.ts",
     "./env": "./src/env.ts",
-    "./procs": "./src/procs.ts"
+    "./events": "./src/events.ts",
+    "./procs": "./src/procs.ts",
+    "./scheduler": "./src/scheduler.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

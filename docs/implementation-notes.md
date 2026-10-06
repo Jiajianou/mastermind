@@ -270,3 +270,69 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   other `authMethod` is refused naming the method. `Accepted.email` is nullable because a token may not report
   one. `readAuthStatus` parses stdout whatever the exit code, and throws `AuthStatusError` on output that isn't
   the expected JSON. `describeAuth`, `signInPrompt` and `switchAccountWarning` are the 4.2 texts.
+
+## m1-actions-scheduler
+
+- **Where it lives.** `@mastermind/core/actions` (`src/actions/`), `@mastermind/core/events` (`src/events.ts`) and
+  `@mastermind/core/scheduler` (`src/scheduler.ts`), all new package exports. Contracts added: `events.ts` (the bus
+  union), `actions.ts` (error codes and issues for HTTP and MCP error bodies), task input schemas in `tasks.ts`
+  (`taskIdSchema`, `touchPathSchema`, `newTaskSchema`, `taskEditSchema`, for web forms too) and `Summary` in
+  `runtime.ts`.
+- **Bus events.** The 14.2 list plus two additions: `scheduler.updated` (`paused`, `resumeAt`), emitted by pause,
+  resume and every back-off change, and `config.updated` (the merged config), emitted by `setConfig`. 14.2 has no
+  event for either, and the UI and Conductor need both. `auth.updated` carries `authRequired` only. A listener that
+  throws is reported through `onListenerError` (stderr by default) and never stops other listeners or the action.
+- **Actions.** `defineAction({ name, description, input, emits, handler })`. The handler gets `{ db, config, emit }`,
+  and `emit` is typed to the declared `emits`, so an action cannot emit an event it doesn't declare.
+  `createActionRegistry(context, builtinActions)` returns `register` (duplicate names throw), `list` (name,
+  description, zod input, emits: what route, tool and subcommand generators need), `invoke(name, unknown)` and a
+  typed `run(definition, input)`. Names are camelCase (`createTasks`, `pause`); m2-mcp maps them to the snake_case
+  tool names of 6.3 (`create_tasks`, `pause_all`). Every input is a strict object, so unknown fields are errors.
+  Actions that take nothing accept `undefined` or `{}`.
+- **Errors.** `ActionError { code: invalid_input | not_found | conflict, issues: {path, message}[] }`; zod paths read
+  like `tasks[0].touches[0]` (the config module's formatter is reused). `IllegalTransitionError` is a `conflict`.
+  HTTP should map them to 400, 404 and 409.
+- **Internal writers.** State the scheduler itself changes (the back-off time) is written by `setBackoff` in
+  `actions/runtime.ts`, not by a registered action, so it is never exposed as a route or tool but still lives in the
+  action layer. Later internal transitions (session start and end) should follow the same pattern or register
+  actions, and must call `assertTransition`.
+- **DAG validation** (`findGraphIssues(batch, existing)`) reports, in order: ids used twice in the batch, ids that
+  already exist, unknown deps (naming task and dep), and one cycle per strongly connected component that contains a
+  batch task, as the shortest cycle through its first batch task (`dependency cycle: a → b → a (each task depends
+  on the next)`). createTasks and importTasks validate and insert in one transaction, so nothing is stored on error.
+  updateTask validates new deps against all other tasks.
+- **Task ids** are lowercase slugs (`[a-z0-9]` runs joined by `.`, `_` or `-`, at most 64 characters), so they are
+  safe as branch names and clone folder names. **Touches** must be repo-relative (no leading `/`, no `..`). They are
+  compared segment by segment: a trailing `/` doesn't matter, `src/a` and `src/ab` don't overlap, `.` covers the
+  whole repo, and an empty list overlaps nothing.
+- **State machine** (`actions/transitions.ts`): pending → running; running → checking, pending (interrupted,
+  usage limit, auth, or a failure with attempts left), blocked; checking → running (fixer), review, rebasing,
+  blocked; review → rebasing (approve), running (request changes), checking (main moved, re-run checks), pending
+  (discard); rebasing → done, running (conflict or failure fixer), blocked; blocked → pending (retry). Retry also
+  resets attempts to 0. Hold and release only flip the flag, in any status. Later tasks extend the table if they
+  need another edge.
+- **Controls.** `moveToTop` sets the priority to one above the highest unfinished other task, and leaves a task that
+  is already strictly highest alone.
+- **tasks.yaml.** Import accepts a list of tasks or a mapping with `tasks`. Known task keys are the six of 7.1 plus
+  `priority` (so export, then import, round-trips priorities; export omits a priority of 0). Unknown keys are
+  dropped with warnings: one per unknown top-level key, and one per unknown task key with the number of tasks that
+  had it. Export writes `deps` and `touches` as flow lists and multi-line text as literal blocks.
+- **Scheduler.** `selectReady(state)` is pure: nothing while paused, auth is required or the back-off is in the
+  future; otherwise pending, unheld tasks with every dep done whose touches don't overlap a running, checking,
+  review or rebasing task, nor a task picked earlier in the same pass, in priority order (then oldest, then id),
+  up to `maxWorkers` minus running worker and fixer sessions and starts still in flight. `summarize` gives counts, active workers, `upNext`
+  (the same pick ignoring capacity and the pause, auth and back-off gates), blocked ids and `resumeAt` (null once
+  passed).
+- **Loop.** `createScheduler({ db, bus, clock, maxWorkers, startTask, onError })` ticks every 3 s and on a
+  zero-delay timer after `task.updated`, `session.ended`, `scheduler.updated`, `auth.updated` and `config.updated`.
+  A tick is synchronous: it calls `startTask` for each selected task without awaiting it, so a slow start (cloning,
+  `commands.setup`) never holds up other starts. Until its promise settles, a task is in `SchedulerState.starting`:
+  it is not picked again, its touches count as occupied and it takes a `maxWorkers` slot. **`startTask` should
+  resolve once the session row is `running` (or the task has left `pending`)**; a brief double count between the two
+  only makes the scheduler more cautious. A rejection goes to `onError` and the task is tried again on the next
+  interval tick, not immediately, so a start that keeps failing cannot spin.
+- **Back-off.** `reportUsageLimit()` waits 5, 10, 20, 40, then 60 minutes, stores the time in
+  `runtime_flags.backoffResumeAt`, emits `scheduler.updated` and clears it (emitting again) when it passes. A report
+  while a back-off is still running returns the current time unchanged, so two sessions that hit the limit together
+  don't double it twice. `reportSuccess()` resets the sequence. The sequence count is in memory, so a restart
+  starts again at 5 minutes, but a stored future `resumeAt` is honoured on `start()`.

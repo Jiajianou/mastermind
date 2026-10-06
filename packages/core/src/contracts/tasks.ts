@@ -32,3 +32,40 @@ export const taskSchema = z.object({
   updatedAt: isoTimestampSchema,
 });
 export type Task = z.infer<typeof taskSchema>;
+
+export const taskIdSchema = z
+  .string()
+  .max(64, "expected at most 64 characters")
+  .regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/, "expected a slug such as ext2-driver");
+
+function isRepoRelativePath(path: string): boolean {
+  return !path.startsWith("/") && !path.split("/").includes("..");
+}
+
+export const touchPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(isRepoRelativePath, "expected a path inside the repo, such as src/ or package.json");
+
+const requiredText = z.string().trim().min(1, "must not be empty");
+
+const editableTaskFields = {
+  title: requiredText,
+  goal: requiredText,
+  acceptance: requiredText,
+  touches: z.array(touchPathSchema),
+  deps: z.array(taskIdSchema),
+  priority: z.int(),
+};
+
+export const newTaskSchema = z.strictObject({
+  id: taskIdSchema,
+  ...editableTaskFields,
+  deps: editableTaskFields.deps.default([]),
+  priority: editableTaskFields.priority.default(0),
+});
+export type NewTaskInput = z.input<typeof newTaskSchema>;
+
+export const taskEditSchema = z.strictObject(editableTaskFields).partial();
+export type TaskEdit = z.infer<typeof taskEditSchema>;
