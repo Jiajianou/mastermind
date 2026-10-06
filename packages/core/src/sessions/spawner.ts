@@ -9,7 +9,7 @@ import type { EventBus } from "../events.js";
 import { stopGroup } from "../procs.js";
 import type { ChildHandle, ExitResult } from "../procs.js";
 import { classifyExit } from "./exit.js";
-import { fileEdit } from "./file-edits.js";
+import { fileEdit, ranShellCommand } from "./file-edits.js";
 import { createStreamParser } from "./parser.js";
 import type { ParsedEvent, TokenUsage } from "./parser.js";
 
@@ -158,6 +158,8 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
             taskId: session.taskId,
             path: edit.path,
           });
+        if (session.taskId !== null && ranShellCommand(event.details))
+          bus.emit({ type: "workspace.changed", sessionId: session.id, taskId: session.taskId });
         follow(event);
       } catch (error) {
         onError(error);

@@ -243,6 +243,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "config.updated":
         return [];
       case "file.changed":
+      case "workspace.changed":
       case "terminal.output":
       case "chat.message":
       case "chat.delta":

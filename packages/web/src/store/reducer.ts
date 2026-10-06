@@ -18,11 +18,18 @@ function appendEvent(state: LiveState, event: SessionEvent): LiveState {
   return { ...state, sessionEvents: { ...state.sessionEvents, [event.sessionId]: next } };
 }
 
-function touchWorkspace(state: LiveState, taskId: string, path?: string): LiveState {
-  const known = state.workspaces[taskId];
-  const revision = (known?.revision ?? 0) + 1;
-  const files = path === undefined ? (known?.files ?? {}) : { ...known?.files, [path]: revision };
-  return { ...state, workspaces: { ...state.workspaces, [taskId]: { revision, files } } };
+type Touched = { path: string } | "any-file";
+
+function touchWorkspace(state: LiveState, taskId: string, touched?: Touched): LiveState {
+  const known = state.workspaces[taskId] ?? { revision: 0, files: {}, anyFile: 0 };
+  const revision = known.revision + 1;
+  const workspace =
+    touched === undefined
+      ? { ...known, revision }
+      : touched === "any-file"
+        ? { ...known, revision, anyFile: revision }
+        : { ...known, revision, files: { ...known.files, [touched.path]: revision } };
+  return { ...state, workspaces: { ...state.workspaces, [taskId]: workspace } };
 }
 
 function withEdit(state: LiveState, sessionId: number, path: string): LiveState {
@@ -142,11 +149,11 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
       return appended;
     }
     case "file.changed":
-      return touchWorkspace(
-        withEdit(state, action.sessionId, action.path),
-        action.taskId,
-        action.path,
-      );
+      return touchWorkspace(withEdit(state, action.sessionId, action.path), action.taskId, {
+        path: action.path,
+      });
+    case "workspace.changed":
+      return touchWorkspace(state, action.taskId, "any-file");
     case "changes.loaded":
       return { ...state, changes: { ...state.changes, [action.taskId]: action.view } };
     case "check.updated": {

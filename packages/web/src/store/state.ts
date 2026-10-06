@@ -39,6 +39,7 @@ export interface ChatState {
 export interface Workspace {
   revision: number;
   files: Readonly<Record<string, number>>;
+  anyFile: number;
 }
 
 export type ChangesView =

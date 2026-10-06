@@ -79,6 +79,9 @@ describe("worker sessions", () => {
     expect(
       harness.events.flatMap((event) => (event.type === "file.changed" ? [event.path] : [])),
     ).toEqual(editedFiles);
+    expect(harness.events.filter((event) => event.type === "workspace.changed")).toEqual([
+      { type: "workspace.changed", sessionId: session?.id, taskId: "answer" },
+    ]);
 
     const [setup] = harness.db.checks.listForTask("answer");
     expect(setup).toMatchObject({ kind: "setup", status: "passed" });

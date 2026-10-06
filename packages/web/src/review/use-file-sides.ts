@@ -17,12 +17,17 @@ export type FileSides =
 const targetKey = ({ taskId, path, basePath }: FileTarget): string =>
   JSON.stringify([taskId, path, basePath]);
 
-// basePath null reads only the file on disk. The open file is read again on every edit that lands on it, and when
-// `refresh` changes (the changes list saw the file move some other way, such as a shell command).
+// basePath null reads only the file on disk. The open file is read again on every edit that lands on it or that
+// could have (a shell command), and when `refresh` changes (the changes list saw the file move some other way).
 export function useFileSides(target: FileTarget, refresh: string): FileSides | null {
   const api = useApi();
   const live = useLive((state) => state.connection === "live");
-  const revision = useLive((state) => state.workspaces[target.taskId]?.files[target.path] ?? 0);
+  const revision = useLive((state) => {
+    const workspace = state.workspaces[target.taskId];
+    return workspace === undefined
+      ? 0
+      : Math.max(workspace.files[target.path] ?? 0, workspace.anyFile);
+  });
   const [loaded, setLoaded] = useState<{ key: string; sides: FileSides } | null>(null);
   const key = targetKey(target);
 

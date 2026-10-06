@@ -1204,3 +1204,25 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   substrings in Playwright, so right after a click to Chat, m3.spec's `say` found the Sessions screen's "Message
   this session" box (still mounted for a moment) and steered alpha instead of chatting. The chat specs now pass
   `exact: true`.
+
+## m4-verify
+
+- **What it proves.** `test/e2e/web/m4.spec.ts` adds a task through the web chat (fake Conductor `create_tasks`),
+  opens its diff from the Overview card's View diff, and watches a fake worker's uncommitted edits to README.md
+  arrive in the diff within 5 seconds and keep advancing, while the clone's HEAD is still the base commit. Every edit
+  is a shell command (`printf … > README.md`), which the Edit-tool path of `review.spec.ts` did not cover.
+  `test/e2e/m4-steering.test.ts` runs `mastermind chat` twice against the built binary: the first adds a task, the
+  second makes the fake Conductor call `message_session`. The live worker, waiting on stdin, takes the message in
+  and writes `greeting.test.txt` instead of `greeting.txt`. The test checks the `steer` event, the stdin message in
+  fake-claude's log, a single still-running session (so delivery was live, not a resume) and the tool calls.
+- **Session id in the scenario.** As in m3-verify, the fake Conductor names the worker as session 2 (the Conductor is
+  session 1), and the test checks that before steering.
+- **Defect fixed: shell edits never reached the diff.** The Review screens re-read changes only on `file.changed`
+  (Edit-tool results), commits and session ends, so a file changed by a Bash command (a formatter, `sed -i`, a code
+  generator) stayed stale until the next one of those. The spawner now emits a new bus event
+  **`workspace.changed { sessionId, taskId }`** on every Bash tool_result, failed or not, since a failing command can
+  still write files. The web store's `Workspace` gained `anyFile` (the revision of the last change that could have
+  touched any file): the changes list is re-read on it, and the open file is read again when either its own
+  revision or `anyFile` moves, because the changes entry alone can stay identical (`+1 −1` before and after). The
+  terminal view and CLI clients ignore the event. Background shells (`run_in_background`) that write later are still
+  only seen at the next trigger.

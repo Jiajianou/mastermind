@@ -20,6 +20,11 @@ function edit(
   return null;
 }
 
+// A shell command can change any file, even when it fails, so its result says only that the workspace may have
+// changed.
+export const ranShellCommand = (details: EventDetails): boolean =>
+  details.line === "tool_result" && details.toolName === "Bash";
+
 // The tool_use line is printed before Claude Code applies the edit, so only a successful tool_result means the
 // file on disk has changed.
 export function fileEdit(details: EventDetails, roots: readonly string[]): FileEdit | null {

@@ -28,6 +28,11 @@ export const busEventSchema = z.discriminatedUnion("type", [
     path: z.string(),
   }),
   z.object({
+    type: z.literal("workspace.changed"),
+    sessionId: z.int(),
+    taskId: z.string(),
+  }),
+  z.object({
     type: z.literal("session.ended"),
     sessionId: z.int(),
     taskId: z.string().nullable(),

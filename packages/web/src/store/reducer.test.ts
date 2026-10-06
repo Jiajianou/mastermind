@@ -116,7 +116,7 @@ const cases: Case[] = [
   },
   {
     name: "a commit moves the task's workspace so its changes are read again",
-    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 } } } }),
+    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 }, anyFile: 1 } } }),
     action: {
       type: "session.event",
       sessionId: 1,
@@ -124,16 +124,28 @@ const cases: Case[] = [
       event: { ...sessionEvent(1), type: "commit" },
     },
     after: (next) => {
-      expect(next.workspaces.alpha).toEqual({ revision: 4, files: { "a.ts": 2 } });
+      expect(next.workspaces.alpha).toEqual({ revision: 4, files: { "a.ts": 2 }, anyFile: 1 });
     },
   },
   {
     name: "file.changed moves the workspace and that file, so an open copy of it is read again",
-    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 } } } }),
+    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 }, anyFile: 1 } } }),
     action: { type: "file.changed", sessionId: 1, taskId: "alpha", path: "src/app.ts" },
     after: (next) => {
-      expect(next.workspaces.alpha).toEqual({ revision: 4, files: { "a.ts": 2, "src/app.ts": 4 } });
+      expect(next.workspaces.alpha).toEqual({
+        revision: 4,
+        files: { "a.ts": 2, "src/app.ts": 4 },
+        anyFile: 1,
+      });
       expect(next.editing[1]).toBe("src/app.ts");
+    },
+  },
+  {
+    name: "workspace.changed moves the workspace and every file, since a shell command could have changed any of them",
+    before: stateWith({ workspaces: { alpha: { revision: 3, files: { "a.ts": 2 }, anyFile: 1 } } }),
+    action: { type: "workspace.changed", sessionId: 1, taskId: "alpha" },
+    after: (next) => {
+      expect(next.workspaces.alpha).toEqual({ revision: 4, files: { "a.ts": 2 }, anyFile: 4 });
     },
   },
   {
