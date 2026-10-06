@@ -1,0 +1,1295 @@
+# Build plan for Mastermind, executed in order by ./implement.sh.
+# Each task runs as its own unattended Claude Code session and lands on main as one squashed commit.
+# Task fields follow mastermind's own tasks.yaml import format (PLAN.md 7.1) plus `milestone` and `tests`.
+# `gate` runs after every task, followed by that task's `acceptance` command. Both must exit 0.
+
+version: 1
+gate: pnpm install --frozen-lockfile && pnpm verify
+
+tasks:
+  # ───────────────────────────── Milestone 0: foundations ─────────────────────────────
+
+  - id: m0-scaffold
+    milestone: 0
+    title: "build: pnpm workspace, strict TypeScript, lint, tests and CI"
+    deps: []
+    touches: [package.json, pnpm-workspace.yaml, tsconfig.base.json, packages/, test/, .github/, docs/implementation-notes.md]
+    goal: |
+      Set up the repository skeleton from PLAN.md section 17 so that every later task has a working quality gate.
+      - A pnpm workspace with `@mastermind/core` (packages/core), `@mastermind/cli` (packages/cli, bin `mastermind`)
+        and `@mastermind/web` (packages/web, React and Vite). The root package.json declares `engines.node >=22.13`,
+        `packageManager` pnpm, and `pnpm.onlyBuiltDependencies` for the native and binary dependencies that will
+        come later (esbuild, node-pty).
+      - One shared strict tsconfig base: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`,
+        `noFallthroughCasesInSwitch`, `verbatimModuleSyntax`, ESM everywhere (NodeNext for the Node packages,
+        bundler resolution for web). Core exposes a browser-safe subpath export `@mastermind/core/contracts`
+        (packages/core/src/contracts/, no Node imports) that web and cli can import.
+      - ESLint flat config: typescript-eslint `strictTypeChecked` and `stylisticTypeChecked`,
+        `@typescript-eslint/no-explicit-any: error`, react-hooks rules for web. Prettier with `format` and
+        `format:check` scripts.
+      - Vitest projects: `unit` (node env, packages/{core,cli}/src/**/*.test.ts(x)), `web` (jsdom,
+        packages/web/src/**/*.test.ts(x)), `integration` (test/integration/**/*.test.ts) and `e2e`
+        (test/e2e/**/*.test.ts). Every project passes when it has no test files yet. Coverage through
+        @vitest/coverage-v8 (`pnpm coverage`), without thresholds for now.
+      - Playwright config for test/e2e/web/**/*.spec.ts that passes when there are no specs yet. Installing the
+        chromium browser happens automatically before the Playwright run (an idempotent `playwright install chromium`).
+      - tsup bundles the CLI (with core inlined) to packages/cli/dist/index.js with a shebang; `vite build` for web.
+        The root `build` builds everything.
+      - Root scripts: `typecheck`, `lint`, `format:check`, `test` (unit, web and integration), `test:unit`,
+        `test:integration`, `test:e2e` (the vitest e2e project, then Playwright), `test:live` (opt-in, never part of
+        verify or CI), `coverage`, `build`, and `verify`, which runs in order:
+        format:check, lint, typecheck, test, build, test:e2e. Every script must be non-interactive
+        (`vitest run`, never watch mode).
+      - Placeholder entry points so that build and typecheck pass: `mastermind --version` (commander) prints the
+        version, and web renders an empty shell.
+      - Test layout: test/fixtures/, test/support/, test/integration/, test/e2e/, test/e2e/web/.
+      - .gitignore (node_modules, dist, coverage, .implement/, .mastermind/, test-results/, playwright-report/),
+        .nvmrc (26), .editorconfig.
+      - .github/workflows/ci.yml: a matrix of ubuntu-latest and macos-latest with Node 22 and 26 that runs
+        `pnpm install --frozen-lockfile` and `pnpm verify`. Mastermind never pushes; this file is there for when the
+        owner does.
+      - Create docs/implementation-notes.md with a one-paragraph intro: decisions and deviations recorded by each task.
+    tests: |
+      One end-to-end smoke test only: spawning the built binary with `--version` prints the package version.
+      Write nothing else trivial.
+    acceptance: "test -f .github/workflows/ci.yml && test -f docs/implementation-notes.md && node packages/cli/dist/index.js --version"
+
+  - id: m0-spikes
+    milestone: 0
+    title: "docs: Claude CLI spikes and recorded stream-json samples"
+    deps: [m0-scaffold]
+    touches: [docs/claude-cli-notes.md, test/fixtures/claude-samples/]
+    goal: |
+      Run the ten spikes of PLAN.md 16.2 against the real `claude` CLI. This is the only task that deliberately
+      calls the real CLI, outside of tests.
+      Safety and cost rules:
+      - Run `claude` with a cleaned environment: unset ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL,
+        CLAUDE_CODE_USE_BEDROCK, CLAUDE_CODE_USE_VERTEX and CLAUDE_CODE_USE_FOUNDRY. Also unset the nested-session
+        variables that Claude Code sets for its own children (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT,
+        CLAUDE_CODE_SESSION_ID and similar; list exactly which ones matter). Mastermind's environment cleaner will need
+        this list, so that it works when started from a terminal inside Claude Code.
+      - Use `--model haiku` unless a spike needs something else, and keep every run small.
+      - Do every filesystem experiment in throwaway temp directories and temp git repos.
+      - Never touch the owner's sign-in. No `claude auth login`, `logout` or `setup-token` with the default config.
+        For spike 4, use a temp `CLAUDE_CONFIG_DIR` and an invalid `CLAUDE_CODE_OAUTH_TOKEN`.
+      - Spike 3 (the usage limit) can't be reproduced on demand. Record what can be learned: `rate_limit_event`
+        lines and their `rate_limit_info` in stream-json output, and the CLI's own error texts (for example
+        "usage limit reached", "hit your limit", "weekly usage limit"). Then state the fallback rule: back off on any
+        unrecognised non-zero exit.
+      - Spike 9: write a small Node script in which a detached child spawns `sleep`. Show that kill(-pgid) takes down
+        both, and that SIGINT sent to the parent's process group doesn't reach the child.
+      - Spike 10: macOS uses the seatbelt sandbox. If bubblewrap isn't available, record that Linux is untested.
+      Deliverables:
+      - Raw outputs in test/fixtures/claude-samples/<NN>-<name>.jsonl, with the owner's email and org ids replaced by
+        owner@example.com and placeholder ids. They become the parser's contract fixtures. At minimum record:
+        - one worker-like run that reads a file, edits a file, runs a Bash command and makes a git commit
+        - a `--json-schema` run
+        - an auth-failure run
+        - a stream-json input run with a message injected mid-run
+        - a run with `--include-partial-messages`
+        - an MCP-over-HTTP run that uses `--tools "Read,Grep,Glob"`. For this, start a tiny throwaway MCP server
+          in a script.
+      - docs/claude-cli-notes.md with one section per spike, headed exactly `## Spike N: <title>` (N = 1..10). Each
+        section gives the command used, what was observed and the decision for mastermind. End with a
+        `## Decisions` section covering:
+        - the ChatRunner choice (one persistent process or one process per turn)
+        - the steering method
+        - exact rules for detecting usage-limit and auth failures
+        - the mapping from stream-json lines to the event types of PLAN.md 8.4
+        - the nested-session variables to remove
+        - whether mastermind needs its own path guard (decision 9)
+    tests: |
+      No test code in this task. The samples become contract tests in m1-events-parser.
+    acceptance: "for n in 1 2 3 4 5 6 7 8 9 10; do grep -q \"^## Spike $n:\" docs/claude-cli-notes.md || exit 1; done; grep -q '^## Decisions' docs/claude-cli-notes.md && ls test/fixtures/claude-samples/*.jsonl > /dev/null && ! grep -rqi 'jiajian' test/fixtures/claude-samples"
+
+  - id: m0-fake-claude
+    milestone: 0
+    title: "test: fake-claude fixture and shared test harness"
+    deps: [m0-spikes]
+    touches: [test/fixtures/fake-claude/, test/support/, vitest.config.ts]
+    goal: |
+      Build test/fixtures/fake-claude/, which impersonates the `claude` CLI in every test. Its output must match
+      test/fixtures/claude-samples/ and docs/claude-cli-notes.md. The executable is test/fixtures/fake-claude/bin/claude.
+      - Supports `--version` (configurable) and `auth status --json`. By default it reports a signed-in Max account.
+        It can also report signed out, Pro, Team, Enterprise, Free, a Console API-key account, Bedrock or Vertex, and
+        an apiKeyHelper setup.
+      - `auth login` and `auth logout` change state stored in a per-test state dir. Login can be made to fail.
+      - `-p` with `--output-format stream-json`, `--input-format stream-json`, `--include-partial-messages`,
+        `--session-id`, `--resume`, `--json-schema`, `--model` and every other flag mastermind passes. Unknown flags
+        are recorded, not fatal.
+      - Behaviour comes from a typed scenario: a JSON file named by env `FAKE_CLAUDE_SCENARIO`, matched by
+        role/prompt text. A scenario is a list of steps:
+        - emit assistant text (also as partial deltas)
+        - read a file
+        - edit or write files in cwd
+        - run a shell command
+        - make a git commit, optionally with an attribution trailer
+        - write `.mastermind-result.md`
+        - return structured output for --json-schema
+        - sleep, or hang forever (optionally ignoring SIGTERM)
+        - spawn a long-lived grandchild process
+        - exit with the recorded usage-limit or auth-expired output
+        - crash
+        - wait for a stdin user message and branch on its text (for steering)
+        - call MCP tools on the server from `--mcp-config`. This step can be a typed extension point that
+          m2-conductor fills in.
+      - Every invocation appends a JSON record (argv, cwd, selected env vars, pid, pgid) to `FAKE_CLAUDE_LOG`, so
+        tests can assert flags and environment cleaning.
+      - Written in TypeScript with full types. It must run on Node 22.13+ and 26, for example through a small shell
+        shim that runs it with tsx.
+      Shared test harness in test/support/:
+      - `createTempRepo()`: a git repo with an initial commit and an owner identity (user.name and user.email),
+        with options for extra branches and files. It cleans up after itself.
+      - `isolatedEnv()`: a temp HOME and worktree root, with fake-claude first on PATH.
+      - A vitest global setup for the integration and e2e projects that fails fast if `claude` resolves to anything
+        but fake-claude. A test must never reach the real CLI.
+      - Process helpers: `waitFor(condition, timeout)`, finding live pids by a marker via `ps`, and killing leftover
+        process groups in afterEach.
+    tests: |
+      Integration tests for fake-claude, only where they protect later tests:
+      - its stream-json output has the same shapes as the recorded samples
+      - a commit with a trailer
+      - the usage-limit and auth-expired outputs match the recorded real texts
+      - a hung fake with a grandchild dies completely when its process group is killed
+    acceptance: "test -x test/fixtures/fake-claude/bin/claude && pnpm exec vitest run --project integration fake-claude"
+
+  # ───────────────────────────── Milestone 1: foreground runtime ─────────────────────────────
+
+  - id: m1-config
+    milestone: 1
+    title: "core: config schema, layering, and command and toolchain detection"
+    deps: [m0-fake-claude]
+    touches: [packages/core/src/config/, packages/core/src/contracts/]
+    goal: |
+      Implement PLAN.md 3.1 step 5, section 13, decision 4 and the sandbox presets of decision 9.
+      - A zod schema for config.yaml with every key of section 13 and its defaults. `maxWorkers: auto` resolves to
+        1 on Pro and 2 on Max. Durations like `60m` are parsed. `worktreeDir` defaults to
+        `~/.mastermind/worktrees/<repo>-<short hash of the repo path>`, with the home dir injectable.
+      - Layering: built-in defaults, then the committed `mastermind.yaml`, then `.mastermind/config.yaml`.
+        `setConfig` writes only the overrides to `.mastermind/config.yaml` and keeps the rest of that file intact.
+        Invalid config gives a readable error that names the key.
+      - Detect the build, test and setup commands from:
+        - package.json scripts (respecting pnpm, yarn or npm by lockfile)
+        - Makefile targets
+        - Cargo.toml and go.mod
+        - pyproject.toml (uv, poetry or pip)
+
+        Return the result in a shape the chat's "confirm detected commands" question can use.
+      - Toolchain sandbox presets (decision 9): package registry domains for `allowedDomains` and cache folders for
+        `allowWrite`, for npm, pnpm and yarn, cargo, go, and pip and uv.
+      - First-run setup: create `.mastermind/`, and idempotently add `/.mastermind/` and `/.mastermind-result.md`
+        to `.git/info/exclude`.
+      - The browser-safe config shape (for the Settings screen) lives in contracts.
+    tests: |
+      - Table-driven detection over temp dirs for each ecosystem.
+      - Layering precedence, and a setConfig round trip that preserves unrelated keys.
+      - Updating the exclude file is idempotent.
+      - An invalid config value gives an error naming the key.
+    acceptance: "pnpm exec vitest run --project unit config"
+
+  - id: m1-db
+    milestone: 1
+    title: "core: SQLite schema, migrations and typed repositories"
+    deps: [m1-config]
+    touches: [packages/core/src/db/, packages/core/src/contracts/]
+    goal: |
+      Implement PLAN.md section 12 on `node:sqlite`.
+      - `openDb(path)`: WAL mode, foreign keys, and a `schema_version` migration runner. Use the schema of section 12
+        exactly. You may add indexes, and a small key-value table for runtime flags (paused, authRequired, backoff
+        resume time); record that in the implementation notes.
+      - Domain types in `@mastermind/core/contracts`, as string literal unions derived from zod enums:
+        TaskStatus, SessionRole, SessionStatus, EventType, CheckKind, CheckStatus, FindingSeverity, ChatMessageKind
+        and ProposalStatus.
+      - DTOs in contracts for Task (with deps), Session, Event, Check, Finding, Comment, Rebase, ChatMessage and
+        Proposal.
+      - Repositories that map rows to domain objects (JSON columns parsed with zod). No raw SQL outside the db
+        module.
+      - A synchronous transaction helper. The kill path (PLAN.md 3.3 step 2) needs one synchronous transaction that
+        marks every running session, check and rebase `killed`; provide that as one repository function.
+      - ISO timestamps, with an injectable clock.
+    tests: |
+      - Migrating from empty, and reopening is idempotent.
+      - A task with deps round-trips.
+      - A failing transaction rolls back.
+      - The kill-path bulk update marks exactly the running rows.
+    acceptance: "pnpm exec vitest run --project unit db"
+
+  - id: m1-procs-auth
+    milestone: 1
+    title: "core: process groups, environment cleaning and the auth gate"
+    deps: [m1-db]
+    touches: [packages/core/src/procs.ts, packages/core/src/env.ts, packages/core/src/claude.ts, packages/core/src/auth.ts]
+    goal: |
+      Implement the rules of PLAN.md 3.3, sections 4 and 4.4, and 8.6 and 16.1.
+      - procs.ts:
+        - Spawn every child with `detached: true` and record its pid and pgid in a registry, tagged by kind
+          (session, check, rebase, conductor, terminal).
+        - `stopGroup`: SIGTERM to the group, then SIGKILL after 10 s.
+        - `killAllSync()`: SIGKILL every registered group synchronously and return counts by kind.
+        - Line-buffered stdout and stderr readers, and a typed exit result.
+      - env.ts: the cleaned environment of 4.4.
+        - Remove ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, CLAUDE_CODE_USE_BEDROCK,
+          CLAUDE_CODE_USE_VERTEX, CLAUDE_CODE_USE_FOUNDRY, and any ANTHROPIC_* variable that selects a provider.
+        - Keep CLAUDE_CODE_OAUTH_TOKEN.
+        - Also remove the nested-session variables listed in docs/claude-cli-notes.md.
+      - claude.ts:
+        - Find `claude` on PATH and check `claude --version` against a minimum version. Warn in doctor on any version
+          other than the tested one (16.1).
+        - An argument builder that, by construction, can never emit `--bare`, `--max-budget-usd` or
+          `--dangerously-skip-permissions`.
+      - auth.ts:
+        - Run `claude auth status --json` with the cleaned env and parse it with zod, tolerating extra fields.
+        - Classify the result as:
+          - Accepted {email, plan}
+          - NotSignedIn
+          - WrongKind {reason}, where reason is API billing, another provider, a plan other than Pro or Max (free,
+            team, enterprise), or apiKeyHelper
+        - Produce the owner-facing texts of 4.2.
+        - Login and logout hand-off: `claude auth login --claudeai` and `claude auth logout` with inherited stdio.
+    tests: |
+      - Unit:
+        - an environment-cleaner table
+        - an auth-classifier table covering every refusal case of 4.1 and 4.2, including Team and Enterprise
+        - forbidden flags never appear in built args
+      - Integration with fake-claude:
+        - a fake session with a grandchild is completely gone after killAllSync (checked with ps)
+        - stopGroup escalates to SIGKILL for a child that ignores SIGTERM
+        - auth status read through fake-claude for each kind of account
+    acceptance: "pnpm exec vitest run --project unit auth env && pnpm exec vitest run --project integration procs"
+
+  - id: m1-actions-scheduler
+    milestone: 1
+    title: "core: action layer, event bus, DAG validation and scheduler"
+    deps: [m1-procs-auth]
+    touches: [packages/core/src/actions/, packages/core/src/events.ts, packages/core/src/scheduler.ts, packages/core/src/contracts/]
+    goal: |
+      Implement PLAN.md 2.7, 5, 7.1, 7.2 and 7.3.
+      - A typed event bus whose union matches the WebSocket events of 14.2. The event contract lives in contracts.
+      - The action layer (actions.ts or actions/), which is the only writer of state.
+        - Each action is a zod input schema, a handler and the events it emits.
+        - A registry (name to definition) lets later tasks generate HTTP routes, MCP tools and CLI subcommands from
+          the same definitions.
+        - Implement now: createTasks (a batch validated as a DAG: duplicate ids, unknown deps, cycles, with precise
+          messages), updateTask, setPriority, moveToTop, hold, release, retry, pause, resume and setConfig.
+        - Also importTasks and exportTasks for the tasks.yaml format of 7.1. Unknown keys are ignored with a
+          warning, so this repository's own tasks.yaml imports.
+        - Later tasks register their own actions in the same registry.
+      - A pure state-machine module for the transitions of 7.2. Illegal transitions are rejected.
+      - scheduler.ts:
+        - A pure `selectReady(state)` that implements ready() exactly as in 7.3: the touches overlap check against
+          running, checking, review and rebasing tasks; deps done; held; paused; authRequired; priority order; and
+          a maxWorkers limit that counts only worker and fixer sessions.
+        - A loop that ticks every few seconds and after every state change, and calls an injected `startTask`.
+        - Global usage-limit back-off: 5 minutes, doubling, capped at 60. Expose `resumeAt` in the summary and in
+          events, and reset it after a successful session.
+    tests: |
+      - Table-driven readiness tests:
+        - touches prefix overlap in both directions, where `src/a` and `src/ab` don't overlap
+        - priority order
+        - the maxWorkers limit
+        - held, paused and authRequired
+      - DAG validation cases.
+      - Legal and illegal transitions.
+      - The back-off sequence, with fake timers.
+      - Actions reject invalid input and emit the right events.
+      - Importing this repo's tasks.yaml gives a valid graph.
+    acceptance: "pnpm exec vitest run --project unit scheduler actions dag"
+
+  - id: m1-events-parser
+    milestone: 1
+    title: "core: stream-json event parser tested against recorded samples"
+    deps: [m1-actions-scheduler]
+    touches: [packages/core/src/sessions/parser.ts, packages/core/src/contracts/]
+    goal: |
+      Implement PLAN.md 8.4 using the findings in docs/claude-cli-notes.md. This was pulled forward from milestone 2
+      because the session manager needs it; record that in the implementation notes.
+      - zod schemas for the stream-json lines mastermind relies on: system init, assistant text and tool_use, user
+        tool_result, partial stream deltas, result (usage, session id, is_error), and rate-limit events.
+        Unknown fields and unknown line types are tolerated and become `note`. The parser never throws.
+      - `parseLine(line)` returns {type, summary, payload, details}.
+        - type is start, read, edit, run, note, commit, steer, result or error.
+        - The summary is one line, such as `Edit kernel/fs/ext2/inode.rs`, `Run make test` or
+          `Commit "ext2: read superblock"`. Git commits are detected from Bash commands and their results.
+        - details carries the session id, usage, is_error, the result text, the tool name, the file path and the
+          command.
+      - `classifyExit(resultEvent, exitCode, stderr)` returns succeeded, failed, rate_limited {resetAt?} or
+        auth_failed, using the texts recorded in the notes.
+      - Extraction of `--json-schema` structured output (spike 2).
+    tests: |
+      - Contract tests that run the parser over every file in test/fixtures/claude-samples. Each sample asserts a
+        compact table of the expected types and summaries, not a giant snapshot.
+      - Malformed and unknown lines.
+      - Exit classification of the recorded usage-limit and auth texts.
+    acceptance: "pnpm exec vitest run --project unit parser"
+
+  - id: m1-sessions
+    milestone: 1
+    title: "core: task clones and the worker session manager"
+    deps: [m1-events-parser]
+    touches: [packages/core/src/git/, packages/core/src/sessions/, prompts/worker.md]
+    goal: |
+      Implement PLAN.md 8.1 to 8.4, 8.6, decisions 3, 9, 18 and 20, and layer 2 of section 11.
+      - Git basics (always `execFile("git")`, never a shell):
+        - `clone --local --single-branch --branch <main>` under config.worktreeDir, then `switch -c task/<id>`
+        - remove `origin`, and add `/.mastermind-result.md` to the clone's info/exclude
+        - store base_commit
+        - fetch main into the clone as `refs/remotes/upstream/<main>`, and fetch the task into the repo as
+          `refs/mastermind/<id>`
+        - WIP commits with the owner's identity and no trailers
+        - delete a clone
+      - Run `commands.setup` once per clone, recorded as a `setup` check row with a log under `.mastermind/logs/`.
+      - A session spawner shared by every role (worker now; fixer, reviewer and judge later). The worker spawn uses
+        exactly the arguments of 8.3:
+        - a uuid session id, the model, and stream-json in and out with verbose
+        - the permission mode from workerPermissions: bypass maps to bypassPermissions, auto to auto, and allowlist
+          to acceptEdits plus `--allowedTools`
+        - `--append-system-prompt-file`
+        - `--settings` with:
+          - attribution turned off
+          - the sandbox block of decision 9, built from config (enabled, allowedDomains, allowWrite plus the
+            presets, failIfUnavailable)
+          - deny rules for Edit and Write outside the worktree
+        - cwd is the clone, with the cleaned env, detached
+      - Create prompts/worker.md with every point of 8.3. The first stdin message is the task prompt.
+      - Ingestion:
+        - stdout lines go through the parser into `events` rows and onto the bus as `session.event`
+        - on `result`: close stdin, record end_commit, commit leftovers as `WIP: uncommitted at session end`, end
+          the session and move the task to `checking`
+        - record token usage on the session row
+        - Until milestone 5 adds the checks pipeline, `checking` is where a task stops.
+      - Exit handling:
+        - rate_limited: scheduler back-off, and the task returns to pending without an attempt
+        - auth_failed: set authRequired, pause, and the task returns to pending without an attempt (4.3)
+        - any other failure counts an attempt
+      - `stopSession`: SIGTERM, then SIGKILL after 10 s.
+      - Resume: a task with `resume_session` starts with `--resume <id>` and "You were interrupted. Check the
+        worktree state and continue."
+    tests: |
+      Integration tests with a temp repo and fake-claude:
+      - A worker that edits and commits brings its task to `checking`, with events stored and end_commit set.
+      - Uncommitted leftovers become a WIP commit with no trailers.
+      - FAKE_CLAUDE_LOG shows the expected flags and settings JSON, no forbidden flag, and a cleaned env.
+      - A usage-limit exit puts the task back to pending with back-off and no attempt counted.
+      - An auth-expired exit sets authRequired and pauses.
+      - The clone has no remote.
+    acceptance: "pnpm exec vitest run --project integration sessions"
+
+  - id: m1-recovery-lock
+    milestone: 1
+    title: "core: single-instance lock and recovery after a hard kill"
+    deps: [m1-sessions]
+    touches: [packages/core/src/lock.ts, packages/core/src/recovery.ts]
+    goal: |
+      Implement PLAN.md 3.1 step 2 and 3.5.
+      - `.mastermind/lock` holds the pid and port, and is created atomically. A stale lock whose pid is dead is
+        taken over. A live lock is reported with its pid and link.
+      - Recovery:
+        - Kill a leftover process group only if its pid is alive and `ps -o command=` contains that session's
+          `--session-id`.
+        - Mark those sessions killed.
+        - Commit uncommitted worktree changes as `WIP: interrupted`, with no trailers.
+        - Requeue the tasks to pending with `resume_session` set and attempts unchanged.
+        - Mark checks and rebases left running as killed.
+    tests: |
+      Integration tests:
+      - Recovery after a simulated hard kill: a live orphaned fake-claude is killed, its work is committed as WIP,
+        and its task is requeued with resume_session.
+      - An unrelated process that reuses a recorded pid is not killed.
+      - A stale lock is taken over, and a live lock is refused.
+    acceptance: "pnpm exec vitest run --project integration recovery lock"
+
+  - id: m1-startup
+    milestone: 1
+    title: "cli: startup sequence, auth gate, branch guard, first run and doctor"
+    deps: [m1-recovery-lock]
+    touches: [packages/cli/src/, packages/core/src/startup/]
+    goal: |
+      Implement PLAN.md 3.1, 4.2, decision 6 and the `doctor` command of 14.3.
+      - commander CLI: `mastermind [path] [--port <n>] [--open]` and `mastermind doctor [path]`.
+      - Steps 1 to 6 of 3.1, in order, as composable functions with injected IO (prompts, spawning) so they can
+        be tested:
+        - find the repo; outside git, exit with an error
+        - take the lock
+        - check that claude is present at or above the minimum version, with an install or update hint
+        - the auth gate, with the four outcomes and exact terminal texts of 4.2:
+          - login hand-off with inherited stdio
+          - exit after 3 failures
+          - for a wrong kind of account, offer to switch accounts (with the warning that this signs Claude Code out
+            everywhere) or quit
+        - the branch guard of 4a: switch to a new branch `dev` with `git switch`, keeping uncommitted changes; or
+          pick an existing branch; or quit
+        - first-run setup (config and command detection)
+        - recovery
+      - The startup banner of 3.4.
+      - `doctor` checks:
+        - git
+        - the claude version (warn if untested)
+        - sign-in and plan
+        - the attribution setting in ~/.claude/settings.json (section 11, layer 1)
+        - config validity
+        - worktree disk usage
+        - sandbox availability (bubblewrap and socat on Linux)
+
+        It exits non-zero if a check fails.
+    tests: |
+      Integration tests of the startup sequence on temp repos with fake-claude:
+      - When signed out, login is offered, and a successful login continues startup.
+      - An API-key or Console account is refused with the 4.2 text and a non-zero exit.
+      - On main, switching to `dev` keeps uncommitted changes.
+      - Outside a git repo, startup fails.
+      - doctor reports each check.
+    acceptance: "pnpm exec vitest run --project integration startup doctor"
+
+  - id: m1-runtime-tui
+    milestone: 1
+    title: "cli: foreground runtime, Ink terminal view and the Ctrl+C twice kill path"
+    deps: [m1-startup]
+    touches: [packages/cli/src/, packages/core/src/runtime.ts]
+    goal: |
+      Implement PLAN.md 3.2, 3.3, 3.4 and 5.
+      - Runtime wiring: config, db, actions, scheduler and session manager, plus one store that the terminal view
+        subscribes to.
+      - An Ink view that matches the 3.2 mockup:
+        - a header with repo, branch, commit, account and plan
+        - the link line (a placeholder until the server exists in milestone 2)
+        - RUNNING and QUEUE, with one row per session
+        - five scrolling event lines
+        - the permanent footer
+
+        Keys: `o` opens the browser, `c` copies the link, `p` pauses or resumes. When stdout isn't a TTY, print
+        plain log lines instead.
+      - The two-press logic is a pure state machine:
+        - The first press arms it for 2 s, with the orange footer text of 3.3 including live counts of sessions and
+          checks.
+        - A second press within 2 s fires.
+        - A timeout disarms it.
+
+        The raw-mode `\x03` key and SIGINT (outside raw mode) both feed this same machine. SIGHUP, SIGTERM and an
+        uncaught exception run the kill path at once.
+      - The kill path, in the order of 3.3:
+        1. killAllSync
+        2. one synchronous transaction that marks sessions, checks and rebases killed
+        3. restore the terminal and release the lock
+        4. print the summary
+        5. exit 130
+
+        It must take under 500 ms.
+    tests: |
+      - Unit:
+        - the two-press machine with fake timers
+        - an ink-testing-library render of the footer, normal and armed
+      - Integration: start the runtime on a temp repo with long-running fake sessions, then send two SIGINTs.
+        - It exits 130 within 500 ms.
+        - ps shows zero fake-claude pids.
+        - The DB rows are marked killed.
+        - The lock is released.
+    acceptance: "pnpm exec vitest run --project unit ctrl-c && pnpm exec vitest run --project integration kill-path"
+
+  - id: m1-verify
+    milestone: 1
+    title: "test: milestone 1 end-to-end verification"
+    deps: [m1-runtime-tui]
+    touches: [test/e2e/]
+    goal: |
+      Prove the milestone 1 "Done when" of PLAN.md 18 against the built binary (packages/cli/dist/index.js) on temp
+      repos with fake-claude. Fix any defect this uncovers, wherever it is.
+      - Seed tasks with core's importTasks: two parallel tasks and one dependent task. They reach `checking` in
+        dependency order.
+      - Ctrl+C twice leaves zero fake-claude pids within 500 ms (checked with ps).
+      - A restart resumes the killed tasks: FAKE_CLAUDE_LOG shows `--resume`, and no attempt is counted.
+      - Signed out, startup offers login. With an API-key account, startup refuses.
+    tests: |
+      test/e2e/m1-runtime.test.ts, covering exactly the scenarios above, each as one clear test.
+    acceptance: "pnpm exec vitest run --project e2e m1"
+
+  # ───────────────────────────── Milestone 2: service, MCP and Conductor ─────────────────────────────
+
+  - id: m2-http-ws
+    milestone: 2
+    title: "core: HTTP API, WebSocket stream and local-only security"
+    deps: [m1-verify]
+    touches: [packages/core/src/api/, packages/core/src/contracts/, packages/cli/src/]
+    goal: |
+      Implement PLAN.md 3.1 steps 7 and 8, 14.1, the WebSocket part of 14.2, and the DNS-rebinding and CSRF row of 20.
+      - Fastify on 127.0.0.1, on port 4700 or the next free port (`--port` overrides). A new random token on every
+        run is written to `.mastermind/token` with mode 600, and the port goes into the lock.
+      - Every route requires `Authorization: Bearer <token>`, and requests whose Host or Origin isn't localhost are
+        rejected. Browsers can't set headers on a WebSocket, so authenticate it with a first message or a
+        subprotocol; document the choice.
+      - The routes of 14.1 that exist so far:
+        - Mutations are generated from the action registry and validated by the same zod schemas.
+        - Reads: summary (counts by status, active sessions, rebase queue, up next, blocked, auth and pause state,
+          back-off resume time), tasks with deps and unblocks, sessions, session events, pause and resume,
+          hold/release/retry/top, and stop session.
+      - Typed request and response contracts in `@mastermind/core/contracts`.
+      - WebSocket `/api/stream` broadcasts bus events with taskId and sessionId. Send `service.stopping` best-effort
+        on the kill path.
+      - Serve the built web app at `/`, with an index.html fallback. The CLI build copies packages/web/dist and
+        prompts/ into the CLI's dist, so the installed binary is self-contained.
+      - Wire the server into startup: print `http://127.0.0.1:<port>/#t=<token>`, and make the terminal view's link
+        line and its o and c keys work.
+    tests: |
+      Integration tests with fastify.inject and a real WebSocket client:
+      - 401 without a token and with a wrong token.
+      - Host and Origin rejection.
+      - A mutation over HTTP emits the WebSocket event.
+      - Invalid input gives a 400 that names the field.
+      - The token file has mode 600.
+      - The port falls back when 4700 is busy.
+    acceptance: "pnpm exec vitest run --project integration http ws"
+
+  - id: m2-mcp
+    milestone: 2
+    title: "core: MCP server with confirmation-gated tools"
+    deps: [m2-http-ws]
+    touches: [packages/core/src/conductor/mcp.ts, packages/core/src/proposals.ts]
+    goal: |
+      Implement PLAN.md 6.3 and the MCP part of 14.2.
+      - `/mcp` over Streamable HTTP with @modelcontextprotocol/sdk, protected by the same bearer token.
+      - Tools are generated from the action registry and the read models. Register those whose actions exist now:
+        get_summary, list_tasks, get_task, list_sessions, get_session_events, create_tasks, update_task,
+        set_priority, hold, release, retry, pause_all, resume_all, stop_session, propose_plan and set_config.
+        Later tasks register theirs (message_session, request_changes, get_changes, get_check_log, approve_rebase,
+        discard_task) through the same mechanism.
+      - Tool descriptions are written for the model: concise and precise.
+      - Gating:
+        - A tool listed in config.conductor.confirm stores a `proposals` row and returns `awaiting_confirmation`
+          with the proposal id.
+        - `confirmProposal` runs the action exactly once; `rejectProposal` rejects it. Both emit
+          `proposal.updated` and append a system chat message that the Conductor sees on its next turn.
+        - Proposals expire; choose and record the rule.
+      - `propose_plan` stores a `plan` chat message (a numbered list) that the UI can Start.
+    tests: |
+      - Unit tests for proposal gating:
+        - gated and ungated tools
+        - confirm runs the action exactly once, and a double confirm is a no-op
+        - reject
+        - expiry
+        - a change to the confirm list in config takes effect
+      - Integration: a real MCP SDK client over HTTP lists the tools, gets a create_tasks cycle error as a tool error,
+        and gets `awaiting_confirmation` from set_config.
+    acceptance: "pnpm exec vitest run --project unit proposals && pnpm exec vitest run --project integration mcp"
+
+  - id: m2-conductor
+    milestone: 2
+    title: "core: Conductor chat runner, state digest and chat history"
+    deps: [m2-mcp]
+    touches: [packages/core/src/conductor/, prompts/conductor.md, test/fixtures/fake-claude/]
+    goal: |
+      Implement PLAN.md 6.1, 6.2 and 6.4.
+      - conductor/runner.ts: a ChatRunner using the strategy chosen in docs/claude-cli-notes.md.
+        - The preferred strategy is one persistent stream-json process, killed after 10 minutes idle and resumed by
+          id. It supports interrupting a turn (Stop) and adding a message mid-turn.
+        - Use exactly the arguments of 6.2. Write `.mastermind/run/conductor-mcp.json` with the bearer header.
+        - The model is the per-project chat choice. cwd is the repo root, with the cleaned env, detached, and the
+          process is registered as `conductor` for the kill path.
+      - prompts/conductor.md:
+        - its role and tools
+        - short, plain replies
+        - propose before irreversible actions
+        - never name internal concepts (Conductor, MCP, tool names) to the owner
+        - never write attribution
+      - conductor/digest.ts: a digest of about 300 tokens prepended to each turn (counts by status, running sessions,
+        needs-you, pause and auth state).
+      - chat_messages persistence for user, conductor, action, proposal, plan and system messages, with turn ids.
+        - Each turn's tool calls are summarised into one action line, such as `✓ Added 5 tasks and started 2`.
+        - Partial text is streamed as `chat.delta`; `chat.message` is emitted on completion.
+      - Event lines (6.4) are system messages, posted only for:
+        - ready for review
+        - blocked
+        - rebased onto main
+        - sign-in needed
+        - usage limit hit, with the resume time
+      - HTTP: GET and POST /api/chat, POST /api/chat/stop, and the proposals confirm and reject routes. The chat model
+        choice persists per project.
+      - Extend fake-claude with a Conductor mode: it reads `--mcp-config`, calls scripted MCP tools over HTTP and
+        streams partial text. That makes the whole chat path testable without the real CLI.
+    tests: |
+      - Unit: the digest reflects state, and stays within budget on a large graph.
+      - Integration with the fake Conductor:
+        - A turn creates tasks through MCP; the reply text and the action line are stored and streamed.
+        - Stop interrupts a turn.
+        - A second turn reuses the same claude session.
+        - Event lines appear only for the five kinds of event.
+    acceptance: "pnpm exec vitest run --project unit digest && pnpm exec vitest run --project integration conductor"
+
+  - id: m2-cli-client
+    milestone: 2
+    title: "cli: subcommands that talk to the running instance"
+    deps: [m2-conductor]
+    touches: [packages/cli/src/]
+    goal: |
+      Implement the client part of PLAN.md 14.3.
+      - Find the running instance through `.mastermind/lock` (the port) and `.mastermind/token`. If none is running,
+        say so clearly.
+      - `status`, `tasks`, `logs <task> [-f]` (following through the WebSocket), and `chat "<msg>"`, which streams
+        the reply to stdout and prints the action lines.
+      - `hold|release|retry|discard|approve <task>`, generated from the action registry. discard and approve
+        become available once milestone 5 registers them.
+      - `import|export <tasks.yaml>` through HTTP routes for import and export.
+      - Human-readable output by default, and `--json` for scripts.
+    tests: |
+      End-to-end with the built binary, a running instance on a temp repo and fake-claude:
+      - `chat "add a task …"` streams a reply and the task exists.
+      - `status` and `tasks` output.
+      - `logs -f` follows new events.
+      - `hold`, then `release`.
+      - `import`, then `export`, round-trips.
+    acceptance: "pnpm exec vitest run --project e2e cli-client"
+
+  - id: m2-verify
+    milestone: 2
+    title: "test: milestone 2 verification and the opt-in live Conductor test"
+    deps: [m2-cli-client]
+    touches: [test/e2e/, test/live/, prompts/conductor.md]
+    goal: |
+      Prove the milestone 2 "Done when" of PLAN.md 18 and add the live tests of section 19. Fix any defect found.
+      - End-to-end with the built binary: from the terminal, `mastermind chat "add a task …"` and
+        `mastermind chat "what's running?"` work with the (fake) Conductor driving fake workers. The task is created,
+        a worker starts, and the status answer reflects it.
+      - `pnpm test:live` is an opt-in vitest project in test/live/. It never runs in verify or CI. It runs the real
+        Conductor (the real `claude` with the cleaned env) against a temp repo with fake workers. It asserts on tool
+        calls, not wording:
+        - "add a task to create hello.txt" leads to a create_tasks call
+        - "what's running?" uses only read tools
+      - At the end of this task, run `pnpm test:live` once yourself to validate the Conductor prompt. Unset the
+        nested-session environment variables listed in the notes first. If it fails because of prompt quality,
+        improve prompts/conductor.md. Record the outcome in the implementation notes. If the live run can't be
+        made to work unattended, record why and move on; it isn't part of acceptance.
+    tests: |
+      test/e2e/m2-chat.test.ts for the done-when scenario, and test/live/conductor.live.test.ts.
+    acceptance: "pnpm exec vitest run --project e2e m2"
+
+  # ───────────────────────────── Milestone 3: web shell, chat, overview, sessions ─────────────────────────────
+
+  - id: m3-web-shell
+    milestone: 3
+    title: "web: app shell, Arctic theme, API client and live store"
+    deps: [m2-verify]
+    touches: [packages/web/, test/e2e/web/, playwright.config.ts]
+    goal: |
+      Implement PLAN.md 15.1, the top bar and banners of 15.2, the token handling of 3.1 step 8, and 3.4.
+      - React with a router for Chat, Overview, Tasks, Sessions and Review, plus a Settings route that stays empty
+        until milestone 8.
+      - The theme tokens of 15.1 exactly, as CSS variables:
+        - IBM Plex Sans and Mono, self-hosted with @fontsource so it works offline
+        - 8px panel and 6px control radii, controls at least 44px tall, visible focus styles
+        - status is never shown by colour alone
+      - Token handling: read the `#t=` fragment, move it to sessionStorage and strip it from the URL with
+        history.replaceState. A typed API client built on contracts sends the bearer header. A 401 shows "open the
+        link printed in the terminal".
+      - A WebSocket client that reconnects, and one store whose pure reducers apply events to normalised state.
+        A pane re-renders only when its taskId or sessionId changes. Choose the store approach and record it.
+      - Top bar:
+        - the project name and the tabs
+        - `Running · Max`, whose tooltip shows the account and the Ctrl+C note
+        - a Pause/Resume button
+      - Banners:
+        - sign-in needed
+        - usage limit, with the resume time
+        - "mastermind stopped (terminal closed or Ctrl+C). Run mastermind . to continue.", shown after
+          `service.stopping` or when the socket can't reconnect
+      - The Vite dev server proxies to a running instance.
+      - A Playwright harness that starts the built binary on a temp repo with fake-claude and opens the printed link.
+    tests: |
+      - Web project:
+        - store reducers apply each event kind
+        - token extraction
+      - Playwright, test/e2e/web/shell.spec.ts:
+        - Opening the link stores the token and removes it from the address bar.
+        - Killing the server shows the stopped banner.
+    acceptance: "pnpm exec vitest run --project web store && pnpm exec playwright test shell"
+
+  - id: m3-chat
+    milestone: 3
+    title: "web: chat home screen"
+    deps: [m3-web-shell]
+    touches: [packages/web/src/chat/, packages/web/src/screens/, test/e2e/web/]
+    goal: |
+      Implement PLAN.md 6.5 exactly, the decision box of 6.3, and the event lines of 6.4.
+      - Layout and status:
+        - one centred column, at most 760px wide
+        - the status pill (`2 working · 1 needs you · 7 of 14 done`) links to Overview
+      - Messages:
+        - the owner's messages are right-aligned bubbles
+        - mastermind's replies are plain text on the left, rendered as safe markdown (no raw HTML)
+        - a muted action line under a reply
+        - event lines centred, with the time
+      - A plan is a numbered list (task id and a short note) with a Start button.
+      - A decision box: a question, at most two buttons and a "See changes" link, wired to proposal confirm and
+        reject.
+      - Streaming deltas; Send becomes Stop while mastermind replies.
+      - A model menu (`Opus ▾`) that persists per project.
+      - Enter sends and Shift+Enter adds a newline. `@task` completion and `/pause` work but aren't advertised.
+      - First run:
+        - the heading "What should we build in <repo>?"
+        - the setup question confirming the detected build and test commands: Use these, or Change (edit inline,
+          then setConfig)
+        - three starter buttons: "Plan work from a goal", "Import tasks.yaml" (a file picker that posts to import),
+          and "What can you do?"
+      - Internal names (Conductor, MCP, tool names) never appear in the UI.
+    tests: |
+      - Web project:
+        - assembling a streamed reply
+        - Enter and Shift+Enter
+        - the rendered chat never contains internal names
+      - Playwright, test/e2e/web/chat.spec.ts:
+        - first run, then Use these
+        - send a message and see the streamed reply and action line
+        - confirm a decision box
+    acceptance: "pnpm exec vitest run --project web chat && pnpm exec playwright test chat"
+
+  - id: m3-overview-sessions
+    milestone: 3
+    title: "web: Overview and Sessions screens"
+    deps: [m3-chat]
+    touches: [packages/web/src/screens/, test/e2e/web/]
+    goal: |
+      Implement items 2 and 4 of PLAN.md 15.2.
+      - Overview:
+        - Tiles for Remaining, Running, Done and Blocked, plus "N of M".
+        - Active session cards: task, role, elapsed time, branch, latest action in mono, files changed with +/−,
+          View diff and Activity. A fixer card shows its attempt and reason in peach. File counts come from events
+          now and from the changes API after milestone 4.
+        - A right column with the Rebase queue, Up next (ready tasks, and waiting tasks with what they wait on) and
+          Needs you.
+      - Sessions:
+        - Left: active sessions, then sessions finished today.
+        - Centre: a header with task, role, start time, branch, View diff and Stop session, then the timeline (time,
+          type, summary). Failures are peach and the live row is highlighted. Auto-scroll pauses when the owner
+          scrolls up.
+        - Right: facts (role, model, attempt, elapsed, commits, files, a context bar from tokens), and the task's
+          goal and acceptance command.
+      - Everything updates live through the store, with no polling.
+    tests: |
+      - Web project: the derived view models (Up next and waiting reasons, elapsed time with an injected clock).
+      - Playwright, test/e2e/web/overview.spec.ts:
+        - A running fake session appears on Overview.
+        - Its timeline grows live.
+        - Stop session works.
+    acceptance: "pnpm exec vitest run --project web overview sessions && pnpm exec playwright test overview"
+
+  - id: m3-verify
+    milestone: 3
+    title: "test: milestone 3 verification"
+    deps: [m3-overview-sessions]
+    touches: [test/e2e/web/]
+    goal: |
+      Prove the milestone 3 "Done when" with Playwright against the built binary, a fake Conductor and fake workers.
+      Fix any defect found.
+      - Tasks are created and watched through the chat, and one is stopped from the chat, with no page reload.
+        Prove there was no reload with a window marker that must survive.
+      - Check accessibility basics on Chat, Overview and Sessions: real buttons and labels, keyboard navigation, and
+        status words next to colours.
+    tests: |
+      test/e2e/web/m3.spec.ts.
+    acceptance: "pnpm exec playwright test m3"
+
+  # ───────────────────────────── Milestone 4: git service, review, steering ─────────────────────────────
+
+  - id: m4-git-service
+    milestone: 4
+    title: "core: git service for live diffs, files and trees with path safety"
+    deps: [m3-verify]
+    touches: [packages/core/src/git/, packages/core/src/api/]
+    goal: |
+      Implement PLAN.md 9.1.
+      - Changes:
+        - name-status and numstat against base_commit, plus `status --porcelain` so uncommitted and untracked
+          files show up (untracked files count as added)
+        - `since=round:N` diffs against that round's session end_commit
+      - Files: the base version with `git show`, the current version from disk.
+      - Tree: `ls-files` plus untracked files.
+      - Path safety: resolve and realpath every path, and reject anything outside the task's worktree. That covers
+        `..`, absolute paths, symlink escapes and NUL bytes. Detect binary files and cap the size.
+      - Routes of 14.1: changes, file and tree. MCP tool: get_changes.
+      - Edit events carry the file path, so the UI can refresh the open file.
+    tests: |
+      - Unit: a path-safety table, including a symlink that points outside the worktree.
+      - Integration on temp clones:
+        - an uncommitted edit shows up in changes
+        - renames, deletes and binary files
+        - changes since a round
+    acceptance: "pnpm exec vitest run --project unit path-safety && pnpm exec vitest run --project integration git-service"
+
+  - id: m4-review-ui
+    milestone: 4
+    title: "web: Review screens with Monaco diffs"
+    deps: [m4-git-service]
+    touches: [packages/web/src/screens/, packages/web/src/components/, test/e2e/web/]
+    goal: |
+      Implement items 5 and 6 of PLAN.md 15.2.
+      - Review, one session:
+        - Session tabs show a status word and a file count, with Diff/File and One/All toggles.
+        - Files are grouped by directory, marked M or A, and the file being edited now is tagged "editing".
+        - A read-only Monaco diff shows the base commit against the file on disk, labelled "uncommitted" when it is.
+        - File mode shows a plain editor and the full tree.
+        - The open file refreshes on every `session.event` that edits it.
+        - The Monaco theme is built from the Arctic tokens. Monaco is bundled locally, not loaded from a CDN.
+      - Review, all sessions: a two-column grid with one pane per active session.
+        - Each pane shows the latest edited file as a compact inline diff, with an Open button.
+        - A pane with a problem gets a peach border and a warning label.
+    tests: |
+      - Web project: the file-list view model (grouping, markers, the editing tag).
+      - Playwright, test/e2e/web/review.spec.ts: an uncommitted edit by a fake worker appears in the diff within a few
+        seconds.
+    acceptance: "pnpm exec vitest run --project web review && pnpm exec playwright test review"
+
+  - id: m4-steering
+    milestone: 4
+    title: "core: steering live sessions with message_session"
+    deps: [m4-review-ui]
+    touches: [packages/core/src/sessions/, packages/web/src/screens/]
+    goal: |
+      Implement PLAN.md 8.5 and the message_session tool of 6.3.
+      - `messageSession(sessionId, text)` writes a stream-json user message into the live session's stdin and
+        records a `steer` event.
+      - If the session has ended, or injection doesn't work (see spike 5 in the notes), fall back to
+        `--resume <claude_session_id>` with the message, in the same worktree. That creates a new session row with
+        no attempt counted.
+      - Expose it through:
+        - HTTP: POST /api/sessions/:id/message
+        - the MCP tool, with the chat action line `✓ Sent to <task>`
+        - a small message box on the Sessions screen
+    tests: |
+      Integration with a fake worker that waits on stdin:
+      - An injected message changes what the worker does next (it writes a different file).
+      - After the session has ended, the resume fallback is used.
+    acceptance: "pnpm exec vitest run --project integration steering"
+
+  - id: m4-verify
+    milestone: 4
+    title: "test: milestone 4 verification"
+    deps: [m4-steering]
+    touches: [test/e2e/]
+    goal: |
+      Prove the milestone 4 "Done when" against the built binary. Fix any defect found.
+      - An edit in a worktree appears in the diff within a few seconds, before any commit (Playwright).
+      - A steering message sent through the chat (fake Conductor, then MCP, then stdin) changes a live worker's
+        course.
+    tests: |
+      test/e2e/web/m4.spec.ts and test/e2e/m4-steering.test.ts.
+    acceptance: "pnpm exec playwright test m4 && pnpm exec vitest run --project e2e m4"
+
+  # ───────────────────────────── Milestone 5: checks, rebase queue, attribution guard ─────────────────────────────
+
+  - id: m5-checks
+    milestone: 5
+    title: "core: checks pipeline, fixers, reviewer findings and blocking"
+    deps: [m4-verify]
+    touches: [packages/core/src/checks/, packages/core/src/sessions/, prompts/fixer.md, prompts/reviewer.md]
+    goal: |
+      Implement PLAN.md 9.2, 7.2, the fixer, reviewer and judge roles of 8.1, and decision 21.
+      - The pipeline runs when a session ends:
+        1. build
+        2. acceptance
+        3. rebase onto upstream main inside the clone. On a conflict, abort and start a fixer with the conflict
+           output; the fixer redoes the rebase. This isn't an attempt unless the fixer gives up.
+        4. the full suite on the rebased branch
+        5. the reviewer, if reviewer.enabled. At most one reviewer runs at a time.
+      - Each check is a `checks` row with a log file in `.mastermind/logs/`, a status and a duration, and emits
+        `check.updated`. Check processes run in their own process groups and are registered for the kill path.
+        Only one check pipeline runs at a time.
+      - Failure handling: if check 1, 2 or 4 fails, or the reviewer reports a serious finding, and attempts remain,
+        start a fixer (prompts/fixer.md) with the tail of the failing log or the findings. Each fixer round counts
+        an attempt and is followed by the pipeline again. At maxAttempts the task becomes `blocked`, with an event
+        line.
+      - Reviewer:
+        - prompts/reviewer.md, tools limited to Read, Grep and Glob
+        - `--json-schema` for [{file, line, text, severity}]
+        - sonnet by default
+        - findings stored in `findings`
+      - A judge helper (haiku, `--max-turns 1 --json-schema`) decides whether a failure is flaky. A flaky failure
+        gets one automatic re-run that doesn't count as an attempt.
+      - When everything passes, the task goes to `rebasing`, or to `review` if its touches hit requireReviewFor.
+      - Routes and tools: GET checks, GET a check log, POST checks/rerun, and the MCP tool get_check_log.
+    tests: |
+      Integration with fake-claude and a temp repo whose Makefile build and test can be told to fail:
+      - A failing build gets a fixer, then passes.
+      - A persistent failure blocks after maxAttempts.
+      - A rebase conflict is resolved by a fixer.
+      - A serious finding gets a fixer; a minor finding is stored and the task proceeds.
+      - A protected path goes to review.
+    acceptance: "pnpm exec vitest run --project integration checks"
+
+  - id: m5-rebase-queue
+    milestone: 5
+    title: "core: rebase queue, squash, attribution guard and fast-forward"
+    deps: [m5-checks]
+    touches: [packages/core/src/rebase/, packages/core/src/attribution.ts]
+    goal: |
+      Implement PLAN.md 9.3, "Staying current" in 9.2, section 11, and decisions 2, 6, 7, 13, 18 and 19.
+      - The rebase queue handles one task at a time:
+        1. Rebase onto current main. Conflicts go to a fixer, as in the checks pipeline.
+        2. Squash with `reset --soft <main>` and a commit whose message mastermind writes: the subject from the title,
+           and a body with the worker's summary from .mastermind-result.md and the task id. No trailers, and the
+           owner's identity.
+        3. Run the attribution guard.
+        4. Build and test.
+        5. Fetch into the repo as `refs/mastermind/<id>`.
+        6. `git update-ref refs/heads/<main> <new> <old>`. If main moved, retry safely.
+        7. Delete the clone and the ref.
+        8. Mark the task `done`, wake the scheduler, post the event line, and record `rebases` rows and
+           `rebase.updated`.
+      - attribution.ts:
+        - A scanner and rewriter for the patterns of section 11, case-insensitive and including variants such as
+          `Co-authored-by: Claude <noreply@anthropic.com>` and "🤖 Generated with [Claude Code](…)".
+        - A final `git log <main>..<branch> --format=%B` scan that stops the rebase onto main if anything matches.
+      - If the owner's checkout is on main, rebasing onto main pauses. Emit the event, show the terminal and chat
+        prompt, and resume once HEAD moves off main.
+      - Staying current: when main moves, rebase every finished branch that isn't on main yet, and re-run checks 4
+        and 5.
+      - With `autoRebase: false`, passing tasks wait in review.
+      - Actions:
+        - approve rebases a task that is in review
+        - discard deletes the branch and the clone and returns the task to pending (7.2)
+        - register approve_rebase and discard_task as gated MCP tools
+      - Never `git merge`, and never push or fetch remotes.
+    tests: |
+      - Unit: a scanner and rewriter table.
+      - Integration:
+        - A passing task fast-forwards main by exactly one commit, and `git rev-list --merges` stays empty.
+        - An injected trailer is stripped and never reaches main.
+        - If main moves while a task is being rebased onto it, the update-ref fails safely and the rebase is retried.
+        - When the owner is on main, rebasing pauses.
+        - discard removes the clone and the ref.
+    acceptance: "pnpm exec vitest run --project unit attribution && pnpm exec vitest run --project integration rebase-queue"
+
+  - id: m5-test-and-decide
+    milestone: 5
+    title: "web: Test and decide screen"
+    deps: [m5-rebase-queue]
+    touches: [packages/web/src/screens/, test/e2e/web/]
+    goal: |
+      Implement item 7 of PLAN.md 15.2, without comments (they come in milestone 6).
+      - Header: "Ready for review · round N", Discard branch, and the primary "Approve and rebase".
+      - Left: the check list with statuses and "Re-run all", and the file list.
+      - Centre: the diff.
+      - Right: a "Failed test" box with the tail of the failed check's log, and room for the milestone 6 terminal.
+      - A click in the UI is the confirmation, so these buttons call the actions directly.
+      - The word is "Rebase" everywhere (decision 19); never "Merge" or "Land".
+    tests: |
+      - Web project: no UI string contains "Merge" or "Land".
+      - Playwright, test/e2e/web/decide.spec.ts:
+        - A task under requireReviewFor reaches review.
+        - Approve and rebase puts it on main.
+        - Discard removes another task.
+    acceptance: "pnpm exec playwright test decide"
+
+  - id: m5-verify
+    milestone: 5
+    title: "test: milestone 5 verification"
+    deps: [m5-test-and-decide]
+    touches: [test/e2e/]
+    goal: |
+      Prove the milestone 5 "Done when" against the built binary. Fix any defect found.
+      - A passing task is rebased onto main and fast-forwarded, with no merge commit.
+      - A conflicting branch is resolved by a fixer, then rebased onto main.
+      - A failing task gets a fixer, then blocks after maxAttempts.
+      - An injected attribution trailer never reaches main.
+    tests: |
+      test/e2e/m5-rebase.test.ts.
+    acceptance: "pnpm exec vitest run --project e2e m5"
+
+  # ───────────────────────────── Milestone 6: review notes, request changes, Try it ─────────────────────────────
+
+  - id: m6-request-changes
+    milestone: 6
+    title: "review: line comments, findings, request changes and rounds"
+    deps: [m5-verify]
+    touches: [packages/core/src/review/, packages/web/src/screens/, prompts/refine.md]
+    goal: |
+      Implement PLAN.md section 10, items 7 and 8 of 15.2, the comments, findings and request-changes routes of 14.1,
+      and request_changes in 6.3.
+      - Comments CRUD, tagged with the round, and dismissing findings.
+      - A pure message builder: the instruction, the selected comments (file, line, excerpt, text), the selected
+        findings, and optionally the failing test output. The UI previews the exact text before sending.
+      - Modes:
+        - resume: `--resume <claude_session_id>` in the same worktree
+        - fresh: a new worker reading the task, a diff summary and the notes, using prompts/refine.md
+      - Rounds:
+        - The round goes up by one and the task returns to `running`.
+        - When the round ends, the checks run again, and the task goes back to review (or straight to rebasing, by
+          the usual rules).
+      - Changes since the previous round, in the API and as a toggle in Review.
+      - UI:
+        - Monaco view zones for comments and findings, with add-comment on a line selection.
+        - A "Request changes · N comments" button.
+        - The Request changes screen:
+          - a back link and "this becomes round N+1"
+          - "What to send" toggles, with findings off by default
+          - the overall instruction and "Who does the work"
+          - Send to session and Cancel
+          - the Rounds history and a live preview of the message
+      - The MCP tool request_changes, with its chat action line.
+    tests: |
+      - Unit: the message builder.
+      - Integration: a round trip in resume mode and in fresh mode with fake-claude.
+      - Playwright, test/e2e/web/request-changes.spec.ts: add a comment, request changes, see a new round, and
+        return to review with the diff since the previous round.
+    acceptance: "pnpm exec vitest run --project unit request-changes && pnpm exec vitest run --project integration rounds && pnpm exec playwright test request-changes"
+
+  - id: m6-try-it
+    milestone: 6
+    title: "review: Try it yourself terminals"
+    deps: [m6-request-changes]
+    touches: [packages/core/src/terminals.ts, packages/web/src/components/]
+    goal: |
+      Implement "Try it yourself" from PLAN.md section 10, the pty kill of 3.3 step 1, the terminal routes of 14.1,
+      and `terminal.output`.
+      - node-pty is imported lazily.
+      - One terminal per task, in the task's (rebased) worktree, with the cleaned env.
+      - The terminal is registered for the kill path, which calls `pty.kill("SIGKILL")`.
+      - Output streams over the WebSocket as terminal.output. Input goes over the WebSocket or a POST. There is a
+        Stop button.
+      - xterm sits in the right column of Test and decide.
+      - If node-pty can't load, the feature shows a clear message and nothing else breaks.
+    tests: |
+      Integration:
+      - `echo hi && pwd` in a task terminal streams its output, and the cwd is the worktree.
+      - Stop kills the terminal.
+      - The kill path kills open ptys.
+    acceptance: "pnpm exec vitest run --project integration try-it"
+
+  - id: m6-verify
+    milestone: 6
+    title: "test: milestone 6 verification"
+    deps: [m6-try-it]
+    touches: [test/e2e/]
+    goal: |
+      Prove the milestone 6 "Done when" against the built binary. Fix any defect found.
+      - A request-changes round trip works from the UI (Playwright) and from the chat (a fake Conductor calling
+        request_changes).
+      - The diff can show changes since the previous round.
+    tests: |
+      test/e2e/web/m6.spec.ts and test/e2e/m6-rounds.test.ts.
+    acceptance: "pnpm exec playwright test m6 && pnpm exec vitest run --project e2e m6"
+
+  # ───────────────────────────── Milestone 7: tasks board, planning, import/export ─────────────────────────────
+
+  - id: m7-tasks-board
+    milestone: 7
+    title: "web: Tasks board, task editing and dependency graph"
+    deps: [m6-verify]
+    touches: [packages/web/src/screens/, test/e2e/web/]
+    goal: |
+      Implement item 3 of PLAN.md 15.2 and the fields of 7.1.
+      - A board with Remaining, Running, Rebasing and Done columns. Blocked sits under Rebasing, and unmet
+        dependencies show as pills.
+      - A side panel with goal, acceptance, Depends on (with statuses), Unblocks and Touches, and the actions Edit,
+        Move to top and Hold/Release.
+      - Create and edit forms validated with the shared zod schemas.
+      - A Graph tab using React Flow with automatic layout (for example dagre or elkjs). Status is shown by word as
+        well as colour.
+    tests: |
+      - Web project: assigning tasks to columns, and unmet dependencies.
+      - Playwright, test/e2e/web/tasks.spec.ts:
+        - Edit a task and move it to the top.
+        - The graph shows a node for every task.
+    acceptance: "pnpm exec vitest run --project web tasks && pnpm exec playwright test tasks"
+
+  - id: m7-planning
+    milestone: 7
+    title: "core: planning through chat, plan lists and tasks.yaml import/export"
+    deps: [m7-tasks-board]
+    touches: [packages/core/src/conductor/, prompts/planner.md, packages/web/src/chat/]
+    goal: |
+      Implement the vision-to-task-graph flow of PLAN.md 6.1, propose_plan in 6.3, plans in 6.5, and import and
+      export in 7.1, 14.1 and 14.3.
+      - prompts/planner.md guides the Conductor when it plans: small tasks with acceptance commands, touches, deps
+        and priorities.
+      - propose_plan shows the plan message. Start, or "go ahead" in the chat, creates all the tasks atomically,
+        validated as a DAG.
+      - Import and export work everywhere: through the API, the CLI and the "Import tasks.yaml" starter.
+        - Cycles and unknown deps are rejected with precise messages.
+        - Unknown keys produce a warning.
+    tests: |
+      Integration:
+      - Importing this repository's own tasks.yaml gives a valid graph with the right deps.
+      - An export, then an import, round-trips.
+      - A cycle is rejected with a message that names it.
+      - A plan, then Start, creates the tasks.
+    acceptance: "pnpm exec vitest run --project integration planning import"
+
+  - id: m7-verify
+    milestone: 7
+    title: "test: milestone 7 verification"
+    deps: [m7-planning]
+    touches: [test/e2e/web/]
+    goal: |
+      Prove the milestone 7 "Done when": a vision shared in the chat becomes an imported, valid task graph. Use
+      Playwright with a fake Conductor that calls propose_plan. Click Start, then check the tasks on the board and in
+      the graph. Fix any defect found.
+    tests: |
+      test/e2e/web/m7.spec.ts.
+    acceptance: "pnpm exec playwright test m7"
+
+  # ───────────────────────────── Milestone 8: polish ─────────────────────────────
+
+  - id: m8-settings-notify
+    milestone: 8
+    title: "web: Settings screen and desktop notifications"
+    deps: [m7-verify]
+    touches: [packages/web/src/screens/, packages/core/src/notify.ts]
+    goal: |
+      Implement item 9 of PLAN.md 15.2, decisions 3, 15 and 16, and gated set_config.
+      - Settings is opened from `Running · Max` and saves to .mastermind/config.yaml. It covers:
+        - models per role, and whether the reviewer runs
+        - worker permissions (bypass, auto or allowlist) and the allowlist
+        - the sandbox on or off, with allowed domains
+        - the number of parallel workers
+        - the build, test and setup commands
+        - protected paths
+      - The chat can change the same settings behind a confirmation.
+      - Notifications go out for events that need the owner: blocked, sign-in needed, a protected task waiting for
+        review, or a usage-limit pause.
+        - With a browser tab connected: the browser Notification API, with permission asked once, and a click opens
+          the right screen.
+        - With no tab connected: `osascript` on macOS, `notify-send` on Linux.
+        - There is a Settings toggle.
+        - The notifier is injectable, and tests never fire real OS notifications.
+    tests: |
+      - Integration:
+        - With no WebSocket client, a blocked task calls the native notifier once (captured by a fake).
+        - With a client connected, the web app gets it instead.
+      - Playwright, test/e2e/web/settings.spec.ts: changing the worker model in Settings persists to config.yaml.
+    acceptance: "pnpm exec vitest run --project integration notify && pnpm exec playwright test settings"
+
+  - id: m8-conductor-rollover
+    milestone: 8
+    title: "core: Conductor rollover, wakeOnEvents and sign-in expiry end to end"
+    deps: [m8-settings-notify]
+    touches: [packages/core/src/conductor/, packages/core/src/auth.ts, packages/cli/src/tui/]
+    goal: |
+      Implement the history rollover of PLAN.md 6.2, wakeOnEvents in 6.4, and 4.3.
+      - Rollover: when the context (tokens from result events) passes a threshold, a judge summarises it and a new
+        conductor_sessions row starts. The next turn begins from the summary plus the digest, and the chat looks
+        continuous.
+      - `conductor.wakeOnEvents` gives the Conductor a turn after those events.
+      - Sign-in expiry:
+        - Check every 15 minutes, and before any session starts if the last check is more than 5 minutes old.
+        - On failure:
+          - set authRequired and pause
+          - requeue the tasks without counting attempts
+          - in the terminal, show "Your Claude sign-in expired. Press Enter to sign in again."; the login hand-off
+            temporarily leaves Ink's raw mode
+          - show the web banner
+        - After a good check, clear the flag and resume.
+    tests: |
+      Integration:
+      - Rollover with fake token counts.
+      - fake-claude flips to expired mid-run:
+        - sessions are requeued without attempts
+        - the scheduler pauses
+        - the banner event fires
+        - after a fake login, everything resumes
+    acceptance: "pnpm exec vitest run --project integration rollover auth-expiry"
+
+  - id: m8-stuck-sandbox
+    milestone: 8
+    title: "core: stuck-session checks and sandbox blocked-access offers"
+    deps: [m8-conductor-rollover]
+    touches: [packages/core/src/sessions/stuck.ts, packages/core/src/sandbox.ts]
+    goal: |
+      Implement decision 17 and the "Blocked access" part of decision 9.
+      - Stuck check, after `stuckCheck.after` and then every `stuckCheck.every`:
+        - First compute the plain-code signals: minutes since the last edit, commit or output; the same command
+          failing repeatedly; the same file edited back and forth; one command running long with no output.
+        - Send those signals and the last 50 event summaries to a judge (sonnet, json schema {stuck, reason,
+          suggestion}).
+        - Not stuck: record the note "checked at 61 min: still making progress".
+        - Stuck:
+          - kill the group and commit the work as WIP
+          - start a fresh session whose prompt includes the task, the diff, and the reason and suggestion
+          - count it as an attempt
+          - post one chat line
+      - Blocked access: when a task fails because of a blocked host, the chat offers it once per host, for example
+        "<task> couldn't reach github.com. Allow it for this project?", with Allow and Not now (a proposal). Allow
+        saves the host to config.
+    tests: |
+      - Unit: computing the stuck signals.
+      - Integration with an injected clock:
+        - A stuck verdict starts a fresh session whose prompt carries the reason and suggestion.
+        - A not-stuck verdict records the note.
+        - A blocked host is offered once.
+    acceptance: "pnpm exec vitest run --project unit stuck && pnpm exec vitest run --project integration stuck sandbox"
+
+  - id: m8-owner-branch
+    milestone: 8
+    title: "core: rebasing the owner's branch onto main"
+    deps: [m8-stuck-sandbox]
+    touches: [packages/core/src/rebase/, packages/web/src/]
+    goal: |
+      Implement decisions 14, 22 and 6.
+      - The owner triggers it by saying "rebase my branch" in the chat (an MCP tool) or with a Rebase button.
+        Choose where the button lives and record it.
+      - The owner's checkout must be clean; otherwise mastermind asks them to commit first.
+      - Rebase a detached copy of the branch onto main in a temporary worktree under the central folder, and run the
+        same checks as for a task.
+      - Conflicts go to a fixer. Its changes are folded into the owner's commit where the conflict happened, so no
+        AI-written commit appears.
+      - The owner's commits are kept unsquashed, with their own messages and authors.
+      - Fast-forward main with update-ref, then move the owner's branch to the new main with `git reset --keep` in
+        their checkout.
+      - When main moves, the chat offers "main moved N commits; rebase <branch> onto it?". It acts only after the
+        owner confirms and the checkout is clean.
+      - If main has an upstream, the chat may say how many commits it is ahead. Never push or fetch.
+    tests: |
+      Integration:
+      - The owner's two commits land on main unchanged (same messages and authors), with linear history.
+      - A dirty checkout is refused.
+      - A conflict fix is folded into the owner's commit, with no extra commit and no attribution.
+    acceptance: "pnpm exec vitest run --project integration owner-branch"
+
+  - id: m8-install
+    milestone: 8
+    title: "build: clean install, README, log retention and doctor completeness"
+    deps: [m8-owner-branch]
+    touches: [README.md, packages/cli/, packages/core/src/logs.ts, scripts/]
+    goal: |
+      Implement decision 10, log retention from PLAN.md 20, and the full doctor of 14.3.
+      - `pnpm build && pnpm link --global` works from a clean clone, and the CLI's dist includes the web assets and
+        prompts.
+      - `pnpm smoke:install` is a script (scripts/smoke-install.sh) that:
+        - clones the repo to a temp dir
+        - installs and builds
+        - links into a temp global prefix
+        - runs `mastermind --version` and `mastermind doctor` with fake-claude on PATH
+      - Logs older than the retention period (30 days by default, a config key) are pruned at startup.
+      - doctor covers every check of 14.3, including worktree disk usage.
+      - README.md:
+        - what mastermind is
+        - requirements: Node, pnpm, and a Claude Pro or Max subscription
+        - install, run, and Ctrl+C twice
+        - development: `pnpm verify`, and `pnpm test:live` as opt-in
+        - a short architecture overview
+    tests: |
+      - Integration: log pruning with an injected clock.
+      - The smoke:install script is the install test. Run it in this task, but keep it out of verify, since it
+        clones and installs.
+    acceptance: "pnpm smoke:install"
+
+  - id: m8-final-audit
+    milestone: 8
+    title: "chore: final PLAN conformance audit, coverage floor and full verification"
+    deps: [m8-install]
+    touches: ["."]
+    goal: |
+      Close out the project.
+      - Conformance: walk docs/PLAN.md section by section. Add a "Conformance" table to docs/implementation-notes.md
+        (requirement, where it's implemented, which test proves it). Implement anything missing and fix anything
+        wrong. Owner decisions (section 22) take precedence.
+      - Code quality across the repo:
+        - no `any`, unjustified casts, non-null assertions, TODOs or commented-out code
+        - no unnecessary comments, dead code or duplicated logic
+        - modules and names a human can easily read
+      - Tests:
+        - delete trivial or overlapping tests, and strengthen weak ones
+        - check that failure paths are covered
+        - remove flakiness: run `pnpm test` and `pnpm test:e2e` three times in a row, and all runs must pass
+      - Coverage: add vitest coverage thresholds for packages/core at the level actually achieved, rounded down.
+        Aim for at least 85% of lines through meaningful tests, never through trivial ones.
+      - Run `pnpm verify` and `pnpm smoke:install` one last time.
+    tests: |
+      Whatever the audit shows is missing. Prefer extending existing scenario tests over adding new tiny ones.
+    acceptance: "pnpm coverage && pnpm smoke:install"
