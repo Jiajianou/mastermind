@@ -41,6 +41,11 @@ export const planMetaSchema = z.object({
 });
 export type PlanMeta = z.infer<typeof planMetaSchema>;
 
+export const startPlanInputSchema = z.strictObject({ planId: z.int().min(1).optional() });
+
+export const planStartedMetaSchema = z.object({ plan: z.literal("started"), planId: z.int() });
+export type PlanStartedMeta = z.infer<typeof planStartedMetaSchema>;
+
 export const sessionEventsInputSchema = z.strictObject({
   sessionId: z.int().min(1),
   after: z.int().min(0).optional(),

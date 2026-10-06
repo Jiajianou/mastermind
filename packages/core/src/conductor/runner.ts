@@ -39,7 +39,7 @@ export interface ChatRunnerOptions {
   bus: EventBus;
   cli: ClaudeCli;
   repoRoot: string;
-  promptsDir: string;
+  systemPromptFile: string;
   logsDir: string;
   mcpConfigPath: string;
   model: () => string;
@@ -171,7 +171,7 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
       mcpConfigFile: options.mcpConfigPath,
       tools: ["Read,Grep,Glob"],
       allowedTools: ["mcp__mastermind__* Read Grep Glob"],
-      appendSystemPromptFile: join(options.promptsDir, "conductor.md"),
+      appendSystemPromptFile: options.systemPromptFile,
       settings: { attribution: attributionOff },
     };
   }

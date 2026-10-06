@@ -44,6 +44,7 @@ describe("MCP server", () => {
         "resume_all",
         "stop_session",
         "propose_plan",
+        "start_plan",
         "set_config",
       ].sort(),
     );

@@ -19,7 +19,7 @@ const stoppedMetaSchema = z.object({ stopped: z.literal(true) });
 
 const decisionHints: Partial<Record<ChatMessage["kind"], string>> = {
   proposal: "Confirm or decline it in the web app.",
-  plan: "Start the plan from the web app.",
+  plan: 'Reply "go ahead" to start the plan, or start it from the web app.',
 };
 
 export function createTurnFollower(turnId: string, write: (text: string) => void): TurnFollower {

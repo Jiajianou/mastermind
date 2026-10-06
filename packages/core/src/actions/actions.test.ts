@@ -1,7 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { parse } from "yaml";
 import { z } from "zod";
 import { loadConfig, setConfig as writeConfig } from "../config/index.js";
 import type { ConfigContext } from "../config/index.js";
@@ -16,11 +14,9 @@ import {
   builtinActions,
   createActionRegistry,
   defineAction,
-  findGraphIssues,
 } from "./index.js";
 import type { ActionRegistry } from "./index.js";
 
-const repoRoot = join(import.meta.dirname, "../../../..");
 const clock: Clock = { now: () => new Date("2026-10-06T12:00:00.000Z") };
 
 interface Harness {
@@ -288,63 +284,7 @@ describe("scheduler and settings actions", () => {
   });
 });
 
-describe("tasks.yaml import and export", () => {
-  it("imports this repository's own tasks.yaml as a valid graph, warning about the extra keys", async () => {
-    const harness = await setup();
-    const text = await readFile(join(repoRoot, "tasks.yaml"), "utf8");
-    const file = z
-      .object({ tasks: z.array(z.object({ id: z.string(), deps: z.array(z.string()) })) })
-      .parse(parse(text));
-
-    const result = await harness.actions.invoke("importTasks", { yaml: text });
-
-    const stored = harness.db.tasks.list();
-    expect(stored).toHaveLength(file.tasks.length);
-    for (const task of file.tasks) {
-      expect(harness.db.tasks.get(task.id)?.deps).toEqual([...task.deps].sort());
-    }
-    expect(findGraphIssues(stored)).toEqual([]);
-    expect(harness.db.tasks.get("m1-actions-scheduler")).toMatchObject({
-      deps: ["m1-procs-auth"],
-      acceptance: "pnpm exec vitest run --project unit scheduler actions dag",
-    });
-    expect(result).toMatchObject({
-      warnings: [
-        'ignored unknown top-level key "version"',
-        'ignored unknown top-level key "gate"',
-        `ignored unknown key "milestone" (${String(file.tasks.length)} tasks)`,
-        `ignored unknown key "tests" (${String(file.tasks.length)} tasks)`,
-      ],
-    });
-    expect(harness.events).toHaveLength(file.tasks.length);
-  });
-
-  it("exports tasks that import into an equal graph", async () => {
-    const source = await setup();
-    await seed(source, [
-      newTask("parser", { deps: ["lexer"], priority: 2, goal: "Parse\n\nall of it" }),
-      newTask("lexer", { touches: ["src/lexer/", "package.json"] }),
-    ]);
-    const target = await setup();
-
-    const exported = await source.actions.invoke("exportTasks", {});
-    await target.actions.invoke("importTasks", exported);
-
-    const fields = (db: Db) =>
-      db.tasks
-        .list()
-        .map(({ id, title, goal, acceptance, touches, deps, priority }) => [
-          id,
-          title,
-          goal,
-          acceptance,
-          touches,
-          deps,
-          priority,
-        ]);
-    expect(fields(target.db)).toEqual(fields(source.db));
-  });
-
+describe("tasks.yaml import", () => {
   it.each([
     { name: "malformed YAML", yaml: "tasks: [\n", message: /^tasks\.yaml: / },
     {

@@ -1573,3 +1573,33 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   change to a field the owner didn't touch is no longer overwritten with the stale value. A blocked task's panel
   also offers **Retry** (the existing `retry` action), since Overview's "is blocked" link lands on this panel and
   would otherwise be a dead end. Needs you builds that link with `tasksPath`.
+
+## m7-planning
+
+- **Where it lives.** `actions/plans.ts` (the `startPlan` action, a builtin), `conductor/system-prompt.ts` (joins the
+  prompts), `conductor/tools.ts` (`start_plan`, and `propose_plan` now returns `{ status: "shown", planId }`),
+  `prompts/planner.md`, and the web's `chat/entries.ts` and `chat/PlanList.tsx`. Contracts: `startPlanInputSchema`,
+  `planStartedMetaSchema` and the now exported `taskListSchema`. `db.chat.get(id)` is new. Import and export
+  (`importTasks`, `exportTasks`, the CLI commands and the "Import tasks.yaml" starter) already existed from M1–M3;
+  their integration tests now run over HTTP in `test/integration/api/tasks-import.test.ts`, and the unit tests that
+  duplicated them were removed (the parser's rejection table stays in `actions.test.ts`).
+- **A plan is its chat message.** `startPlan({ planId? })` (`POST /api/plans/:planId/start`, MCP `start_plan`) creates
+  the exact tasks stored in the plan message's meta, in one transaction with the DAG check against the current
+  tasks, so a plan whose ids now exist, whose deps are gone or that would close a cycle creates nothing. Without
+  `planId` it starts the latest plan, which is what "go ahead" means. Only the latest plan can be started (a new
+  `propose_plan` replaces any earlier one, so a stale list can't be started by mistake), and only once (409).
+- **Start is the same action as "go ahead".** The Start button and the Conductor's `start_plan` call the same
+  action. It posts a `system` message `Plan started: added N tasks (ids).` with `meta: { plan: "started", planId }`,
+  so the Conductor learns in `<updates>` that the owner clicked Start and doesn't create the tasks again. The web
+  hides that message (the plan box turns to **Started**, and the turn's action line already says "✓ Added N tasks"
+  when the chat started it) and shows "Replaced by a newer plan" instead of Start on an earlier plan. The plan box
+  also shows Started when all its tasks exist, in case the chat created them with `create_tasks`.
+- **The planning guide reaches every chat turn.** `--append-system-prompt-file` takes one file, so at startup the
+  runtime writes `.mastermind/run/conductor.md`, `prompts/conductor.md` followed by `prompts/planner.md`, and the
+  runner passes that file (`ChatRunnerOptions.systemPromptFile` replaced `promptsDir`). The file keeps the name
+  `conductor.md` because fake-claude and the live test pick the role from the prompt file's name.
+- **Root devDependency `yaml`.** The import test parses tasks.yaml independently of the importer to know the
+  expected deps, so the workspace root now depends on `yaml` (the version core already uses).
+- **Browser coverage.** `test/e2e/web/planning.spec.ts` drives the M7 flows a user sees: a plan shown in the chat,
+  Start, and the resulting graph on the Tasks board; and the "Import tasks.yaml" starter, which shows a cycle's
+  message as an alert and an import's unknown-key warnings in its notice.

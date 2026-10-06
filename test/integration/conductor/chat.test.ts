@@ -11,7 +11,8 @@ import { waitFor } from "../../support/processes.js";
 import { conductorHarness, leakedEnv } from "./harness.js";
 import type { ConductorHarness } from "./harness.js";
 
-const conductorPrompt = fileURLToPath(new URL("../../../prompts/conductor.md", import.meta.url));
+const promptFile = (name: string) =>
+  readFileSync(fileURLToPath(new URL(`../../../prompts/${name}`, import.meta.url)), "utf8").trim();
 
 const stoppedSchema = z.object({ stopped: z.boolean() });
 const mcpConfigSchema = z.object({
@@ -148,7 +149,7 @@ describe("Conductor chat", () => {
       mcpConfig: harness.mcpConfigPath,
       tools: "Read,Grep,Glob",
       allowedTools: "mcp__mastermind__* Read Grep Glob",
-      systemPrompt: conductorPrompt,
+      systemPrompt: harness.systemPromptFile,
       settings: JSON.stringify({ attribution: { commit: "", pr: "", sessionUrl: false } }),
     });
     expect(argv).not.toContain("--bare");
@@ -159,6 +160,9 @@ describe("Conductor chat", () => {
       expect.objectContaining({ kind: "conductor", pid: invocation.pid }),
     );
 
+    expect(readFileSync(harness.systemPromptFile, "utf8")).toBe(
+      `${promptFile("conductor.md")}\n\n${promptFile("planner.md")}\n`,
+    );
     expect(statSync(harness.mcpConfigPath).mode & 0o777).toBe(0o600);
     const mcp = mcpConfigSchema.parse(JSON.parse(readFileSync(harness.mcpConfigPath, "utf8")));
     expect(mcp.mcpServers.mastermind.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);

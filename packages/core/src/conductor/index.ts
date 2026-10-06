@@ -13,5 +13,6 @@ export { proposePlan } from "./plan.js";
 export type { PlanInput } from "./plan.js";
 export { conductorIdleMs, ConductorToolsUnavailableError, createChatRunner } from "./runner.js";
 export type { ChatRunner, ChatRunnerOptions } from "./runner.js";
+export { conductorSystemPromptPath, writeConductorSystemPrompt } from "./system-prompt.js";
 export { actionTools, conductorTools } from "./tools.js";
 export type { ActionTool, ConductorTool, ToolSources } from "./tools.js";

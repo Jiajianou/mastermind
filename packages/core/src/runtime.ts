@@ -11,10 +11,12 @@ import {
   buildDigest,
   chatActions,
   conductorMcpConfigPath,
+  conductorSystemPromptPath,
   createChatRunner,
   postEventLines,
   readDigestInput,
   writeConductorMcpConfig,
+  writeConductorSystemPrompt,
 } from "./conductor/index.js";
 import { projectPaths, resolveConfig, setConfig } from "./config/index.js";
 import type { ResolvedConfig } from "./config/index.js";
@@ -176,12 +178,14 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   for (const action of proposalActions(gate)) actions.register(action);
   const mcpConfigPath = conductorMcpConfigPath(stateDir);
+  const systemPromptFile = conductorSystemPromptPath(stateDir);
+  await writeConductorSystemPrompt(options.promptsDir, systemPromptFile);
   const runner = createChatRunner({
     db,
     bus,
     cli: startup.cli,
     repoRoot,
-    promptsDir: options.promptsDir,
+    systemPromptFile,
     logsDir: join(stateDir, "logs"),
     mcpConfigPath,
     model: () => config.models.conductor,

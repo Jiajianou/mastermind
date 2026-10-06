@@ -39,6 +39,8 @@ function serveActions(): void {
       );
     if (path === "/api/proposals/5/reject")
       return Promise.resolve(Response.json(holdProposal("rejected")));
+    if (path === "/api/plans/3/start")
+      return Promise.resolve(Response.json([task("lexer"), task("parser", { deps: ["lexer"] })]));
     if (path === "/api/chat")
       return Promise.resolve(
         Response.json({
@@ -211,6 +213,48 @@ describe("chat screen", () => {
     expect(within(decision).queryByRole("button")).toBeNull();
   });
 
+  it("starts the latest plan with Start, and marks an earlier plan as replaced", async () => {
+    serveActions();
+    const planned = (ids: string[]) =>
+      ids.map((id) => ({ id, title: `Build ${id}`, goal: "G.", acceptance: "true", touches: [] }));
+    const store = renderChat({
+      chat: chatWith([
+        message(1, { content: "plan the parser", turnId: "t" }),
+        message(2, { kind: "plan", content: "1. lexer", meta: { tasks: planned(["lexer"]) } }),
+        message(3, {
+          kind: "plan",
+          content: "1. lexer\n2. parser",
+          meta: { tasks: planned(["lexer", "parser"]), notes: { parser: "after lexer" } },
+        }),
+      ]),
+    });
+    const [replaced, latest] = screen.getAllByRole("region", { name: "Plan" });
+    if (replaced === undefined || latest === undefined) throw new Error("expected two plans");
+
+    expect(replaced.textContent).toContain("Replaced by a newer plan");
+    expect(within(replaced).queryByRole("button")).toBeNull();
+    expect(latest.textContent).toContain("parser after lexer");
+    await userEvent.setup().click(within(latest).getByRole("button", { name: "Start" }));
+    act(() => {
+      store.dispatch({
+        type: "chat.message",
+        message: message(4, {
+          kind: "system",
+          content: "Plan started: added 2 tasks (lexer, parser).",
+          meta: { plan: "started", planId: 3 },
+        }),
+      });
+    });
+
+    expect(requests).toEqual([{ method: "POST", path: "/api/plans/3/start", body: {} }]);
+    expect(within(latest).getByRole("button", { name: "Started" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(Object.keys(store.getState().tasks)).toEqual(["lexer", "parser"]);
+    expect(screen.getByRole("log").textContent).not.toContain("Plan started");
+  });
+
   it("never shows internal names, whatever the chat holds", () => {
     const proposal: Proposal = {
       id: 4,
@@ -269,6 +313,7 @@ describe("chat screen", () => {
         "create_tasks",
         "set_config",
         "propose_plan",
+        "start_plan",
         "approve_rebase",
         "discard_task",
         "get_summary",

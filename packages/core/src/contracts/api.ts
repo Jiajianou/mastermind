@@ -16,7 +16,7 @@ import { checkLogSchema, checkSchema } from "./checks.js";
 import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } from "./chat.js";
 import type { ChatTurn, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
-import { proposalRefInputSchema } from "./conductor.js";
+import { proposalRefInputSchema, startPlanInputSchema } from "./conductor.js";
 import {
   configLayerSchema,
   configSchema,
@@ -65,6 +65,7 @@ export interface ActionResults {
   createTasks: Task[];
   importTasks: { tasks: Task[]; warnings: string[] };
   exportTasks: { yaml: string };
+  startPlan: Task[];
   updateTask: Task;
   setPriority: Task;
   moveToTop: Task;
@@ -103,6 +104,7 @@ export const actionRoutes = {
   createTasks: { method: "POST", path: "/api/tasks" },
   importTasks: { method: "POST", path: "/api/tasks/import" },
   exportTasks: { method: "POST", path: "/api/tasks/export" },
+  startPlan: { method: "POST", path: "/api/plans/:planId/start", intParams: ["planId"] },
   updateTask: { method: "PATCH", path: "/api/tasks/:taskId" },
   setPriority: { method: "POST", path: "/api/tasks/:taskId/priority" },
   moveToTop: { method: "POST", path: "/api/tasks/:taskId/top" },
@@ -161,6 +163,7 @@ export const actionInputSchemas = {
   createTasks: createTasksInputSchema,
   importTasks: importTasksInputSchema,
   exportTasks: noInputSchema,
+  startPlan: startPlanInputSchema,
   updateTask: updateTaskInputSchema,
   setPriority: setPriorityInputSchema,
   moveToTop: taskRefInputSchema,
@@ -188,12 +191,13 @@ export const actionInputSchemas = {
 } satisfies Record<ActionName, z.ZodType>;
 export type ActionInputs = { [Name in ActionName]: z.input<(typeof actionInputSchemas)[Name]> };
 
-const taskListSchema = z.array(taskSchema);
+export const taskListSchema = z.array(taskSchema);
 
 export const actionResultSchemas = {
   createTasks: taskListSchema,
   importTasks: z.object({ tasks: taskListSchema, warnings: z.array(z.string()) }),
   exportTasks: z.object({ yaml: z.string() }),
+  startPlan: taskListSchema,
   updateTask: taskSchema,
   setPriority: taskSchema,
   moveToTop: taskSchema,

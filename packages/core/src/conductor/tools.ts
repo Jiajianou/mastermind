@@ -17,6 +17,8 @@ import {
   sessionRefInputSchema,
   sessionsQuerySchema,
   setPriorityInputSchema,
+  startPlanInputSchema,
+  taskListSchema,
   taskRefInputSchema,
   updateTaskInputSchema,
 } from "../contracts/index.js";
@@ -99,6 +101,19 @@ export const actionTools: readonly ActionTool[] = [
       "Add tasks to the graph in one batch. Each task needs a unique slug id, a title, a goal written for the worker, an acceptance shell command that exits 0 when the task is done, and touches: the repo paths it will change (tasks with overlapping touches never run at the same time). deps may name tasks in the batch or existing ones. The whole batch is rejected on a duplicate id, an unknown dep or a cycle. A task starts once its deps are done and a worker is free.",
     describe: ({ tasks }) => `Add ${tasks.map((task) => task.id).join(", ")}`,
     done: ({ tasks }) => `Added ${count(tasks.length, "task")}`,
+  }),
+  actionTool({
+    name: "start_plan",
+    action: "startPlan",
+    input: startPlanInputSchema,
+    description:
+      "Create every task of a plan shown with propose_plan, exactly as shown, in one batch. Call it when the owner says to go ahead. planId is the id propose_plan returned and defaults to the latest plan. Fails if a newer plan replaced it, if it was already started (the owner may have clicked Start), or if the graph changed so that an id now exists or a dep is gone.",
+    describe: ({ planId }) =>
+      planId === undefined ? "Start the plan" : `Start plan ${String(planId)}`,
+    done: (_input, result) => {
+      const created = taskListSchema.safeParse(result);
+      return created.success ? `Added ${count(created.data.length, "task")}` : "Started the plan";
+    },
   }),
   actionTool({
     name: "update_task",
@@ -325,11 +340,11 @@ export function conductorTools({ actions, gate, reads, chat }: ToolSources): Con
   const plan: ConductorTool = {
     name: "propose_plan",
     description:
-      "Show the owner a plan as a numbered list, one line per task: its id, then the note (or the title). Takes the same task fields as create_tasks plus an optional short note such as 'after the first two', and is checked the same way. Nothing is created: the owner can click Start, which creates the tasks as given, or reply 'go ahead', and then you call create_tasks with the same tasks.",
+      "Show the owner a plan as a numbered list, one line per task: its id, then the note (or the title). Takes the same task fields as create_tasks plus an optional short note such as 'after the first two', and is checked the same way. Nothing is created yet: the owner clicks Start, which creates the tasks as given, or replies 'go ahead', and then you call start_plan with the returned planId. A new plan replaces any earlier one that was not started, so to change a plan, propose it again in full.",
     input: proposePlanInputSchema,
     call: (input) => {
       const message = proposePlan(chat, parseInput(proposePlanInputSchema, input));
-      return Promise.resolve({ status: "shown", messageId: message.id });
+      return Promise.resolve({ status: "shown", planId: message.id });
     },
   };
   return [...fromReads, ...fromActions, plan];

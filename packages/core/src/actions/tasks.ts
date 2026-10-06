@@ -42,12 +42,14 @@ export function assertValidBatch(db: Pick<Db, "tasks">, batch: readonly NewTask[
   if (issues.length > 0) throw graphError(issues);
 }
 
+export function createTaskRows(db: Pick<Db, "tasks">, batch: readonly NewTask[]): Task[] {
+  assertValidBatch(db, batch);
+  return batch.map((task) => db.tasks.create(task));
+}
+
 export function insertTaskBatch(scope: TaskScope, batch: readonly NewTask[]): Task[] {
   const { db } = scope;
-  const created = db.transaction(() => {
-    assertValidBatch(db, batch);
-    return batch.map((task) => db.tasks.create(task));
-  });
+  const created = db.transaction(() => createTaskRows(db, batch));
   for (const task of created) scope.emit({ type: "task.updated", taskId: task.id, task });
   return created;
 }

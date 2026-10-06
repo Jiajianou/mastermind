@@ -1,4 +1,9 @@
-import { planMetaSchema, proposalMetaSchema, setupMetaSchema } from "@mastermind/core/contracts";
+import {
+  planMetaSchema,
+  planStartedMetaSchema,
+  proposalMetaSchema,
+  setupMetaSchema,
+} from "@mastermind/core/contracts";
 import type {
   ChatMessage,
   IsoTimestamp,
@@ -14,6 +19,8 @@ export interface PlanItem {
   note: string;
 }
 
+export type PlanStatus = "ready" | "started" | "replaced";
+
 export type ChatEntry =
   | { kind: "user"; key: string; text: string }
   | { kind: "reply"; key: string; text: string; streaming: boolean; stopped: boolean }
@@ -27,7 +34,14 @@ export type ChatEntry =
       status: ProposalStatus;
       taskId: string | null;
     }
-  | { kind: "plan"; key: string; items: PlanItem[]; tasks: PlanMeta["tasks"] };
+  | {
+      kind: "plan";
+      key: string;
+      planId: number;
+      status: PlanStatus;
+      items: PlanItem[];
+      tasks: PlanMeta["tasks"];
+    };
 
 export type Proposals = Readonly<Record<number, Proposal>>;
 
@@ -44,6 +58,34 @@ function decidedStatuses(messages: readonly ChatMessage[]): Map<number, Proposal
       statuses.set(meta.data.proposalId, meta.data.status);
   }
   return statuses;
+}
+
+interface PlanHistory {
+  latest: number | null;
+  started: ReadonlySet<number>;
+}
+
+const startedPlanId = (message: ChatMessage): number | null => {
+  if (message.kind !== "system") return null;
+  const meta = planStartedMetaSchema.safeParse(message.meta);
+  return meta.success ? meta.data.planId : null;
+};
+
+function planHistory(messages: readonly ChatMessage[]): PlanHistory {
+  const started = new Set<number>();
+  let latest: number | null = null;
+  for (const message of messages) {
+    if (message.kind === "plan" && planMetaSchema.safeParse(message.meta).success)
+      latest = message.id;
+    const planId = startedPlanId(message);
+    if (planId !== null) started.add(planId);
+  }
+  return { latest, started };
+}
+
+function planStatus(planId: number, history: PlanHistory): PlanStatus {
+  if (history.started.has(planId)) return "started";
+  return planId === history.latest ? "ready" : "replaced";
 }
 
 function decisionEntry(
@@ -65,7 +107,7 @@ function decisionEntry(
   };
 }
 
-function planEntry(message: ChatMessage): ChatEntry {
+function planEntry(message: ChatMessage, history: PlanHistory): ChatEntry {
   const meta = planMetaSchema.safeParse(message.meta);
   if (!meta.success)
     return {
@@ -77,14 +119,23 @@ function planEntry(message: ChatMessage): ChatEntry {
     };
   const { tasks, notes } = meta.data;
   const items = tasks.map(({ id, title }) => ({ id, note: notes[id] ?? title }));
-  return { kind: "plan", key: key(message), items, tasks };
+  return {
+    kind: "plan",
+    key: key(message),
+    planId: message.id,
+    status: planStatus(message.id, history),
+    items,
+    tasks,
+  };
 }
 
-function messageEntry(
-  message: ChatMessage,
-  proposals: Proposals,
-  decided: ReadonlyMap<number, ProposalStatus>,
-): ChatEntry {
+interface History {
+  proposals: Proposals;
+  decided: ReadonlyMap<number, ProposalStatus>;
+  plans: PlanHistory;
+}
+
+function messageEntry(message: ChatMessage, { proposals, decided, plans }: History): ChatEntry {
   switch (message.kind) {
     case "user":
       return { kind: "user", key: key(message), text: message.content };
@@ -101,15 +152,21 @@ function messageEntry(
     case "proposal":
       return decisionEntry(message, proposals, decided);
     case "plan":
-      return planEntry(message);
+      return planEntry(message, plans);
     case "system":
       return { kind: "event", key: key(message), ts: message.ts, text: message.content };
   }
 }
 
 export function buildTranscript(chat: ChatState, proposals: Proposals): ChatEntry[] {
-  const decided = decidedStatuses(chat.messages);
-  const entries = chat.messages.map((message) => messageEntry(message, proposals, decided));
+  const history = {
+    proposals,
+    decided: decidedStatuses(chat.messages),
+    plans: planHistory(chat.messages),
+  };
+  const entries = chat.messages
+    .filter((message) => startedPlanId(message) === null)
+    .map((message) => messageEntry(message, history));
   const drafts = Object.entries(chat.drafts).map(([turnId, text]): ChatEntry => ({
     kind: "reply",
     key: `draft-${turnId}`,

@@ -8,10 +8,12 @@ import {
   buildDigest,
   chatActions,
   conductorMcpConfigPath,
+  conductorSystemPromptPath,
   createChatRunner,
   postEventLines,
   readDigestInput,
   writeConductorMcpConfig,
+  writeConductorSystemPrompt,
 } from "@mastermind/core/conductor";
 import type { ChatRunner } from "@mastermind/core/conductor";
 import { loadConfig, projectPaths, setConfig } from "@mastermind/core/config";
@@ -59,6 +61,7 @@ export interface ConductorHarness {
   events: BusEvent[];
   errors: unknown[];
   mcpConfigPath: string;
+  systemPromptFile: string;
   config(): Config;
   post(path: string, body?: unknown): Promise<unknown>;
   get(path: string): Promise<unknown>;
@@ -131,12 +134,14 @@ export async function conductorHarness(
   });
   for (const action of proposalActions(gate)) actions.register(action);
   const mcpConfigPath = conductorMcpConfigPath(stateDir);
+  const systemPromptFile = conductorSystemPromptPath(stateDir);
+  await writeConductorSystemPrompt(promptsDir, systemPromptFile);
   const runner = createChatRunner({
     db,
     bus,
     cli: createClaudeCli({ registry, env: env.env }),
     repoRoot: repo.path,
-    promptsDir,
+    systemPromptFile,
     logsDir: join(stateDir, "logs"),
     mcpConfigPath,
     model: () => config.models.conductor,
@@ -205,6 +210,7 @@ export async function conductorHarness(
     events,
     errors,
     mcpConfigPath,
+    systemPromptFile,
     config: () => config,
     post: (path, body) => request("POST", path, body),
     get: (path) => request("GET", path),

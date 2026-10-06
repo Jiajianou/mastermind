@@ -25,7 +25,14 @@ function Entry({ entry }: { entry: ChatEntry }) {
         />
       );
     case "plan":
-      return <PlanList items={entry.items} tasks={entry.tasks} />;
+      return (
+        <PlanList
+          planId={entry.planId}
+          status={entry.status}
+          items={entry.items}
+          tasks={entry.tasks}
+        />
+      );
   }
 }
 

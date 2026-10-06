@@ -1,5 +1,6 @@
 import type { ActionName } from "../contracts/index.js";
 import type { AnyActionDefinition, ContractedActions } from "./registry.js";
+import { startPlan } from "./plans.js";
 import { confirmSetup, pause, resume, setConfig } from "./runtime.js";
 import { exportTasks, importTasks } from "./tasks-file.js";
 import { createTasks, hold, moveToTop, release, retry, setPriority, updateTask } from "./tasks.js";
@@ -37,6 +38,7 @@ export {
   retry,
   setConfig,
   setPriority,
+  startPlan,
   updateTask,
 };
 
@@ -54,6 +56,7 @@ const builtins = {
   confirmSetup,
   importTasks,
   exportTasks,
+  startPlan,
 } satisfies ContractedActions<
   Exclude<
     ActionName,
