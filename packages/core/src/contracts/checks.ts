@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isoTimestampSchema } from "./common.js";
+import { taskIdSchema } from "./tasks.js";
 
 export const checkKindSchema = z.enum([
   "setup",
@@ -37,3 +38,17 @@ export const rebaseSchema = z.object({
   ts: isoTimestampSchema,
 });
 export type Rebase = z.infer<typeof rebaseSchema>;
+
+export const checkLogSchema = z.object({
+  check: checkSchema,
+  text: z.string(),
+  truncated: z.boolean(),
+});
+export type CheckLog = z.infer<typeof checkLogSchema>;
+
+export const checkLogInputSchema = z.strictObject({
+  taskId: taskIdSchema,
+  checkId: z.int().min(1).optional(),
+  lines: z.int().min(1).max(1000).default(100),
+});
+export type CheckLogInput = z.infer<typeof checkLogInputSchema>;

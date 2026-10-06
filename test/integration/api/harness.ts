@@ -4,6 +4,7 @@ import type { Server } from "node:net";
 import { join } from "node:path";
 import { builtinActions, createActionRegistry } from "@mastermind/core/actions";
 import { serveApi } from "@mastermind/core/api";
+import { rerunChecksAction } from "@mastermind/core/checks";
 import type { PortChoice, ServedApi } from "@mastermind/core/api";
 import { actionTools } from "@mastermind/core/conductor";
 import { loadConfig, setConfig } from "@mastermind/core/config";
@@ -132,6 +133,10 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
         return Promise.resolve();
       },
     }),
+  );
+  // The real re-run is covered by the checks pipeline tests; here it only has to move the task.
+  actions.register(
+    rerunChecksAction({ rerun: (taskId) => db.tasks.update(taskId, { status: "checking" }) }),
   );
   const gate = createProposalGate({
     db,

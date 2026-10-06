@@ -1,8 +1,13 @@
 import { ActionError } from "./actions/index.js";
 import type { ChatState } from "./chat.js";
+import { readLogTail } from "./checks/log.js";
+import { isMissingFileError } from "./config/index.js";
 import type {
   ApiSummary,
   ChatView,
+  Check,
+  CheckLog,
+  CheckLogInput,
   Config,
   InstanceInfo,
   Session,
@@ -33,8 +38,27 @@ export interface ReadModels extends TaskFiles {
   task(taskId: string): TaskView;
   sessions(query: SessionsQuery): Session[];
   sessionEvents(sessionId: number, afterId?: number): SessionEvent[];
+  checks(taskId: string): Check[];
+  checkLog(checkId: number): Promise<CheckLog>;
+  taskCheckLog(input: CheckLogInput): Promise<CheckLog>;
   chat(afterId?: number): ChatView;
   config(): Config;
+}
+
+const maxLogBytes = 1024 * 1024;
+
+const notFound = (message: string) => ActionError.fromMessage("not_found", message);
+
+async function readCheckLog(check: Check, maxLines?: number): Promise<CheckLog> {
+  const id = String(check.id);
+  if (check.logPath === null) throw notFound(`check ${id} has no log`);
+  try {
+    const tail = await readLogTail(check.logPath, { maxBytes: maxLogBytes, maxLines });
+    return { check, ...tail };
+  } catch (error) {
+    if (isMissingFileError(error)) throw notFound(`the log of check ${id} is gone`);
+    throw error;
+  }
 }
 
 function taskViews(tasks: readonly Task[]): TaskView[] {
@@ -84,6 +108,35 @@ export function createReadModels({
       if (db.sessions.get(sessionId) === null)
         throw ActionError.fromMessage("not_found", `no session ${String(sessionId)}`);
       return db.events.listForSession(sessionId, { afterId });
+    },
+
+    checks(taskId) {
+      if (db.tasks.get(taskId) === null) throw notFound(`no task "${taskId}"`);
+      return db.checks.listForTask(taskId);
+    },
+
+    checkLog(checkId) {
+      const check = db.checks.get(checkId);
+      if (check === null) return Promise.reject(notFound(`no check ${String(checkId)}`));
+      return readCheckLog(check);
+    },
+
+    taskCheckLog({ taskId, checkId, lines }) {
+      if (db.tasks.get(taskId) === null) return Promise.reject(notFound(`no task "${taskId}"`));
+      const checks = db.checks.listForTask(taskId);
+      const check =
+        checkId === undefined
+          ? (checks.findLast((candidate) => candidate.status === "failed") ?? checks.at(-1))
+          : checks.find((candidate) => candidate.id === checkId);
+      if (check === undefined)
+        return Promise.reject(
+          notFound(
+            checkId === undefined
+              ? `${taskId} has no checks yet`
+              : `${taskId} has no check ${String(checkId)}`,
+          ),
+        );
+      return readCheckLog(check, lines);
     },
 
     chat: (afterId) => ({ ...chat.status(), messages: db.chat.list(afterId) }),

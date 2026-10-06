@@ -20,6 +20,7 @@ export type SessionEnd =
 
 export interface SessionReport {
   end: SessionEnd;
+  result: ParsedEvent | null;
   conversationStarted: boolean;
   undeliveredMessages: string[];
 }
@@ -184,7 +185,8 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
       session: started,
     });
     child.stdin?.on("error", (error) => stderr.push(`stdin: ${error.message}`));
-    child.stdin?.write(`${userMessageLine(prompt)}\n`);
+    if (print.inputFormat === "text") child.stdin?.end(prompt);
+    else child.stdin?.write(`${userMessageLine(prompt)}\n`);
 
     const { stdin } = child;
     const steer = (text: string): boolean => {
@@ -205,11 +207,11 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
         ).catch(onError);
       // Every replayed line after the prompt's own is a steering message the CLI took in, in the order written.
       const undeliveredMessages = steeringMessages.slice(Math.max(replays - 1, 0));
-      if (endedByMastermind !== null)
-        return { end: endedByMastermind, conversationStarted, undeliveredMessages };
+      const report = { result: resultEvent, conversationStarted, undeliveredMessages };
+      if (endedByMastermind !== null) return { ...report, end: endedByMastermind };
       const code = stoppedAfterResult ? 0 : exitCode(exit);
       const outcome = classifyExit(resultEvent, code, stderr.join("\n"), evidence);
-      return { end: { kind: "exited", outcome }, conversationStarted, undeliveredMessages };
+      return { ...report, end: { kind: "exited", outcome } };
     });
 
     return {

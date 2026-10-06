@@ -9,6 +9,7 @@
     "./api": "./src/api/index.ts",
     "./auth": "./src/auth.ts",
     "./claude": "./src/claude.ts",
+    "./checks": "./src/checks/index.ts",
     "./conductor": "./src/conductor/index.ts",
     "./config": "./src/config/index.ts",
     "./db": "./src/db/index.ts",

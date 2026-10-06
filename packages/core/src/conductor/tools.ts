@@ -4,6 +4,7 @@ import type { ActionRegistry } from "../actions/index.js";
 import type { ConductorChatSink } from "../chat.js";
 import {
   changesInputSchema,
+  checkLogInputSchema,
   configLayerSchema,
   createTasksInputSchema,
   messageSessionInputSchema,
@@ -234,6 +235,13 @@ const readTools: readonly ReadTool[] = [
     description:
       "The files a task has changed in its workspace, committed or not, including new untracked files: path, status (added, modified, deleted, or renamed with oldPath), added and deleted line counts (null for binary files), and whether the change is still uncommitted. since is base (the default: everything since the task branched off main) or round:N (only what changed after review round N ended).",
     read: (reads, input) => reads.changes(input),
+  }),
+  readTool({
+    name: "get_check_log",
+    input: checkLogInputSchema,
+    description:
+      "The log of one of a task's checks (setup, build, acceptance, rebase onto main, the full suite, or the reviewer's findings), with the check's kind, status, summary and duration. Without checkId it is the latest failed check, else the latest one. Returns the last `lines` lines (default 100); truncated says whether earlier output was left out.",
+    read: (reads, input) => reads.taskCheckLog(input),
   }),
 ];
 

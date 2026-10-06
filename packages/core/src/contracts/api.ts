@@ -12,6 +12,7 @@ import {
   updateTaskInputSchema,
 } from "./actions.js";
 import { fileContentSchema, taskChangesSchema, taskTreeSchema } from "./changes.js";
+import { checkLogSchema, checkSchema } from "./checks.js";
 import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } from "./chat.js";
 import type { ChatTurn, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
@@ -56,6 +57,7 @@ export interface ActionResults {
   hold: Task;
   release: Task;
   retry: Task;
+  rerunChecks: Task;
   stopSession: Session;
   messageSession: MessageSessionResult;
   pause: RuntimeFlags;
@@ -86,6 +88,7 @@ export const actionRoutes = {
   hold: { method: "POST", path: "/api/tasks/:taskId/hold" },
   release: { method: "POST", path: "/api/tasks/:taskId/release" },
   retry: { method: "POST", path: "/api/tasks/:taskId/retry" },
+  rerunChecks: { method: "POST", path: "/api/tasks/:taskId/checks/rerun" },
   stopSession: {
     method: "POST",
     path: "/api/sessions/:sessionId/stop",
@@ -124,6 +127,7 @@ export const actionInputSchemas = {
   hold: taskRefInputSchema,
   release: taskRefInputSchema,
   retry: taskRefInputSchema,
+  rerunChecks: taskRefInputSchema,
   stopSession: sessionRefInputSchema,
   messageSession: messageSessionInputSchema,
   pause: noInputSchema,
@@ -149,6 +153,7 @@ export const actionResultSchemas = {
   hold: taskSchema,
   release: taskSchema,
   retry: taskSchema,
+  rerunChecks: taskSchema,
   stopSession: sessionSchema,
   messageSession: messageSessionResultSchema,
   pause: runtimeFlagsSchema,
@@ -200,6 +205,8 @@ export const apiResponseSchemas = {
   sessionEvents: z.array(sessionEventSchema),
   chat: chatViewSchema,
   config: configSchema,
+  checks: z.array(checkSchema),
+  checkLog: checkLogSchema,
   changes: taskChangesSchema,
   file: fileContentSchema,
   tree: taskTreeSchema,

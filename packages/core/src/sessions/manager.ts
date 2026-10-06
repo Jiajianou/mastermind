@@ -18,18 +18,14 @@ import type { ProcessRegistry } from "../procs.js";
 import { canResumeConversation } from "./conversation.js";
 import { resumePrompt, workerTaskPrompt } from "./prompts.js";
 import { editingSessionSettings, workerPermissionOptions } from "./settings.js";
+import { applySettlementEffect } from "./effects.js";
+import type { UsageBackoff } from "./effects.js";
 import { settleWorkerRun } from "./settlement.js";
-import type { WorkerSettlement } from "./settlement.js";
 import { runSetupCheck } from "./setup.js";
 import { createSessionSpawner, userMessageLine } from "./spawner.js";
 import type { LiveSession, SessionReport } from "./spawner.js";
 
 export const wipMessage = "WIP: uncommitted at session end";
-
-export interface UsageBackoff {
-  reportUsageLimit(resetAt?: Date): Date;
-  reportSuccess(): void;
-}
 
 export interface SessionManagerOptions {
   db: Db;
@@ -49,8 +45,15 @@ export interface SessionManagerOptions {
   resultGraceMs?: number;
 }
 
+export interface FixerRequest {
+  taskId: string;
+  prompt: string;
+  attempts: number;
+}
+
 export interface SessionManager {
   startTask(task: Task): Promise<void>;
+  startFixer(request: FixerRequest): Promise<Session>;
   stopSession(sessionId: number): Promise<void>;
   messageSession(sessionId: number, text: string): Promise<MessageSessionResult>;
 }
@@ -65,12 +68,16 @@ interface RunningSession {
   settled: Promise<void>;
 }
 
+type EditingRole = "worker" | "fixer";
+
 interface WorkerLaunch {
+  role: EditingRole;
   task: Task;
   worktree: string;
   print: PrintOptions;
   prompt: (running: Task) => string;
   attempt: number;
+  attempts?: number;
   steer?: string;
 }
 
@@ -138,20 +145,21 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     return { path: clone.path, setup };
   }
 
-  function workerPrint(
+  function editingPrint(
+    role: EditingRole,
     config: ResolvedConfig,
     worktree: string,
     resume: string | null,
   ): PrintOptions {
     const session = resume === null ? { sessionId: randomUUID() } : { resume };
     return {
-      model: config.models.worker,
+      model: config.models[role],
       inputFormat: "stream-json",
       ...session,
       replayUserMessages: true,
       ...workerPermissionOptions(config.workerPermissions, config.workerAllowedTools),
       noPermissionPrompts: true,
-      appendSystemPromptFile: join(options.promptsDir, "worker.md"),
+      appendSystemPromptFile: join(options.promptsDir, `${role}.md`),
       settings: editingSessionSettings({
         worktree,
         protectedPaths: [repoRoot, join(options.homeDir, ".claude")],
@@ -161,7 +169,14 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     };
   }
 
-  function beginSession({ task: { id: taskId }, print, attempt, steer }: WorkerLaunch): {
+  function beginSession({
+    role,
+    task: { id: taskId },
+    print,
+    attempt,
+    attempts,
+    steer,
+  }: WorkerLaunch): {
     session: Session;
     task: Task;
   } {
@@ -169,7 +184,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       const task = requireTask(taskId);
       assertTransition(taskId, task.status, "running");
       const session = db.sessions.create({
-        role: "worker",
+        role,
         taskId,
         round: task.round,
         attempt,
@@ -188,7 +203,11 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       return {
         session,
         steered,
-        task: db.tasks.update(taskId, { status: "running", resumeSession: null }),
+        task: db.tasks.update(taskId, {
+          status: "running",
+          resumeSession: null,
+          ...(attempts === undefined ? {} : { attempts }),
+        }),
       };
     });
     emitTask(started.task);
@@ -209,6 +228,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
           db.sessions.end(session.id, { status: "failed" }),
           db.tasks.update(previous.id, {
             status: previous.status,
+            attempts: previous.attempts,
             resumeSession: previous.resumeSession,
           }),
         ] as const,
@@ -224,32 +244,6 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     } catch (error) {
       onError(error);
       return null;
-    }
-  }
-
-  function applyEffect({ effect }: WorkerSettlement): void {
-    switch (effect.kind) {
-      case "succeeded":
-        options.backoff.reportSuccess();
-        return;
-      case "usage-limit":
-        options.backoff.reportUsageLimit(effect.resetAt ?? undefined);
-        return;
-      case "backoff":
-        options.backoff.reportUsageLimit();
-        return;
-      case "auth-required": {
-        const flags = db.flags.set({ authRequired: true, paused: true });
-        bus.emit({ type: "auth.updated", authRequired: flags.authRequired });
-        bus.emit({
-          type: "scheduler.updated",
-          paused: flags.paused,
-          resumeAt: flags.backoffResumeAt,
-        });
-        return;
-      }
-      case "none":
-        return;
     }
   }
 
@@ -287,7 +281,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     });
     if (settled.failure !== null)
       bus.emit({ type: "session.event", sessionId: session.id, taskId, event: settled.failure });
-    applyEffect(settlement);
+    applySettlementEffect(settlement.effect, { db, bus, backoff: options.backoff });
     bus.emit({ type: "session.ended", sessionId: session.id, taskId, session: settled.session });
     emitTask(settled.task);
     if (end.kind === "exited" && report.undeliveredMessages.length > 0)
@@ -383,10 +377,12 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
   ): Promise<MessageSessionResult> {
     const task = requireTask(session.taskId);
     const worktree = assertResumable(session, task);
+    const role = session.role === "fixer" ? "fixer" : "worker";
     const started = await launchWorker({
+      role,
       task,
       worktree,
-      print: workerPrint(options.config(), worktree, session.claudeSessionId),
+      print: editingPrint(role, options.config(), worktree, session.claudeSessionId),
       prompt: () => text,
       attempt: session.attempt ?? task.attempts + 1,
       steer: text,
@@ -432,13 +428,32 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       const workspace = await prepareWorkspace(pending, config);
       const task = requireTask(scheduled.id);
       await launchWorker({
+        role: "worker",
         task,
         worktree: workspace.path,
-        print: workerPrint(config, workspace.path, task.resumeSession),
+        print: editingPrint("worker", config, workspace.path, task.resumeSession),
         prompt: (running) =>
           task.resumeSession === null ? workerTaskPrompt(running, workspace.setup) : resumePrompt,
         attempt: task.attempts + 1,
       });
+    },
+
+    async startFixer({ taskId, prompt, attempts }) {
+      const task = requireTask(taskId);
+      assertTransition(taskId, task.status, "running");
+      const { worktree } = task;
+      if (worktree === null || !existsSync(worktree))
+        throw conflict(`the workspace of ${taskId} is gone`);
+      const started = await launchWorker({
+        role: "fixer",
+        task,
+        worktree,
+        print: editingPrint("fixer", options.config(), worktree, null),
+        prompt: () => prompt,
+        attempt: attempts + 1,
+        attempts,
+      });
+      return started.session;
     },
 
     async stopSession(sessionId) {

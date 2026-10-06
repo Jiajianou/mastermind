@@ -57,6 +57,7 @@ const builtins = {
 } satisfies ContractedActions<
   Exclude<
     ActionName,
+    | "rerunChecks"
     | "stopSession"
     | "messageSession"
     | "confirmProposal"

@@ -47,7 +47,10 @@ interface Mastermind extends CliProcess {
 
 async function repoWithTasks(): Promise<TempRepo> {
   const repo = await createTempRepo({
-    files: { "README.md": "# Demo\n", "mastermind.yaml": "maxWorkers: 2\n" },
+    files: {
+      "README.md": "# Demo\n",
+      "mastermind.yaml": "maxWorkers: 2\nreviewer: { enabled: false }\n",
+    },
   });
   await repo.git("switch", "--quiet", "--create", "dev");
   const { stateDir, database } = projectPaths(repo.path);
@@ -137,7 +140,7 @@ async function startParallelWork(repo: TempRepo, env: IsolatedEnv): Promise<Mast
 }
 
 describe("milestone 1 runtime, through the built binary", () => {
-  it("runs two independent tasks in parallel and their dependent only after both, each reaching checking", async () => {
+  it("runs two independent tasks in parallel and their dependent only after both, each passing its checks", async () => {
     const repo = await repoWithTasks();
     const env = await isolatedEnv();
     await env.writeScenario({
@@ -154,15 +157,15 @@ describe("milestone 1 runtime, through the built binary", () => {
 
     const mastermind = startMastermind(repo, env);
     await waitUntil(mastermind, () =>
-      parallelTasks.every((id) => db.tasks.get(id)?.status === "checking"),
+      parallelTasks.every((id) => db.tasks.get(id)?.status === "rebasing"),
     );
     expect(db.tasks.get("gamma")).toMatchObject({ status: "pending" });
     expect(db.sessions.listForTask("gamma")).toEqual([]);
 
-    // M1 has no checks pipeline or rebase queue, so the test stands in for them and finishes the dependencies.
+    // Nothing rebases tasks onto main yet, so the test stands in for the rebase queue and finishes the dependencies.
     const depsDoneAt = new Date().toISOString();
     for (const id of parallelTasks) db.tasks.update(id, { status: "done" });
-    await waitUntil(mastermind, () => db.tasks.get("gamma")?.status === "checking");
+    await waitUntil(mastermind, () => db.tasks.get("gamma")?.status === "rebasing");
 
     const [alpha, beta, gamma] = ["alpha", "beta", "gamma"].map((id) => latestSession(db, id));
     if (alpha?.endedAt == null || beta?.endedAt == null || gamma === undefined) {
@@ -208,7 +211,7 @@ describe("milestone 1 runtime, through the built binary", () => {
 
     const restarted = startMastermind(repo, env);
     await waitUntil(restarted, () =>
-      parallelTasks.every((id) => db.tasks.get(id)?.status === "checking"),
+      parallelTasks.every((id) => db.tasks.get(id)?.status === "rebasing"),
     );
 
     const resumedIds = (await env.invocations()).flatMap(({ argv }) => {

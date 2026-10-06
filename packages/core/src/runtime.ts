@@ -3,6 +3,7 @@ import { serveApi } from "./api/index.js";
 import type { ServedApi } from "./api/index.js";
 import { builtinActions, createActionRegistry, pause, resume } from "./actions/index.js";
 import type { ActionRegistry } from "./actions/index.js";
+import { createCheckPipeline, rerunChecksAction } from "./checks/index.js";
 import { systemClock } from "./clock.js";
 import type { Clock } from "./clock.js";
 import {
@@ -128,6 +129,23 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   actions.register(stopSessionAction(manager));
   actions.register(messageSessionAction(manager));
+  const pipeline = createCheckPipeline({
+    db,
+    bus,
+    git: startup.git,
+    cli: startup.cli,
+    registry,
+    env,
+    repoRoot,
+    promptsDir: options.promptsDir,
+    logsDir: join(stateDir, "logs"),
+    config: () => config,
+    fixers: manager,
+    backoff: scheduler,
+    onError,
+    clock,
+  });
+  actions.register(rerunChecksAction(pipeline));
   const gate = createProposalGate({
     db,
     bus,
@@ -215,6 +233,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     start() {
       scheduler.start();
+      pipeline.start();
       expireProposals();
       proposalSweep = setInterval(expireProposals, proposalSweepMs);
     },
@@ -232,6 +251,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       stopEventLines();
       runner.dispose();
       api.closeSync();
+      pipeline.stop();
       scheduler.stop();
       store.dispose();
       startup.close();

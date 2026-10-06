@@ -1226,3 +1226,70 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   revision or `anyFile` moves, because the changes entry alone can stay identical (`+1 −1` before and after). The
   terminal view and CLI clients ignore the event. Background shells (`run_in_background`) that write later are still
   only seen at the next trigger.
+
+## m5-checks
+
+- **Where it lives.** `@mastermind/core/checks` (`src/checks/`, a new package export): `runner.ts` (a `checks` row
+  with its log, processes spawned as kind `check`), `rebase.ts`, `judge.ts`, `reviewer.ts`, `prompts.ts` (fixer,
+  judge and reviewer messages), `outcome.ts` (pure: attempts and where a passing task goes), `pipeline.ts`,
+  `actions.ts` (`rerunChecks`) and `log.ts` (log tails). `runSetupCheck` now uses the same runner. Sessions gained
+  `one-shot.ts` (judge and reviewer calls), `effects.ts` (usage-limit, sign-in and back-off effects shared by every
+  role) and `SessionManager.startFixer`. System prompts are `prompts/fixer.md` and `prompts/reviewer.md`.
+- **Trigger and queue.** The pipeline subscribes to the bus and queues a task whenever it *enters* `checking`
+  (a worker or fixer that succeeded, a re-run), plus every task already in `checking` on `start()`, which covers
+  recovery's leftovers. One pipeline runs at a time (FIFO); a task is never queued twice. Each run first aborts a
+  rebase left in progress in the clone (a killed run or a fixer that gave up), then runs build (skipped when
+  `commands.build` is empty), acceptance, rebase, suite (skipped when `commands.test` is empty) and the reviewer.
+  If the task leaves `checking` meanwhile (a steering resume), the run stops before its next step, its outcome is
+  dropped, and a return to `checking` queues a fresh run. A run that throws (a failed fetch, a spawn error) blocks
+  the task with the error as its reason instead of leaving it in `checking`.
+- **Logs.** `.mastermind/logs/checks/<task>-<kind>-<time>.log`. The rebase log has the fetch, git's own rebase
+  output and the conflicted files; the reviewer's log lists its findings.
+- **Attempts.** A failed build, acceptance or suite check, or serious findings, count an attempt: with attempts
+  left a fixer starts with attempt number `attempts + 1`, otherwise the task is `blocked` and an `error` event
+  `Blocked after N attempts: <reason>` goes on its latest worker or fixer session (the timeline, the terminal and
+  the chat's blocked line all see it). A fixer that ends `succeeded` returns the task to `checking`; any other end
+  is settled like a worker run (8.4 rules).
+- **Rebase conflicts.** Mastermind fetches main, rebases with hooks off and, on a conflict, aborts and starts a
+  fixer with the log tail and instructions to redo `git rebase upstream/<main>`; no attempt is counted. "The fixer
+  gave up" is a conflict again in the very next run after that conflict fixer (tracked in memory by its session
+  id; a restart in between gives one more free fixer). That conflict counts an attempt. After a successful rebase
+  the task's `base_commit` becomes the upstream commit, so the Review diff shows only the task's own changes.
+  (Round `end_commit`s from before a rebase still point at the old commits.)
+- **Flaky judge.** The first failed command check of a run goes to the judge (`models.judge`, `--max-turns 1`,
+  `--tools ""`, `--json-schema {flaky, reason}`, prompt as stdin text). Flaky means one re-run that counts nothing,
+  noted at the top of the re-run's log; only one re-run per pipeline run. A judge that gives no answer means not
+  flaky.
+- **Reviewer.** `models.reviewer`, `--tools Read Grep Glob` (also allowed), `--permission-prompts none`, the task,
+  the changed files and the diff against upstream main (first 100 000 characters) on stdin, and a JSON schema
+  `{findings: [{file, line|null, text, severity}]}`; a top-level array isn't possible because structured output is a
+  tool input object. Every finding is stored with the round. The check fails only on a serious finding. Reviews are
+  serialised inside the reviewer as well, so at most one runs even if something else asks. **A reviewer that gives
+  no answer** (bad output, a crash) fails its check with the reason and the task proceeds: findings are advisory and
+  a broken reviewer must not block work or loop.
+- **Judge and reviewer sessions** have `sessions` rows (roles `judge`, `reviewer`, `attempt` null) with their
+  events and `--session-id`, so recovery can reap them, plus `--no-session-persistence`. The spawner learned
+  `inputFormat: "text"` (prompt written to stdin, then closed) and reports the `result` event. Their usage-limit,
+  sign-in and unrecognised failures have the same global effects as a worker's.
+- **Waiting instead of spending.** Judge, reviewer and fixer calls only start while work isn't paused, signed out or
+  backing off. Otherwise the task stays in `checking`, parked, and its whole pipeline runs again on the next
+  `scheduler.updated` or `auth.updated` that opens the gate (checks are cheap and deterministic compared with
+  remembering a half-run pipeline).
+- **Deviation: fixers start outside `maxWorkers`.** A fixer starts as soon as a check fails (9.2 "without
+  waiting"), even if the scheduler has meanwhile filled the slot its worker left; the scheduler counts it, so no new
+  worker starts until the count drops again. Making fixers wait for a slot would need a reserved-slot queue in the
+  scheduler.
+- **Passing.** `rebasing`, or `review` when `autoRebase` is off or when the task's declared touches *or* any file it
+  actually changed (vs upstream main) overlaps `requireReviewFor`, by the scheduler's segment-prefix rule. Nothing
+  takes tasks out of `rebasing` until m5-rebase-queue.
+- **Routes and tools.** `GET /api/tasks/:taskId/checks`, `GET /api/checks/:checkId/log` (`{check, text,
+  truncated}`, the last 1 MiB), `POST /api/tasks/:taskId/checks/rerun` (action `rerunChecks`: a `review` task goes
+  back to `checking`; a parked `checking` task is queued; anything else, or checks already running, is a 409). MCP
+  `get_check_log {taskId, checkId?, lines = 100}` returns the latest failed check's log (else the latest check)
+  when no id is given. `rerunChecks` is not an MCP tool.
+- **Tests.** `test/integration/checks/pipeline.test.ts` runs real workers, fixers, judges and reviewers from
+  fake-claude against a temp repo whose Makefile build fails while `BROKEN` (or, once, `FLAKY`) is present: a
+  fixed build, blocking at `maxAttempts`, a flaky re-run, a conflict a fixer resolves with a real `git rebase`, a
+  serious then a minor finding, and a protected path held for review and re-run through the action.
+  `routes.test.ts` covers the HTTP routes and the MCP tool; `checks/outcome.test.ts` the pure decisions.
+  `m1-runtime.test.ts` now follows tasks to `rebasing` (with the reviewer off), since `checking` is no longer final.

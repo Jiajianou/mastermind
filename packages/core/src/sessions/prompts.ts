@@ -17,9 +17,8 @@ function setupNote(setup: Check | null): string[] {
   ];
 }
 
-export function workerTaskPrompt(task: Task, setup: Check | null): string {
+export function taskBrief(task: Task): string[] {
   return [
-    `# Task ${task.id}: ${task.title}`,
     "## Goal",
     task.goal.trim(),
     "## Acceptance command",
@@ -27,6 +26,9 @@ export function workerTaskPrompt(task: Task, setup: Check | null): string {
     "```sh\n" + task.acceptance.trim() + "\n```",
     "## Paths you may touch",
     pathList(task.touches),
-    ...setupNote(setup),
-  ].join("\n\n");
+  ];
+}
+
+export function workerTaskPrompt(task: Task, setup: Check | null): string {
+  return [`# Task ${task.id}: ${task.title}`, ...taskBrief(task), ...setupNote(setup)].join("\n\n");
 }

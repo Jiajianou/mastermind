@@ -12,6 +12,8 @@ import {
 import type {
   ApiSummary,
   ChatView,
+  Check,
+  CheckLog,
   Config,
   FileContent,
   InstanceInfo,
@@ -25,6 +27,7 @@ import type { ReadModels } from "../reads.js";
 
 const taskParamsSchema = z.strictObject({ taskId: taskIdSchema });
 const sessionParamsSchema = z.strictObject({ sessionId: z.coerce.number().int().min(1) });
+const checkParamsSchema = z.strictObject({ checkId: z.coerce.number().int().min(1) });
 
 export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): void {
   app.get("/api/instance", (): InstanceInfo => reads.instance());
@@ -52,6 +55,16 @@ export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): voi
   app.get("/api/tasks/:taskId/tree", (request): Promise<TaskTree> => {
     const { taskId } = parseInput(taskParamsSchema, request.params);
     return reads.tree(taskId);
+  });
+
+  app.get("/api/tasks/:taskId/checks", (request): Check[] => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.checks(taskId);
+  });
+
+  app.get("/api/checks/:checkId/log", (request): Promise<CheckLog> => {
+    const { checkId } = parseInput(checkParamsSchema, request.params);
+    return reads.checkLog(checkId);
   });
 
   app.get("/api/sessions", (request): Session[] =>

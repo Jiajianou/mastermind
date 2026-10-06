@@ -1,4 +1,6 @@
-import type { z } from "zod";
+import { z } from "zod";
+import { jsonValueSchema } from "../contracts/index.js";
+import type { JsonValue } from "../contracts/index.js";
 import type { ParsedEvent } from "./parser.js";
 
 export type StructuredOutputFailure = "no-result" | "error-result" | "missing" | "invalid";
@@ -37,4 +39,11 @@ export function readStructuredOutput<Schema extends z.ZodType>(
     });
   }
   return parsed.data;
+}
+
+// The CLI validates --json-schema itself, so the zod-generated `$schema` dialect line is left out rather than risk
+// a validator that only knows an older draft.
+export function jsonSchemaFor(schema: z.ZodType): JsonValue {
+  const generated = Object.entries(z.toJSONSchema(schema)).filter(([key]) => key !== "$schema");
+  return jsonValueSchema.parse(Object.fromEntries(generated));
 }
