@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { decidePath } from "../decide/task-state.js";
 import type { NeedsYouItem } from "./board.js";
 import { SidePanel } from "./SidePanel.js";
 
@@ -10,7 +11,7 @@ function NeedsYouEntry({ item }: { item: NeedsYouItem }) {
   switch (item.kind) {
     case "review":
       return (
-        <Link to={`/review?task=${encodeURIComponent(item.task.id)}`}>
+        <Link to={decidePath(item.task.id)}>
           <code>{item.task.id}</code> is ready for review
         </Link>
       );

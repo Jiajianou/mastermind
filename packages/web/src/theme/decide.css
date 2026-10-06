@@ -1,0 +1,212 @@
+.decide-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.decide-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.decide-heading {
+  flex: 1;
+  min-width: 220px;
+}
+
+.decide-heading h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.decide-heading p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.decide-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.decide-body {
+  display: grid;
+  grid-template-areas:
+    "checks diff side"
+    "files diff side";
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(240px, 340px);
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  gap: 16px;
+}
+
+.check-list {
+  grid-area: checks;
+  padding: 12px;
+}
+
+.decide-body .file-list {
+  grid-area: files;
+  max-height: calc(100vh - 460px);
+  min-height: 160px;
+}
+
+.decide-body .file-view,
+.decide-diff {
+  grid-area: diff;
+}
+
+.decide-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.check-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.check-list h2,
+.failed-test h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.check-list p {
+  margin: 4px;
+}
+
+.check-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--color-panel-border);
+  border-radius: var(--radius-control);
+}
+
+.check-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.check-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.check-passed {
+  border-left-color: var(--color-frost);
+}
+
+.check-passed .check-status {
+  color: var(--color-frost);
+}
+
+.check-failed,
+.check-killed {
+  border-left-color: var(--color-peach);
+}
+
+.check-failed .check-status,
+.check-killed .check-status {
+  color: var(--color-peach);
+}
+
+.check-duration {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.check-summary {
+  flex-basis: 100%;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.failed-test {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.failed-test p {
+  margin: 0;
+}
+
+.failed-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.failed-name {
+  color: var(--color-peach);
+  font-weight: 600;
+}
+
+.failed-summary {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.log-tail {
+  max-height: 360px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--color-page);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1200px) {
+  .decide-body {
+    grid-template-areas:
+      "checks diff"
+      "files diff"
+      "side side";
+    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 960px) {
+  .decide-body {
+    grid-template-areas: "checks" "files" "diff" "side";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decide-body .file-list {
+    max-height: 280px;
+  }
+}

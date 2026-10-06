@@ -25,7 +25,7 @@ export function FileView({
 }) {
   const target =
     mode === "diff" ? diffTarget(taskId, path, change) : { taskId, path, basePath: null };
-  const sides = useFileSides(target, changeRefresh(change));
+  const sides = useFileSides(target, `${fromCommit}:${changeRefresh(change)}`);
   return (
     <section
       className="file-view panel"

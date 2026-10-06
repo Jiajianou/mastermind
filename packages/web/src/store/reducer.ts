@@ -1,4 +1,4 @@
-import type { ChatMessage, Session, SessionEvent } from "@mastermind/core/contracts";
+import type { ChatMessage, Check, Session, SessionEvent } from "@mastermind/core/contracts";
 import type { ChatState, LiveState, SchedulerState, Snapshot, StoreAction } from "./state.js";
 
 export const terminalOutputLimit = 200_000;
@@ -83,6 +83,20 @@ function withScheduler(state: LiveState, change: Partial<SchedulerState>): LiveS
   return { ...state, scheduler: { ...state.scheduler, ...change } };
 }
 
+// A load can answer with a check still running after its check.updated already said it finished, and a finished
+// check never runs again, so the finished copy wins.
+function withLoadedChecks(state: LiveState, taskId: string, loaded: readonly Check[]): LiveState {
+  const stored = state.checks[taskId] ?? {};
+  const checks = Object.fromEntries(
+    loaded.map((check) => {
+      const known = stored[check.id];
+      const keep = known !== undefined && known.status !== "running" && check.status === "running";
+      return [check.id, keep ? known : keepUnchanged(known, check)];
+    }),
+  );
+  return { ...state, checks: { ...state.checks, [taskId]: { ...stored, ...checks } } };
+}
+
 function keepUnchanged<Entity>(stored: Entity | undefined, fresh: Entity): Entity {
   return stored !== undefined && JSON.stringify(stored) === JSON.stringify(fresh) ? stored : fresh;
 }
@@ -156,6 +170,8 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
       return touchWorkspace(state, action.taskId, "any-file");
     case "changes.loaded":
       return { ...state, changes: { ...state.changes, [action.taskId]: action.view } };
+    case "checks.loaded":
+      return withLoadedChecks(state, action.taskId, action.checks);
     case "check.updated": {
       const checks = { ...state.checks[action.taskId], [action.check.id]: action.check };
       return { ...state, checks: { ...state.checks, [action.taskId]: checks } };

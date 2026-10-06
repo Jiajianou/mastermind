@@ -10,6 +10,8 @@ import type {
   ActionName,
   ActionResults,
   ApiError,
+  Check,
+  CheckLog,
   FileContent,
   FileSide,
   SessionEvent,
@@ -74,6 +76,8 @@ export interface ApiClient {
   changes(taskId: string): Promise<TaskChanges>;
   file(taskId: string, path: string, side: FileSide): Promise<FileContent>;
   tree(taskId: string): Promise<TaskTree>;
+  checks(taskId: string): Promise<Check[]>;
+  checkLog(checkId: number): Promise<CheckLog>;
   act<Name extends ActionName>(name: Name, ...args: ActionArgs<Name>): Promise<ActionResults[Name]>;
 }
 
@@ -94,7 +98,7 @@ function routeAction(name: ActionName, input: object): { path: string; body: Req
   return { path, body };
 }
 
-function taskPath(taskId: string, resource: "changes" | "file" | "tree"): string {
+function taskPath(taskId: string, resource: "changes" | "file" | "tree" | "checks"): string {
   return `/api/tasks/${encodeURIComponent(taskId)}/${resource}`;
 }
 
@@ -169,6 +173,15 @@ export function createApiClient(token: string | null): ApiClient {
 
     tree(taskId) {
       return request("GET", taskPath(taskId, "tree"), apiResponseSchemas.tree);
+    },
+
+    checks(taskId) {
+      return request("GET", taskPath(taskId, "checks"), apiResponseSchemas.checks);
+    },
+
+    checkLog(checkId) {
+      const path = `/api/checks/${String(checkId)}/log`;
+      return request("GET", path, apiResponseSchemas.checkLog);
     },
 
     act<Name extends ActionName>(name: Name, ...[input]: ActionArgs<Name>) {

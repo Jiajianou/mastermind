@@ -10,6 +10,7 @@ import { createTempRepo } from "../../support/temp-repo.js";
 export interface ServedMastermind {
   process: CliProcess;
   repoPath: string;
+  git(...args: string[]): Promise<string>;
   project: string;
   link: string;
   origin: string;
@@ -40,6 +41,7 @@ export const test = base.extend<MastermindOptions & { mastermind: ServedMastermi
       await use({
         process: mastermind,
         repoPath: repo.path,
+        git: (...args) => repo.git(...args),
         project: basename(repo.path),
         link,
         origin,

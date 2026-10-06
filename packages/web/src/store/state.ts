@@ -78,6 +78,7 @@ export type StoreAction =
   | { type: "snapshot.loaded"; snapshot: Snapshot }
   | { type: "session.history.loaded"; sessionId: number; events: readonly SessionEvent[] }
   | { type: "changes.loaded"; taskId: string; view: ChangesView }
+  | { type: "checks.loaded"; taskId: string; checks: readonly Check[] }
   | { type: "connection.changed"; connection: Connection }
   | { type: "flags.changed"; flags: RuntimeFlags };
 

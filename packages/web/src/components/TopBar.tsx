@@ -19,7 +19,7 @@ export function TopBar() {
       <span className="project-name">{project ?? "mastermind"}</span>
       <nav aria-label="Screens" className="tabs">
         {screens.map(({ path, label }) => (
-          <NavLink key={path} to={path} end className="tab">
+          <NavLink key={path} to={path} end={path === "/"} className="tab">
             {label}
           </NavLink>
         ))}

@@ -1,5 +1,6 @@
 import { useSearchParams } from "react-router";
 import { useNow } from "../components/use-now.js";
+import { ReadyForReview } from "../decide/ReadyForReview.js";
 import { ChangesLoaders } from "../review/ChangesLoaders.js";
 import { readReviewLocation } from "../review/location.js";
 import { ReviewToggles } from "../review/ReviewToggles.js";
@@ -29,6 +30,7 @@ export function ReviewScreen() {
         )}
         <ReviewToggles location={location} />
       </div>
+      <ReadyForReview />
       {showAll ? (
         <SessionGrid sessions={running} />
       ) : selected === undefined ? (

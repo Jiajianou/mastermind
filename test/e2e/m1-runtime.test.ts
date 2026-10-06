@@ -157,22 +157,16 @@ describe("milestone 1 runtime, through the built binary", () => {
 
     const mastermind = startMastermind(repo, env);
     await waitUntil(mastermind, () =>
-      parallelTasks.every((id) => db.tasks.get(id)?.status === "rebasing"),
+      ["alpha", "beta", "gamma"].every((id) => db.tasks.get(id)?.status === "done"),
     );
-    expect(db.tasks.get("gamma")).toMatchObject({ status: "pending" });
-    expect(db.sessions.listForTask("gamma")).toEqual([]);
-
-    // Nothing rebases tasks onto main yet, so the test stands in for the rebase queue and finishes the dependencies.
-    const depsDoneAt = new Date().toISOString();
-    for (const id of parallelTasks) db.tasks.update(id, { status: "done" });
-    await waitUntil(mastermind, () => db.tasks.get("gamma")?.status === "rebasing");
 
     const [alpha, beta, gamma] = ["alpha", "beta", "gamma"].map((id) => latestSession(db, id));
     if (alpha?.endedAt == null || beta?.endedAt == null || gamma === undefined) {
       throw new Error("every task should have one finished worker session");
     }
     expect(alpha.startedAt < beta.endedAt && beta.startedAt < alpha.endedAt).toBe(true);
-    expect(gamma.startedAt >= depsDoneAt).toBe(true);
+    for (const id of parallelTasks)
+      expect(gamma.startedAt >= (db.tasks.get(id)?.updatedAt ?? "")).toBe(true);
     expect([alpha, beta, gamma].map((session) => session.status)).toEqual([
       "succeeded",
       "succeeded",
@@ -211,7 +205,7 @@ describe("milestone 1 runtime, through the built binary", () => {
 
     const restarted = startMastermind(repo, env);
     await waitUntil(restarted, () =>
-      parallelTasks.every((id) => db.tasks.get(id)?.status === "rebasing"),
+      parallelTasks.every((id) => db.tasks.get(id)?.status === "done"),
     );
 
     const resumedIds = (await env.invocations()).flatMap(({ argv }) => {

@@ -192,6 +192,23 @@ const cases: Case[] = [
     },
   },
   {
+    name: "checks.loaded adds the loaded checks but never returns a finished check to running",
+    before: stateWith({
+      checks: { alpha: { 1: check(1, { status: "passed" }), 2: check(2) }, beta: {} },
+    }),
+    action: {
+      type: "checks.loaded",
+      taskId: "alpha",
+      checks: [check(1), check(2, { status: "failed" }), check(3, { kind: "suite" })],
+    },
+    after: (next, before) => {
+      expect(next.checks.alpha?.[1]?.status).toBe("passed");
+      expect(next.checks.alpha?.[2]?.status).toBe("failed");
+      expect(next.checks.alpha?.[3]?.kind).toBe("suite");
+      expect(next.checks.beta).toBe(before.checks.beta);
+    },
+  },
+  {
     name: "rebase.updated keeps the task's latest rebase",
     before: stateWith({}),
     action: { type: "rebase.updated", taskId: "alpha", rebase },
@@ -396,6 +413,7 @@ describe("store reducer", () => {
       "snapshot.loaded",
       "session.history.loaded",
       "changes.loaded",
+      "checks.loaded",
       "connection.changed",
       "flags.changed",
     ];

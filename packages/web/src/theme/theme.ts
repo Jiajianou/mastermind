@@ -10,3 +10,4 @@ import "./chat.css";
 import "./overview.css";
 import "./sessions.css";
 import "./review.css";
+import "./decide.css";

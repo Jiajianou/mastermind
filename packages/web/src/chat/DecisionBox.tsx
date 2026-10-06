@@ -1,6 +1,7 @@
 import type { ProposalStatus } from "@mastermind/core/contracts";
 import { Link } from "react-router";
-import { useApi, useDispatch } from "../store/hooks.js";
+import { taskReviewPath } from "../decide/task-state.js";
+import { useApi, useDispatch, useLive } from "../store/hooks.js";
 import { useRequest } from "../components/use-request.js";
 
 const outcomeWords: Record<Exclude<ProposalStatus, "pending">, string> = {
@@ -23,6 +24,9 @@ export function DecisionBox({ proposalId, question, status, taskId }: DecisionBo
   const api = useApi();
   const dispatch = useDispatch();
   const { busy, failure, run } = useRequest();
+  const taskStatus = useLive((state) =>
+    taskId === null ? undefined : state.tasks[taskId]?.status,
+  );
 
   const decide = (decision: "confirmProposal" | "rejectProposal") =>
     run(async () => {
@@ -45,9 +49,7 @@ export function DecisionBox({ proposalId, question, status, taskId }: DecisionBo
           <button type="button" disabled={busy} onClick={() => void decide("rejectProposal")}>
             Not now
           </button>
-          {taskId !== null && (
-            <Link to={`/review?task=${encodeURIComponent(taskId)}`}>See changes</Link>
-          )}
+          {taskId !== null && <Link to={taskReviewPath(taskId, taskStatus)}>See changes</Link>}
         </div>
       ) : (
         <p className="muted-line">{outcomeWords[status]}</p>

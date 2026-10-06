@@ -1359,3 +1359,40 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   `bus`). The tests cover: one squashed commit by the owner with no merges; a trailer and robot footer that never
   reach main; main moved by the suite run behind the queue's back, then retried; pausing while the owner is on
   main; a queue conflict resolved by a fixer; a review task kept current and then approved; and discard.
+
+## m5-test-and-decide
+
+- **Where it lives.** The screen is `screens/DecideScreen.tsx` at **`/review/decide/:taskId`** (`?file=` picks the
+  open file), with its parts in `packages/web/src/decide/`: `checks.ts` and `task-state.ts` (pure: the round's
+  checks, the latest failure, the headline and which decisions are open), `DecisionButton.tsx` (one button per
+  action, calling it directly: the click is the confirmation), `DecideHeader`, `CheckList`, `FailedTest` and
+  `DecideFiles` (the Review screen's `FileList` and `FileView` in diff mode). The Review tab stays highlighted on
+  the sub-path (`NavLink end` is now only set for Chat). Overview's "is ready for review" link goes to the screen,
+  and so does a decision's "See changes" when its task is in review; other tasks keep `/review?task=`. The Review
+  screen lists every task in `review` under a "Ready for review" bar linking to it, since such a task has no
+  running session and would otherwise only be reachable from Overview or the chat.
+- **A route, not a Review mode.** The screen follows the task after the decision: the header reads "Ready for
+  review · round N", then "Rebasing onto main · round N", "Rebased onto main", or "Waiting to start" after a
+  discard, so the owner sees the outcome where they clicked. The diff is shown only while the task has a clone
+  (`worktree` set and not `done`); otherwise a line says why.
+- **Decisions.** Approve and rebase is enabled only in `review`; Discard branch in `review` and `blocked` (as the
+  action allows); Re-run all only in `review`. Each returns the task, which is dispatched as `task.updated`.
+- **Checks.** The list shows the latest check of each kind in the task's current round, in pipeline order. The
+  "Failed test" box shows the round's most recent failed check with the last 60 lines of its log
+  (`GET /api/checks/:id/log`), tagged "passed since" when a later check of the same kind passed (a fixer fixed
+  it). The API client gained `checks(taskId)` and `checkLog(checkId)`; the store gained `checks.loaded`, which
+  never turns a finished check back to running. Checks are read again on every `task.updated` and reconnect.
+- **Small fixes on the way.** The changes list is now read again when the task's `baseCommit` changes (the checks
+  rebase it onto a moved main), and the open file when the diff's base commit changes, so the Review screens no
+  longer show a diff against the old base after a rebase.
+- **Wording.** `src/wording.test.ts` parses every non-test web source with the TypeScript parser and fails on any
+  string literal, template text or JSX text containing merge or land (any form, any case), plus `index.html`.
+- **Tests.** `decide/decide.test.ts` (pure tables), `decide/decide-screen.test.tsx` (the log tail, Re-run all),
+  a reducer case, and `test/e2e/web/decide.spec.ts`: a guarded task whose first draft fails acceptance (the judge
+  is matched by `--max-turns`, since it has no system prompt file) reaches review with its fixed failure in the
+  box; Approve and rebase puts one squashed commit on main; Discard branch (after Pause, so the task doesn't start
+  again) deletes the clone and ref and leaves main alone. The web e2e harness exposes the temp repo's `git`.
+- **m1 runtime test.** `test/e2e/m1-runtime.test.ts` waited for alpha and beta to sit in `rebasing`, which the
+  rebase queue now leaves within milliseconds, so the poll could miss it. It now waits for all three tasks to be
+  `done` and checks that gamma's worker started after both dependencies were done; the resume test likewise
+  waits for `done`.

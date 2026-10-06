@@ -3,6 +3,7 @@ import type { ApiClient } from "./api/client.js";
 import { Banners } from "./components/Banners.js";
 import { TopBar } from "./components/TopBar.js";
 import { ChatScreen } from "./screens/ChatScreen.js";
+import { DecideScreen } from "./screens/DecideScreen.js";
 import { OverviewScreen } from "./screens/OverviewScreen.js";
 import { ReviewScreen } from "./screens/ReviewScreen.js";
 import { Screen } from "./screens/Screen.js";
@@ -23,6 +24,7 @@ export function App({ store, api }: { store: Store; api: ApiClient }) {
             <Route path="tasks" element={<Screen title="Tasks" />} />
             <Route path="sessions" element={<SessionsScreen />} />
             <Route path="review" element={<ReviewScreen />} />
+            <Route path="review/decide/:taskId" element={<DecideScreen />} />
             <Route path="settings" element={<Screen title="Settings" />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
