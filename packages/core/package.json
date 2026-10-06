@@ -5,8 +5,12 @@
   "type": "module",
   "exports": {
     "./contracts": "./src/contracts/index.ts",
+    "./auth": "./src/auth.ts",
+    "./claude": "./src/claude.ts",
     "./config": "./src/config/index.ts",
-    "./db": "./src/db/index.ts"
+    "./db": "./src/db/index.ts",
+    "./env": "./src/env.ts",
+    "./procs": "./src/procs.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

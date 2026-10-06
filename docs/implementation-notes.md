@@ -215,3 +215,58 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   reaper. Section 12 has no place for them, so the task that builds the process tracker should add a migration
   (for example a `session_processes` table) rather than reuse `runtime_flags`.
 - **Node 22 prints an `ExperimentalWarning` for `node:sqlite`.** The CLI may want to filter that one warning.
+
+## m1-procs-auth
+
+- **Where it lives.** Four Node-side modules with their own package exports: `@mastermind/core/procs`, `/env`,
+  `/claude` and `/auth`.
+- **Process registry** (`createProcessRegistry()`). `spawn` always uses `detached: true` and registers `{kind, pid,
+  pgid}` before the child has even started, so a Ctrl+C that lands mid-spawn still finds it. pgid equals pid
+  because Node's `detached` calls `setsid`. An entry leaves the registry on the child's `close` event (exit plus
+  stdio closed), so a group whose leader died while an orphan still holds its pipes stays killable. `track` adds
+  processes spawned elsewhere (node-pty "Try it" terminals in M6). `exited` resolves to
+  `{kind: "exited", code} | {kind: "signaled", signal}`; a command that cannot start rejects `spawn` with
+  `SpawnError`.
+- **Kinds.** The plan's `session`, `check`, `rebase`, `conductor` and `terminal`, plus **`utility`** for short
+  `claude` calls (`--version`, `auth status`, and the login and logout hand-offs), so CLAUDE.md's "every child in
+  its own group and recorded" holds for them too.
+- **Killing.** `killAllSync()` and `stopGroup`'s escalation share one tree kill (spike 9): a `ps -A -o
+  pid=,ppid=,pgid=,stat=` snapshot, then every group reachable from the tracked pids by parent link or shared
+  group gets SIGKILL, and a second snapshot catches anything forked meanwhile. Mastermind's own group is never
+  signalled as a group; a descendant inside it is killed by pid. `killAllSync` never throws: it returns
+  `{counts: Record<ProcessKind, number>, failures}` so the kill path can always finish. `ESRCH` is success.
+  **macOS answers `EPERM` to `kill(-pgid)` when the group's only members are unreaped zombies**, so only groups
+  with a live (non-`Z`) member are signalled, and a racing `EPERM` counts as success if no live member is left.
+  If `ps` itself fails, the tracked groups are SIGKILLed directly and the failure is reported with target
+  `"process-table"`. A late `close` only untracks its own entry, so a reused pid is never dropped by mistake.
+- **`stopGroup(child, { graceMs = 10_000 })`** sends SIGTERM to the group (claude then cleans up its tool groups,
+  exiting 143) and SIGKILLs the whole tree if the child has not closed within the grace period.
+- **Line readers.** `io: { stdin, onStdoutLine?, onStderrLine? }` splits UTF-8 output on `\n` and delivers a final
+  unterminated line at end of stream; a stream without a handler is `ignore`d so it can never fill a pipe.
+  `io: "inherit"` is for the login hand-off. `collectOutput` runs a command to completion and joins its lines.
+  Writing to `stdin` is left to the caller, which must handle `EPIPE` when the child has gone.
+- **Login hand-off runs detached too**, so `setsid` leaves it without a controlling terminal while it still reads
+  and writes the owner's terminal through the inherited descriptors. The fake doesn't read the terminal, so this
+  is only proven against fake-claude; m1-startup or a live test should confirm the real interactive login works
+  this way, and if it doesn't, make that one call non-detached and record why.
+- **Environment cleaning** (`cleanEnv`). Removes **every** `ANTHROPIC_*` variable rather than guessing which ones
+  select a provider: in Claude Code each one is a credential, an endpoint or provider setting, or a model-alias
+  remap that mastermind's explicit `--model` makes redundant, and a prefix also catches provider variables added by
+  newer versions. Also removes `CLAUDE_CODE_USE_{BEDROCK,VERTEX,FOUNDRY}`, the nested-session list of the CLI notes
+  and an empty `CLAUDE_CONFIG_DIR`. Every other `CLAUDE_*` variable, including `CLAUDE_CODE_OAUTH_TOKEN`, passes.
+- **Argument builder** (`buildClaudeArgs`). The only way to spawn `claude` is `createClaudeCli(...).spawn/run/
+  handOff` with a `ClaudeCommand` (`version`, `auth-status`, `auth-login` (always `--claudeai`), `auth-logout`,
+  `print`). The forbidden flags have no field, and any value or list item starting with `-` throws
+  `ClaudeArgumentError`, so none can be smuggled in. `print` always emits `-p --output-format stream-json
+  --verbose --strict-mcp-config` and never a positional prompt (prompts go on stdin). List flags emit one argv
+  entry per item (`--tools ""` for an empty list), and `noPermissionPrompts` adds `--permission-prompts none`.
+  JSON options (`settings`, `mcpConfig`, `jsonSchema`) take values and are serialised by the builder.
+- **Version.** Minimum and tested are both 2.1.283: nothing older was verified, and the spikes rely on recent
+  flags. `checkClaude` returns `missing | unreadable | too-old | ok {tested}`, and `describeClaudeCheck` gives the
+  install or update hint and the doctor warning for an untested (newer) version.
+- **Auth classifier.** The order is: not logged in, then non-`firstParty` provider, then `apiKeySource:
+  "apiKeyHelper"`, then `api_key` or `console` (API billing), then `claude.ai` (Pro or Max accepted, any other plan
+  refused naming it) and `oauth_token` (accepted only if it reports Pro or Max, as the CLI notes decided). Any
+  other `authMethod` is refused naming the method. `Accepted.email` is nullable because a token may not report
+  one. `readAuthStatus` parses stdout whatever the exit code, and throws `AuthStatusError` on output that isn't
+  the expected JSON. `describeAuth`, `signInPrompt` and `switchAccountWarning` are the 4.2 texts.
