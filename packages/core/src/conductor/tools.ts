@@ -182,6 +182,24 @@ export const actionTools: readonly ActionTool[] = [
     },
   }),
   actionTool({
+    name: "approve_rebase",
+    action: "approve",
+    input: taskRefInputSchema,
+    description:
+      "Rebase a task that is waiting in review onto main: it is squashed into one commit, built and tested, and main is fast-forwarded to it. Never a merge commit.",
+    describe: ({ taskId }) => `Rebase ${taskId} onto main`,
+    done: ({ taskId }) => `Queued ${taskId} to rebase onto main`,
+  }),
+  actionTool({
+    name: "discard_task",
+    action: "discard",
+    input: taskRefInputSchema,
+    description:
+      "Throw away a task's work: its branch and workspace are deleted and the task returns to pending with its attempts reset, so a fresh worker starts it from current main. Only for a task in review or blocked.",
+    describe: ({ taskId }) => `Discard the work on ${taskId}`,
+    done: ({ taskId }) => `Discarded the work on ${taskId}`,
+  }),
+  actionTool({
     name: "set_config",
     action: "setConfig",
     input: configLayerSchema,

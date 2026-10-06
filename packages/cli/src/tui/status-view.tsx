@@ -13,6 +13,7 @@ import {
 import { Footer } from "./footer.js";
 
 const frostBlue = "#88C0D0";
+const peach = "#E8A37C";
 
 export interface StatusViewProps {
   snapshot: StatusSnapshot;
@@ -65,6 +66,12 @@ export function StatusView({ snapshot, armed, now }: StatusViewProps) {
         <Text>{accountText(header)}</Text>
       </Box>
       <LinkLine link={header.link} />
+      {snapshot.ownerOnMain && (
+        <Text color={peach}>
+          You&apos;re on {header.mainBranch}. Rebasing onto {header.mainBranch} is paused: switch to
+          another branch (git switch -c dev) and it carries on.
+        </Text>
+      )}
       <Box marginTop={1} justifyContent="space-between">
         <Text>
           <Text bold>RUNNING</Text> {runningText(summary)}

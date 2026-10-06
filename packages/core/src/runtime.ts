@@ -3,7 +3,7 @@ import { serveApi } from "./api/index.js";
 import type { ServedApi } from "./api/index.js";
 import { builtinActions, createActionRegistry, pause, resume } from "./actions/index.js";
 import type { ActionRegistry } from "./actions/index.js";
-import { createCheckPipeline, rerunChecksAction } from "./checks/index.js";
+import { createCheckPipeline, createFixerLauncher, rerunChecksAction } from "./checks/index.js";
 import { systemClock } from "./clock.js";
 import type { Clock } from "./clock.js";
 import {
@@ -26,6 +26,7 @@ import type { EventBus } from "./events.js";
 import { GitError } from "./git/index.js";
 import type { KillReport, ProcessRegistry } from "./procs.js";
 import { createProposalGate, proposalActions } from "./proposals.js";
+import { approve, createRebaseQueue, discardAction } from "./rebase/index.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
 import { createSessionManager, messageSessionAction, stopSessionAction } from "./sessions/index.js";
@@ -129,23 +130,37 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   actions.register(stopSessionAction(manager));
   actions.register(messageSessionAction(manager));
-  const pipeline = createCheckPipeline({
+  const launcher = createFixerLauncher({
+    db,
+    bus,
+    clock,
+    maxAttempts: () => config.maxAttempts,
+    fixers: manager,
+    onError,
+  });
+  const gitWork = {
     db,
     bus,
     git: startup.git,
-    cli: startup.cli,
     registry,
     env,
     repoRoot,
-    promptsDir: options.promptsDir,
     logsDir: join(stateDir, "logs"),
     config: () => config,
-    fixers: manager,
-    backoff: scheduler,
+    launcher,
     onError,
     clock,
+  };
+  const pipeline = createCheckPipeline({
+    ...gitWork,
+    cli: startup.cli,
+    promptsDir: options.promptsDir,
+    backoff: scheduler,
   });
   actions.register(rerunChecksAction(pipeline));
+  const rebaseQueue = createRebaseQueue(gitWork);
+  actions.register(approve);
+  actions.register(discardAction({ git: startup.git, repoRoot, config: () => config, clock }));
   const gate = createProposalGate({
     db,
     bus,
@@ -234,6 +249,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     start() {
       scheduler.start();
       pipeline.start();
+      rebaseQueue.start();
       expireProposals();
       proposalSweep = setInterval(expireProposals, proposalSweepMs);
     },
@@ -251,6 +267,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       stopEventLines();
       runner.dispose();
       api.closeSync();
+      rebaseQueue.stop();
       pipeline.stop();
       scheduler.stop();
       store.dispose();

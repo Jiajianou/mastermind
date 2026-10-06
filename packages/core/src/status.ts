@@ -41,6 +41,7 @@ export interface EventLine {
 
 export interface StatusSnapshot {
   header: StatusHeader;
+  ownerOnMain: boolean;
   running: readonly RunningSession[];
   summary: Summary;
   runningChecks: number;
@@ -147,6 +148,15 @@ function schedulerLines(
   return lines;
 }
 
+function checkoutLine({ branch, onMain }: BusEventOf<"checkout.updated">): Line {
+  return {
+    label: "rebase",
+    text: onMain
+      ? `You're on ${branch}: rebasing onto ${branch} is paused until you switch to another branch`
+      : `You left ${branch}; rebasing onto ${branch} continues`,
+  };
+}
+
 function authLine({ authRequired }: BusEventOf<"auth.updated">): Line {
   return {
     label: "sign-in",
@@ -157,12 +167,14 @@ function authLine({ authRequired }: BusEventOf<"auth.updated">): Line {
 }
 
 export function createStatusStore(options: StatusStoreOptions): StatusStore {
-  const { db, bus, clock, header } = options;
+  const { db, bus, clock } = options;
   const listeners = new Set<() => void>();
   const activity = new Map<number, string>();
   const runningChecks = new Set<number>();
   const taskStatuses = new Map(db.tasks.list().map((task) => [task.id, task.status]));
   let flags = db.flags.get();
+  let header = options.header;
+  let ownerOnMain = false;
   let events: EventLine[] = [];
   let nextLineId = 1;
 
@@ -185,6 +197,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
   function read(): StatusSnapshot {
     return {
       header,
+      ownerOnMain,
       running: readRunning(),
       summary: options.summary(),
       runningChecks: runningChecks.size,
@@ -233,6 +246,12 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
         return [checkLine(event)];
       case "rebase.updated":
         return [rebaseLine(event, header.mainBranch)];
+      case "main.moved":
+        header = { ...header, mainCommit: event.commit.slice(0, 7) };
+        return [];
+      case "checkout.updated":
+        ownerOnMain = event.onMain;
+        return [checkoutLine(event)];
       case "scheduler.updated": {
         const lines = schedulerLines(flags, event);
         flags = { ...flags, paused: event.paused, backoffResumeAt: event.resumeAt };

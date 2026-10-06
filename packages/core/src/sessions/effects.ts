@@ -39,3 +39,10 @@ export function applySettlementEffect(effect: SettlementEffect, targets: EffectT
       return;
   }
 }
+
+// Claude calls (judges, reviewers, fixers) wait while work is paused, signed out or backing off after a usage limit.
+export function claudeCallsAllowed(db: Db, now: Date): boolean {
+  const { paused, authRequired, backoffResumeAt } = db.flags.get();
+  const backingOff = backoffResumeAt !== null && Date.parse(backoffResumeAt) > now.getTime();
+  return !paused && !authRequired && !backingOff;
+}

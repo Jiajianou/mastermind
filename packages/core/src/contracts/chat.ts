@@ -67,12 +67,14 @@ export const eventLineKindSchema = z.enum([
   "rebased",
   "sign_in",
   "usage_limit",
+  "owner_on_main",
 ]);
 export type EventLineKind = z.infer<typeof eventLineKindSchema>;
 
 export const eventLineMetaSchema = z.discriminatedUnion("event", [
   z.object({ event: z.enum(["review", "blocked", "rebased"]), taskId: z.string() }),
   z.object({ event: z.literal("sign_in") }),
+  z.object({ event: z.literal("owner_on_main"), branch: z.string() }),
   z.object({ event: z.literal("usage_limit"), resumeAt: isoTimestampSchema }),
 ]);
 export type EventLineMeta = z.infer<typeof eventLineMetaSchema>;

@@ -1293,3 +1293,69 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   serious then a minor finding, and a protected path held for review and re-run through the action.
   `routes.test.ts` covers the HTTP routes and the MCP tool; `checks/outcome.test.ts` the pure decisions.
   `m1-runtime.test.ts` now follows tasks to `rebasing` (with the reviewer off), since `checking` is no longer final.
+
+## m5-rebase-queue
+
+- **Where it lives.** `@mastermind/core/attribution` (`src/attribution.ts`: `findAttribution`, `stripAttribution`)
+  and `@mastermind/core/rebase` (`src/rebase/`: `queue.ts`, `squash.ts`, `main-ref.ts` for the owner's repo,
+  `actions.ts` for `approve` and `discard`). The fixer start and blocking logic moved out of the checks pipeline
+  into `checks/fixing.ts` (`createFixerLauncher`, `checkFailureRequest`, `conflictRequest`). **One launcher is
+  shared** by the pipeline and the queue (both take `launcher` in their options), so "the conflict fixer gave up"
+  is noticed whichever of the two hits the conflict next. `claudeCallsAllowed` is in `sessions/effects.ts`.
+- **Queue run.** One task at a time, FIFO, queued when a task *enters* `rebasing` and for every `rebasing` task on
+  `start()` (recovery leftovers). Each run is a `rebases` row (`running`, then `succeeded` or `failed`, with
+  `rebase.updated`) and a log `.mastermind/logs/rebases/<task>-<time>.log`. A row left `running` by a shutdown
+  mid-run is marked `failed` when the task's next run starts, and a run that ends after `stop()` writes nothing. Steps: abort a leftover rebase, rebase
+  onto main (the checks' `rebaseOntoMain`, so it is also a `rebase` check row), squash, build and test (as `build`
+  and `suite` check rows of the round, no flaky judge), fetch into `refs/mastermind/<id>`, attribution guard,
+  `update-ref refs/heads/<main> <new> <upstream>`. Then one transaction marks the task `done` and the row
+  `succeeded`, `main.moved` and `task.updated` are emitted (which wakes the scheduler), and the ref and clone are
+  deleted. Marking done before the cleanup means a crash leaves at worst a stray clone, never a task stuck in
+  `rebasing` for work already on main. The task keeps its `worktree` path as history.
+- **Main moved meanwhile.** A failed `update-ref` whose main is no longer the upstream we rebased onto restarts the
+  run from the rebase (logged as "main moved … rebasing again"), up to 5 times, then blocks. Any other `update-ref`
+  failure is an error, which blocks the task with the reason.
+- **Squash message.** Subject is the task title (attribution stripped; `Task <id>` if nothing is left), then the
+  stripped `.mastermind-result.md`, then `Task id: <id>`. "Task id" contains a space, so git does not parse it as a
+  trailer and the commit has **no trailers at all** (the tests check `%(trailers)` is empty). Committed with hooks
+  off, `--no-verify` and `--cleanup=whitespace`, under the clone's copy of the owner's identity. A branch that adds
+  nothing to main after the rebase is marked `done` without moving main.
+- **Attribution.** Line patterns, case-insensitive: any `…-by:` trailer naming Claude or Anthropic,
+  `Generated with|by|using [Claude…`, `Claude-…session…:` trailers (the key must contain "session", so a subject
+  such as `claude-cli: parse flags` survives), `claude.ai/code` session links and
+  `noreply@anthropic.com`. The rewriter drops matching lines and collapses the blank lines left behind. A human
+  co-author called Claude would be stripped too; that false positive is accepted. The guard scans
+  `git log <upstream>..refs/mastermind/<id> --format=%B` in the owner's repo, which is exactly what main would
+  receive; a match deletes the ref, fails the rebase row and blocks the task.
+- **Owner on main.** Before rebasing and again right before `update-ref`, the queue checks `git worktree list
+  --porcelain` for `refs/heads/<main>`, so a linked worktree on main counts too. While it is checked out the queue
+  polls every 2 s (`checkoutPollMs`), emits a new bus event **`checkout.updated { branch, onMain }`** on each
+  change, and the chat gets a system line (new event-line kind `owner_on_main`). The terminal view shows a standing
+  peach notice (`StatusSnapshot.ownerOnMain`) plus an event line. A second new event, **`main.moved { branch,
+  commit }`**, refreshes the terminal header's `main @ <sha>`. The web reducer ignores both for now.
+- **Conflicts and failures** start a fixer through the launcher (`rebasing → running`), like the pipeline: a conflict
+  counts no attempt unless the previous fixer was a conflict fixer that gave up; a build or test failure counts one.
+  When Claude calls aren't allowed (paused, signed out, backing off), the fix request is kept in memory and
+  launched on the next `scheduler.updated` or `auth.updated` that opens the gate; after a restart the task is
+  simply rebased again.
+- **Staying current.** The checks pipeline listens for `main.moved` (and checks once on `start()`): every `review`
+  task whose `baseCommit` isn't main's tip goes back to `checking` with scope `current`, which runs only the
+  rebase, the suite and the reviewer (9.2's checks 3 to 5), then returns to `review` or `rebasing` by the usual
+  rules. `rebasing` tasks don't need it: the queue rebases them itself. The same check runs whenever a task
+  *enters* `review`, because main may have moved after its checks rebased it but before they finished.
+- **Actions.** `approve` (`POST /api/tasks/:taskId/approve`) moves a `review` task to `rebasing`, refusing any other
+  status (the transition table also allows `checking → rebasing`, which must not be reachable by hand).
+  `discard` (`POST /api/tasks/:taskId/discard`) is allowed in `review` **and `blocked`** (a deviation from 7.2's
+  diagram, which only shows review; throwing away a blocked attempt is the natural use). It renames the clone aside
+  in the same tick as the status change, so a staying-current re-run or a new start can't touch it, then deletes it
+  and `refs/mastermind/<id>`. The task returns to `pending` with attempts 0 and `worktree`, `branch`, `baseCommit`
+  and `resumeSession` cleared, so the next start clones fresh from main. A stored clone outside `worktreeDir` is
+  refused with a 409. MCP tools `approve_rebase` and `discard_task` are gated by the default `conductor.confirm`;
+  their questions are "Rebase <id> onto main?" and "Discard the work on <id>?". The CLI's generated `approve` and
+  `discard` subcommands now exist.
+- **Tests.** `src/attribution.test.ts` (the scanner and rewriter table) and
+  `test/integration/rebase/rebase-queue.test.ts`, which uses the checks harness (it now builds the shared launcher
+  and the queue, takes `startRebaseQueue`, `repoFiles` and a `config` that may depend on the temp repo, and exposes
+  `bus`). The tests cover: one squashed commit by the owner with no merges; a trailer and robot footer that never
+  reach main; main moved by the suite run behind the queue's back, then retried; pausing while the owner is on
+  main; a queue conflict resolved by a fixer; a review task kept current and then approved; and discard.

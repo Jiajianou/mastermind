@@ -58,6 +58,8 @@ const builtins = {
   Exclude<
     ActionName,
     | "rerunChecks"
+    | "approve"
+    | "discard"
     | "stopSession"
     | "messageSession"
     | "confirmProposal"

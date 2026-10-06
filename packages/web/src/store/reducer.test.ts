@@ -200,6 +200,22 @@ const cases: Case[] = [
     },
   },
   {
+    name: "main.moved leaves the state unchanged until a screen shows main",
+    before: stateWith({}),
+    action: { type: "main.moved", branch: "main", commit: "a".repeat(40) },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "checkout.updated leaves the state unchanged; the chat line tells the owner",
+    before: stateWith({}),
+    action: { type: "checkout.updated", branch: "main", onMain: true },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
     name: "terminal.output appends to the terminal and keeps only the most recent output",
     before: stateWith({
       terminals: { t1: { taskId: "alpha", output: "x".repeat(terminalOutputLimit) } },

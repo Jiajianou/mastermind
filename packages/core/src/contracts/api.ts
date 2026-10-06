@@ -58,6 +58,8 @@ export interface ActionResults {
   release: Task;
   retry: Task;
   rerunChecks: Task;
+  approve: Task;
+  discard: Task;
   stopSession: Session;
   messageSession: MessageSessionResult;
   pause: RuntimeFlags;
@@ -89,6 +91,8 @@ export const actionRoutes = {
   release: { method: "POST", path: "/api/tasks/:taskId/release" },
   retry: { method: "POST", path: "/api/tasks/:taskId/retry" },
   rerunChecks: { method: "POST", path: "/api/tasks/:taskId/checks/rerun" },
+  approve: { method: "POST", path: "/api/tasks/:taskId/approve" },
+  discard: { method: "POST", path: "/api/tasks/:taskId/discard" },
   stopSession: {
     method: "POST",
     path: "/api/sessions/:sessionId/stop",
@@ -128,6 +132,8 @@ export const actionInputSchemas = {
   release: taskRefInputSchema,
   retry: taskRefInputSchema,
   rerunChecks: taskRefInputSchema,
+  approve: taskRefInputSchema,
+  discard: taskRefInputSchema,
   stopSession: sessionRefInputSchema,
   messageSession: messageSessionInputSchema,
   pause: noInputSchema,
@@ -154,6 +160,8 @@ export const actionResultSchemas = {
   release: taskSchema,
   retry: taskSchema,
   rerunChecks: taskSchema,
+  approve: taskSchema,
+  discard: taskSchema,
   stopSession: sessionSchema,
   messageSession: messageSessionResultSchema,
   pause: runtimeFlagsSchema,

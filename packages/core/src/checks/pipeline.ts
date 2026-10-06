@@ -4,22 +4,20 @@ import type { ClaudeCli } from "../claude.js";
 import { systemClock } from "../clock.js";
 import type { Clock } from "../clock.js";
 import type { ResolvedConfig } from "../config/index.js";
-import { isEditingRole } from "../contracts/index.js";
-import type { Check, CheckKind, Task, TaskStatus } from "../contracts/index.js";
+import type { CheckKind, Task, TaskStatus } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { Environment } from "../env.js";
 import type { EventBus } from "../events.js";
 import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
 import type { UsageBackoff } from "../sessions/effects.js";
-import type { SessionManager } from "../sessions/manager.js";
 import { createOneShotRunner } from "../sessions/one-shot.js";
 import { createSessionSpawner } from "../sessions/spawner.js";
+import { checkFailureRequest, conflictRequest, readFailedCheck } from "./fixing.js";
+import type { FixerLauncher, FixRequest } from "./fixing.js";
 import { createFlakyJudge } from "./judge.js";
-import { readLogTail } from "./log.js";
-import { decideAfterFailure, statusAfterPassing } from "./outcome.js";
-import { checkFailurePrompt, checkName, conflictPrompt, findingsPrompt } from "./prompts.js";
-import type { FailedCheck } from "./prompts.js";
+import { statusAfterPassing } from "./outcome.js";
+import { findingsPrompt } from "./prompts.js";
 import { abortRebase, rebaseOntoMain } from "./rebase.js";
 import { createReviewer } from "./reviewer.js";
 import { errorMessage, runShellCheck } from "./runner.js";
@@ -36,7 +34,7 @@ export interface CheckPipelineOptions {
   promptsDir: string;
   logsDir: string;
   config: () => ResolvedConfig;
-  fixers: Pick<SessionManager, "startFixer">;
+  launcher: FixerLauncher;
   backoff: UsageBackoff;
   onError: (error: unknown) => void;
   clock?: Clock;
@@ -48,9 +46,12 @@ export interface CheckPipeline {
   rerun(taskId: string): Task;
 }
 
+// "current" re-checks a branch after main moved: only the rebase, the full suite and the reviewer (PLAN 9.2).
+type CheckScope = "full" | "current";
+
 type Outcome =
   | { kind: "passed"; changedFiles: string[] }
-  | { kind: "fix"; prompt: string; reason: string; countsAttempt: boolean; conflict: boolean }
+  | ({ kind: "fix" } & FixRequest)
   | { kind: "parked" }
   | { kind: "superseded" }
   | { kind: "block"; reason: string };
@@ -64,6 +65,7 @@ interface Run {
   turn: Turn;
   task: Task;
   worktree: string;
+  scope: CheckScope;
   config: ResolvedConfig;
   followsConflictFixer: boolean;
   rerunUsed: boolean;
@@ -71,13 +73,12 @@ interface Run {
 
 const parked: Outcome = { kind: "parked" };
 const superseded: Outcome = { kind: "superseded" };
-const tailLimits = { maxBytes: 64 * 1024, maxLines: 80 };
 
 // A function rather than a property read, so the flag isn't narrowed across the awaits that may change it.
 const wasSuperseded = (turn: Turn): boolean => turn.superseded;
 
 export function createCheckPipeline(options: CheckPipelineOptions): CheckPipeline {
-  const { db, bus, git, onError, clock = systemClock } = options;
+  const { db, bus, git, launcher, onError, clock = systemClock } = options;
   const context: CheckContext & { git: Git } = {
     db,
     bus,
@@ -94,6 +95,7 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
     backoff: options.backoff,
     spawner: createSessionSpawner({ db, bus, cli: options.cli, logsDir: options.logsDir, onError }),
   });
+  const claudeAllowed = (): boolean => launcher.claudeAllowed();
   const judge = createFlakyJudge({ oneShot, config: options.config });
   const reviewer = createReviewer({
     ...context,
@@ -104,7 +106,7 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
 
   const queue: string[] = [];
   const waiting = new Set<string>();
-  const conflictFixers = new Map<string, number>();
+  const scopes = new Map<string, CheckScope>();
   const statuses = new Map<string, TaskStatus>();
   let active: Turn | null = null;
   let draining = false;
@@ -114,23 +116,6 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
     bus.emit({ type: "task.updated", taskId: task.id, task });
   }
 
-  // Claude calls (judge, reviewer, fixer) wait while work is paused, signed out or backing off; the task stays in
-  // checking and its pipeline runs again once work resumes.
-  function claudeAllowed(): boolean {
-    const { paused, authRequired, backoffResumeAt } = db.flags.get();
-    const backingOff =
-      backoffResumeAt !== null && Date.parse(backoffResumeAt) > clock.now().getTime();
-    return !paused && !authRequired && !backingOff;
-  }
-
-  async function failedCheck(check: Check): Promise<FailedCheck> {
-    if (check.logPath === null || !existsSync(check.logPath)) return { check, logTail: "" };
-    return { check, logTail: (await readLogTail(check.logPath, tailLimits)).text };
-  }
-
-  const failureReason = (check: Check): string =>
-    `the ${checkName(check)} check failed: ${check.summary ?? "no details"}`;
-
   async function runCommand(run: Run, kind: CheckKind, command: string): Promise<Outcome | null> {
     if (wasSuperseded(run.turn)) return superseded;
     const target = { taskId: run.task.id, round: run.task.round, kind, cwd: run.worktree, command };
@@ -138,7 +123,7 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
     if (check.status === "passed") return null;
     if (wasSuperseded(run.turn)) return superseded;
     if (!claudeAllowed()) return parked;
-    let failed = await failedCheck(check);
+    let failed = await readFailedCheck(check);
     if (!run.rerunUsed) {
       const verdict = await judge.judge(run.task, run.worktree, failed);
       if (!claudeAllowed()) return parked;
@@ -147,16 +132,10 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
         const notes = [`Re-run because the failure looked flaky: ${verdict.reason}`];
         check = await runShellCheck(context, { ...target, notes });
         if (check.status === "passed") return null;
-        failed = await failedCheck(check);
+        failed = await readFailedCheck(check);
       }
     }
-    return {
-      kind: "fix",
-      prompt: checkFailurePrompt(run.task, failed),
-      reason: failureReason(check),
-      countsAttempt: true,
-      conflict: false,
-    };
+    return { kind: "fix", ...checkFailureRequest(run.task, failed) };
   }
 
   async function changedFiles(worktree: string, upstream: string): Promise<string[]> {
@@ -167,12 +146,14 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
   async function checkTask(run: Run): Promise<Outcome> {
     const { config, worktree } = run;
     const { build, test } = config.commands;
-    if (build.trim() !== "") {
-      const failed = await runCommand(run, "build", build.trim());
-      if (failed !== null) return failed;
+    if (run.scope === "full") {
+      if (build.trim() !== "") {
+        const failed = await runCommand(run, "build", build.trim());
+        if (failed !== null) return failed;
+      }
+      const acceptance = await runCommand(run, "acceptance", run.task.acceptance);
+      if (acceptance !== null) return acceptance;
     }
-    const acceptance = await runCommand(run, "acceptance", run.task.acceptance);
-    if (acceptance !== null) return acceptance;
 
     if (wasSuperseded(run.turn)) return superseded;
     const rebase = await rebaseOntoMain(context, {
@@ -182,23 +163,16 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
       repoRoot: options.repoRoot,
       mainBranch: config.mainBranch,
     });
-    if (rebase.kind === "conflict") {
-      const { logTail } = await failedCheck(rebase.check);
-      const gaveUp = run.followsConflictFixer;
+    if (rebase.kind === "conflict")
       return {
         kind: "fix",
-        prompt: conflictPrompt(run.task, {
+        ...(await conflictRequest(run.task, {
+          check: rebase.check,
           upstream: rebase.upstream,
           mainBranch: config.mainBranch,
-          logTail,
-        }),
-        reason: gaveUp
-          ? `the fixer could not resolve the rebase conflict: ${rebase.check.summary ?? ""}`
-          : (rebase.check.summary ?? "rebase conflict"),
-        countsAttempt: gaveUp,
-        conflict: true,
+          fixerGaveUp: run.followsConflictFixer,
+        })),
       };
-    }
     if (run.task.baseCommit !== rebase.upstream) {
       run.task = db.tasks.update(run.task.id, { baseCommit: rebase.upstream });
       emitTask(run.task);
@@ -240,64 +214,6 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
     return task?.status === "checking" ? task : null;
   }
 
-  function block(taskId: string, attempts: number, reason: string): void {
-    const blocked = db.transaction(() => {
-      const task = stillChecking(taskId);
-      if (task === null) return null;
-      assertTransition(taskId, task.status, "blocked");
-      const session = db.sessions.listForTask(taskId).findLast(isEditingRole);
-      const tries = `${String(attempts)} attempt${attempts === 1 ? "" : "s"}`;
-      const event =
-        session === undefined
-          ? null
-          : db.events.append({
-              sessionId: session.id,
-              type: "error",
-              summary: `Blocked after ${tries}: ${reason}`,
-              payload: JSON.stringify({ type: "blocked", attempts, reason }),
-            });
-      return { event, task: db.tasks.update(taskId, { status: "blocked", attempts }) };
-    });
-    if (blocked === null) return;
-    if (blocked.event !== null)
-      bus.emit({
-        type: "session.event",
-        sessionId: blocked.event.sessionId,
-        taskId,
-        event: blocked.event,
-      });
-    emitTask(blocked.task);
-  }
-
-  async function startFixer(taskId: string, outcome: Extract<Outcome, { kind: "fix" }>) {
-    const task = stillChecking(taskId);
-    if (task === null) return;
-    const decision = decideAfterFailure({
-      attempts: task.attempts,
-      maxAttempts: options.config().maxAttempts,
-      countsAttempt: outcome.countsAttempt,
-    });
-    if (decision.kind === "block") {
-      block(taskId, decision.attempts, outcome.reason);
-      return;
-    }
-    if (!claudeAllowed()) {
-      waiting.add(taskId);
-      return;
-    }
-    try {
-      const fixer = await options.fixers.startFixer({
-        taskId,
-        prompt: outcome.prompt,
-        attempts: decision.attempts,
-      });
-      if (outcome.conflict) conflictFixers.set(taskId, fixer.id);
-    } catch (error) {
-      onError(error);
-      waiting.add(taskId);
-    }
-  }
-
   function pass(taskId: string, changed: readonly string[]): void {
     const passed = db.transaction(() => {
       const task = stillChecking(taskId);
@@ -315,7 +231,9 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
         pass(taskId, outcome.changedFiles);
         return;
       case "fix":
-        await startFixer(taskId, outcome);
+        // Claude calls wait while work is paused, signed out or backing off; the task stays in checking and its
+        // pipeline runs again once work resumes.
+        if ((await launcher.fix(taskId, "checking", outcome)) === "waiting") waiting.add(taskId);
         return;
       case "parked":
         waiting.add(taskId);
@@ -323,21 +241,12 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
       case "superseded":
         return;
       case "block":
-        block(taskId, db.tasks.get(taskId)?.attempts ?? 0, outcome.reason);
+        launcher.block(taskId, "checking", db.tasks.get(taskId)?.attempts ?? 0, outcome.reason);
         return;
     }
   }
 
-  function followsConflictFixer(taskId: string): boolean {
-    const fixerId = conflictFixers.get(taskId);
-    conflictFixers.delete(taskId);
-    return (
-      fixerId !== undefined &&
-      db.sessions.listForTask(taskId).findLast(isEditingRole)?.id === fixerId
-    );
-  }
-
-  async function checkWorkspace(turn: Turn, task: Task): Promise<Outcome> {
+  async function checkWorkspace(turn: Turn, task: Task, scope: CheckScope): Promise<Outcome> {
     const { worktree } = task;
     if (worktree === null || !existsSync(worktree))
       return { kind: "block", reason: "its workspace is gone" };
@@ -345,8 +254,9 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
       turn,
       task,
       worktree,
+      scope,
       config: options.config(),
-      followsConflictFixer: followsConflictFixer(task.id),
+      followsConflictFixer: launcher.followsConflictFixer(task.id),
       rerunUsed: false,
     };
     // A fixer that gave up, or a run killed mid-rebase, can leave a rebase in progress; the checks need the branch.
@@ -356,10 +266,12 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
 
   async function runPipeline(turn: Turn): Promise<void> {
     const task = stillChecking(turn.taskId);
+    const scope = scopes.get(turn.taskId) ?? "full";
+    scopes.delete(turn.taskId);
     if (task === null) return;
     let outcome: Outcome;
     try {
-      outcome = await checkWorkspace(turn, task);
+      outcome = await checkWorkspace(turn, task, scope);
     } catch (error) {
       onError(error);
       outcome = { kind: "block", reason: `its checks could not run: ${errorMessage(error)}` };
@@ -389,6 +301,27 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
   const pending = (taskId: string): boolean =>
     queue.includes(taskId) || (active?.taskId === taskId && !active.superseded);
 
+  function moveToChecking(task: Task, scope: CheckScope): Task {
+    assertTransition(task.id, task.status, "checking");
+    scopes.set(task.id, scope);
+    const checking = db.tasks.update(task.id, { status: "checking" });
+    emitTask(checking);
+    return checking;
+  }
+
+  async function mainCommit(): Promise<string> {
+    const ref = `refs/heads/${options.config().mainBranch}`;
+    return (await git.run(options.repoRoot, ["rev-parse", "--verify", ref])).trim();
+  }
+
+  // Staying current (PLAN 9.2): a finished branch waiting in review is rebased onto every new main and re-tested.
+  async function stayCurrent(): Promise<void> {
+    const main = await mainCommit();
+    if (unsubscribe === null) return;
+    for (const task of db.tasks.list())
+      if (task.status === "review" && task.baseCommit !== main) moveToChecking(task, "current");
+  }
+
   function enqueue(taskId: string): void {
     if (unsubscribe === null || pending(taskId)) return;
     waiting.delete(taskId);
@@ -409,14 +342,18 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
           if (active?.taskId === event.taskId && event.task.status !== "checking")
             active.superseded = true;
           if (event.task.status === "checking" && previous !== "checking") enqueue(event.taskId);
+          // Main may have moved after this task's checks rebased it, while they were still running.
+          if (event.task.status === "review" && previous !== "review") stayCurrent().catch(onError);
         }
         if (
           (event.type === "scheduler.updated" || event.type === "auth.updated") &&
           claudeAllowed()
         )
           for (const taskId of [...waiting]) enqueue(taskId);
+        if (event.type === "main.moved") stayCurrent().catch(onError);
       });
       for (const [taskId, status] of statuses) if (status === "checking") enqueue(taskId);
+      stayCurrent().catch(onError);
     },
 
     stop() {
@@ -440,9 +377,7 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
           "conflict",
           `checks re-run only for a task in review or checking; ${taskId} is ${task.status}`,
         );
-      const checking = db.tasks.update(taskId, { status: "checking" });
-      emitTask(checking);
-      return checking;
+      return moveToChecking(task, "full");
     },
   };
 }

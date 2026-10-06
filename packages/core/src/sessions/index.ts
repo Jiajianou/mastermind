@@ -2,7 +2,7 @@ export { messageSessionAction, stopSessionAction } from "./actions.js";
 export { classifyExit } from "./exit.js";
 export { createSessionManager, wipMessage } from "./manager.js";
 export type { FixerRequest, SessionManager, SessionManagerOptions } from "./manager.js";
-export { applySettlementEffect } from "./effects.js";
+export { applySettlementEffect, claudeCallsAllowed } from "./effects.js";
 export type { EffectTargets, UsageBackoff } from "./effects.js";
 export { createOneShotRunner } from "./one-shot.js";
 export type {

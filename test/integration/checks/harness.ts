@@ -2,7 +2,11 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createActionRegistry } from "@mastermind/core/actions";
 import type { ActionRegistry } from "@mastermind/core/actions";
-import { createCheckPipeline, rerunChecksAction } from "@mastermind/core/checks";
+import {
+  createCheckPipeline,
+  createFixerLauncher,
+  rerunChecksAction,
+} from "@mastermind/core/checks";
 import type { CheckPipeline } from "@mastermind/core/checks";
 import { createClaudeCli } from "@mastermind/core/claude";
 import { defaultConfig, resolveConfig } from "@mastermind/core/config";
@@ -11,8 +15,11 @@ import type { BusEvent, Check, Config, Task } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
+import type { EventBus } from "@mastermind/core/events";
 import { createGit } from "@mastermind/core/git";
 import { createProcessRegistry } from "@mastermind/core/procs";
+import { approve, createRebaseQueue, discardAction } from "@mastermind/core/rebase";
+import type { RebaseQueue } from "@mastermind/core/rebase";
 import { createScheduler } from "@mastermind/core/scheduler";
 import { createSessionManager } from "@mastermind/core/sessions";
 import type { SessionManager } from "@mastermind/core/sessions";
@@ -40,9 +47,11 @@ export interface ChecksHarness {
   env: IsolatedEnv;
   repo: TempRepo;
   db: Db;
+  bus: EventBus;
   config: ResolvedConfig;
   manager: SessionManager;
   pipeline: CheckPipeline;
+  rebaseQueue: RebaseQueue;
   actions: ActionRegistry;
   events: BusEvent[];
   errors: unknown[];
@@ -56,8 +65,9 @@ export interface ChecksHarness {
 
 export interface ChecksHarnessOptions {
   scenario: Scenario;
-  config?: Partial<Config>;
+  config?: Partial<Config> | ((repo: TempRepo) => Partial<Config>);
   startPipeline?: boolean;
+  startRebaseQueue?: boolean;
 }
 
 const roleOf = ({ argv }: InvocationRecord): string => {
@@ -81,7 +91,7 @@ export async function checksHarness(options: ChecksHarnessOptions): Promise<Chec
       worktreeDir: join(env.worktreeRoot, "demo"),
       commands: { setup: "", build: "make build", test: "make test" },
       reviewer: { enabled: false },
-      ...options.config,
+      ...(typeof options.config === "function" ? options.config(repo) : options.config),
     },
     { ...context, plan: "max" },
   );
@@ -111,24 +121,39 @@ export async function checksHarness(options: ChecksHarnessOptions): Promise<Chec
     pathGuardCommand: ["node", "/opt/mastermind/path-guard.js"],
     onError,
   });
-  const pipeline = createCheckPipeline({
+  const launcher = createFixerLauncher({
+    db,
+    bus,
+    clock: systemClock,
+    maxAttempts: () => config.maxAttempts,
+    fixers: manager,
+    onError,
+  });
+  const gitWork = {
     ...shared,
     logsDir: join(env.root, "logs"),
     config: () => config,
-    fixers: manager,
-    backoff: scheduler,
+    launcher,
     onError,
-  });
+  };
+  const pipeline = createCheckPipeline({ ...gitWork, backoff: scheduler });
+  const rebaseQueue = createRebaseQueue({ ...gitWork, checkoutPollMs: 50 });
   const actions = createActionRegistry(
     { db, bus, config: { set: () => Promise.reject(new Error("config is fixed in tests")) } },
-    [rerunChecksAction(pipeline)],
+    [
+      rerunChecksAction(pipeline),
+      approve,
+      discardAction({ git, repoRoot: repo.path, config: () => config, clock: systemClock }),
+    ],
   );
   onCleanup(() => {
+    rebaseQueue.stop();
     pipeline.stop();
     registry.killAllSync();
     db.close();
   });
   if (options.startPipeline ?? true) pipeline.start();
+  if (options.startRebaseQueue ?? false) rebaseQueue.start();
 
   const invocationsOf = async (role: string) =>
     (await env.invocations()).filter((invocation) => roleOf(invocation) === role);
@@ -137,9 +162,11 @@ export async function checksHarness(options: ChecksHarnessOptions): Promise<Chec
     env,
     repo,
     db,
+    bus,
     config,
     manager,
     pipeline,
+    rebaseQueue,
     actions,
     events,
     errors,

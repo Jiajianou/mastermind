@@ -56,6 +56,13 @@ function lineFor(state: WatchedState, event: BusEvent, mainBranch: () => string)
           }
         : null;
     }
+    case "checkout.updated":
+      return event.onMain
+        ? {
+            content: `You're on ${event.branch}, so rebasing onto ${event.branch} is paused. Switch to another branch, for example with git switch -c dev, and it carries on.`,
+            meta: { event: "owner_on_main", branch: event.branch },
+          }
+        : null;
     case "scheduler.updated": {
       const { resumeAt } = event;
       const limited = resumeAt !== null && resumeAt !== state.resumeAt;

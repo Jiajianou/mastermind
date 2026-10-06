@@ -162,6 +162,9 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     }
     case "rebase.updated":
       return { ...state, rebases: { ...state.rebases, [action.taskId]: action.rebase } };
+    case "main.moved":
+    case "checkout.updated":
+      return state;
     case "terminal.output": {
       const output = `${state.terminals[action.terminalId]?.output ?? ""}${action.data}`;
       const terminal = { taskId: action.taskId, output: output.slice(-terminalOutputLimit) };

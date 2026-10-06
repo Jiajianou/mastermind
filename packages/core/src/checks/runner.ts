@@ -50,7 +50,7 @@ export const exitedCleanly = (exit: ExitResult): boolean =>
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const fileStamp = (date: Date): string => date.toISOString().replace(/[:.]/g, "-");
+export const fileStamp = (date: Date): string => date.toISOString().replace(/[:.]/g, "-");
 
 export async function startCheck(context: CheckContext, target: CheckTarget): Promise<CheckRun> {
   const { db, bus, clock } = context;

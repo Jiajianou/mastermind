@@ -40,6 +40,8 @@ export const busEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("check.updated"), taskId: z.string(), check: checkSchema }),
   z.object({ type: z.literal("rebase.updated"), taskId: z.string(), rebase: rebaseSchema }),
+  z.object({ type: z.literal("main.moved"), branch: z.string(), commit: z.string() }),
+  z.object({ type: z.literal("checkout.updated"), branch: z.string(), onMain: z.boolean() }),
   z.object({
     type: z.literal("terminal.output"),
     taskId: z.string(),
