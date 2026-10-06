@@ -65,3 +65,69 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Nested-session variables** are removed from every child. `CLAUDE_CODE_MESSAGING_TOKEN` measurably changes a
   child's behaviour.
 - **Linux sandbox behaviour (bubblewrap) is untested.** The spikes ran on macOS only.
+
+## m0-fake-claude
+
+- **Running it.** `test/fixtures/fake-claude/bin/claude` is a `sh` shim that `exec`s `node bin/run.js`, which
+  registers tsx (`tsx/esm/api`) and imports `src/main.ts`. One process per invocation, so its pid and pgid are the
+  ones mastermind spawned. `tsx` and `zod` are root dev dependencies. Startup is about 0.3 s. Tested on Node 22.13
+  and 26.
+- **Environment knobs** (all optional): `FAKE_CLAUDE_SCENARIO` (scenario JSON path; a missing file means "reply
+  `Done.`"), `FAKE_CLAUDE_LOG` (JSONL log), `FAKE_CLAUDE_STATE` (state dir for auth and session ids),
+  `FAKE_CLAUDE_VERSION` (default `2.1.283`), `FAKE_CLAUDE_ACCOUNT` (initial account, default `max`),
+  `FAKE_CLAUDE_LOGIN_ACCOUNT` (account a login produces, default `max`) and `FAKE_CLAUDE_LOGIN_FAIL=1`.
+- **Accounts.** `max pro team enterprise free signed-out oauth-token console api-key api-key-helper bedrock vertex`.
+  Only `max`, signed out and `oauth-token` come from recorded samples. The others are plausible guesses (for example
+  `authMethod: "console"`, `"api_key"` with `apiKeySource`, `"third_party"` with `apiProvider: "bedrock"`), shaped so
+  that each fails PLAN 4.1 for its own reason. The fake also reports `bedrock`, `vertex` or `api-key` when
+  `CLAUDE_CODE_USE_BEDROCK=1`, `CLAUDE_CODE_USE_VERTEX=1`, `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` reach it,
+  so an environment cleaner bug shows up in the auth gate. `CLAUDE_CODE_OAUTH_TOKEN` (which PLAN 4.4 keeps) makes it
+  report `oauth-token`, as the real CLI does. A `-p` run while signed out prints the recorded "Not logged in" output.
+- **Scenarios** (`src/scenario.ts`, typed and zod-validated; tests import `Scenario` from `test/support/fake-claude.ts`).
+  `turns` is a list of `{ match?, steps }`. Every user message that starts a turn picks the first turn whose `match`
+  fits: `role` (basename of `--append-system-prompt-file`, so `prompts/worker.md` is `worker`), `prompt` (substring,
+  or `{ pattern }` regex) and `flags` (all must be in argv, for example `["--resume"]` or `["--json-schema"]`). No
+  match exits 2 with `fake-claude: …` on stderr, as do invalid scenarios and steps that need a missing flag.
+  Steps: `text`, `read`, `write`, `edit`, `bash`, `commit` (`trailer: true` adds
+  `Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>`, or give the trailer text), `resultFile`,
+  `structuredOutput` (needs `--json-schema`), `mcp`, `sleep`, `hang` (`ignoreSigterm`), `spawnGrandchild`
+  (`marker`, `sameGroup`), `awaitMessage` (branches on the next stdin message), `usageLimit`, `authExpired`
+  (`variant`, `signOut`) and `crash`.
+- **Realism choices.** Bash and commit steps really run in cwd through `/bin/sh`, each in its own process group like
+  Claude Code's Bash tool. SIGTERM kills those groups and exits 143; SIGINT exits 130. `--permission-mode auto`
+  with a haiku model reports `permissionMode: "default"`, as in spike 7. Reusing a `--session-id` or resuming an
+  unknown or non-UUID id fails like the real CLI (the "No conversation found" text is unverified). Stream-json input keeps the
+  process alive across turns, replays messages with `--replay-user-messages`, delivers mid-turn messages at the next
+  step boundary and answers `control_request` interrupts with the recorded interrupt lines. Unknown flags are
+  logged in `unknownFlags`, never fatal.
+- **Usage-limit output is synthesised**, because no real one was recorded: a `rate_limit_event` with
+  `status: "rejected"`, a synthetic assistant line with `error: "rate_limit"` and the text
+  `You've hit your limit · resets <h>am|pm (UTC)`, then an error `result` with `api_error_status: 429`, exit 1.
+- **MCP.** With `--mcp-config` (file or JSON), the fake runs `initialize`, `notifications/initialized` and
+  `tools/list` against each HTTP server with its headers, reports `connected` or `failed` in `init.mcp_servers`
+  and adds `mcp__<server>__<tool>` to `init.tools`. The `mcp` step calls `tools/call` and emits `tool_use_meta` (server name
+  from `serverInfo`, tool title or title-cased name) as in sample 06. A JSON-RPC or HTTP failure of the call becomes
+  an `is_error` tool result, not a crash of the fake. JSON and SSE responses are
+  read. m2-conductor can extend `src/mcp.ts` and the step union.
+- **Log records** (`FakeClaudeLogRecord`): `invocation` (argv, cwd, pid, ppid, pgid, unknown flags, env vars matching
+  `ANTHROPIC_*`, `CLAUDE*`, `AI_AGENT`, `HOME`, `GIT_EDITOR`), `message` (every user message received), `spawn`
+  (pid and pgid of every grandchild and Bash or commit step command) and `signal` (SIGTERM or SIGINT received, and whether it was ignored).
+- **Contract test.** `test/integration/fake-claude/stream-shapes.ts` builds per-kind shapes from every recorded
+  sample (kind = type, subtype, first block type and tool name, or stream event type). Each fake line must be of a
+  recorded kind, have every key that all samples of that kind have, and have no key or JSON type the samples never
+  show. Keep it passing when the fake changes; if a new real sample is recorded, the fake must follow.
+- **Harness** (`test/support/`), wired into the integration and e2e projects:
+  - `global-setup.ts` puts the fake first on `PATH` for the whole run and refuses to start if `claude` would resolve
+    to anything else (for example if the shim lost its exec bit).
+  - `setup.ts` runs registered cleanups in `afterEach`. `createTempRepo`, `isolatedEnv`, `makeTempDir` and
+    `trackChild` register theirs, so call them inside a test or `beforeEach`, not `beforeAll`.
+  - `isolatedEnv()` makes a temp root with `home/` (a `.gitconfig` with the owner identity, as on the owner's
+    machine), `home/.mastermind/worktrees` (`worktreeRoot`) and `bin/` with symlinks to the shim and `run.js`. Every
+    fake started from it shows `<root>/bin/run.js` in `ps`, which is the per-env marker `livePids()` and the cleanup
+    use. The cleanup also kills every still-live group from the log's `spawn` records, because a Bash step's
+    `/bin/sh` runs in its own group and outlives a SIGKILLed fake without carrying the marker. Its `env` drops inherited `ANTHROPIC_*`, `CLAUDE*`, `GIT_*`, `FAKE_CLAUDE_*` and `AI_AGENT`, then sets
+    `HOME`, `PATH`, `CLAUDE_CONFIG_DIR` and the fake's knobs.
+  - `processes.ts`: `processTable`, `findPids(marker)`, `isAlive`, `killProcessTree` (one `ps` snapshot, SIGKILL
+    every descendant group, never the test's own group), `killMarkedProcesses` and `waitFor(condition, timeoutMs)`.
+- **Timeouts.** The integration and e2e projects use 30 s test and hook timeouts, because each fake start costs
+  about 0.3 s and later tests chain several.

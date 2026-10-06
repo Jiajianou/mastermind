@@ -34,6 +34,10 @@ export default defineConfig({
         test: {
           name: "integration",
           environment: "node",
+          globalSetup: ["test/support/global-setup.ts"],
+          setupFiles: ["test/support/setup.ts"],
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
           include: ["test/integration/**/*.test.ts"],
         },
       },
@@ -41,6 +45,10 @@ export default defineConfig({
         test: {
           name: "e2e",
           environment: "node",
+          globalSetup: ["test/support/global-setup.ts"],
+          setupFiles: ["test/support/setup.ts"],
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
           include: ["test/e2e/**/*.test.ts"],
         },
       },
