@@ -84,7 +84,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const context = { repoRoot, homeDir };
   const resolve = (merged: Config): ResolvedConfig =>
     resolveConfig(merged, { ...context, plan: startup.auth.plan });
-  let config = resolve(startup.config);
+  let projectConfig = startup.config;
+  let config = resolve(projectConfig);
 
   const bus = createEventBus({ onListenerError: onError });
   const actions = createActionRegistry(
@@ -93,9 +94,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       bus,
       config: {
         async set(change) {
-          const merged = await setConfig(context, change);
-          config = resolve(merged);
-          return merged;
+          projectConfig = await setConfig(context, change);
+          config = resolve(projectConfig);
+          return projectConfig;
         },
       },
     },
@@ -164,6 +165,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       account: { email: startup.auth.email, plan: startup.auth.plan },
     },
     summary: () => scheduler.summary(),
+    config: () => projectConfig,
     webRoot: options.webRoot,
     onError,
     stateDir,

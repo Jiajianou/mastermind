@@ -6,3 +6,4 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./tokens.css";
 import "./base.css";
 import "./shell.css";
+import "./chat.css";

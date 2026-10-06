@@ -10,6 +10,7 @@ import {
 import type {
   ApiSummary,
   ChatView,
+  Config,
   InstanceInfo,
   Session,
   SessionEvent,
@@ -46,4 +47,6 @@ export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): voi
     const { after } = parseInput(chatQuerySchema, request.query);
     return reads.chat(after);
   });
+
+  app.get("/api/config", (): Config => reads.config());
 }

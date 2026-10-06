@@ -35,6 +35,7 @@ const readSchemas = {
   tasks: z.array(taskSchema),
   sessions: apiResponseSchemas.sessions,
   chat: apiResponseSchemas.chat,
+  config: apiResponseSchemas.config,
 };
 
 export type ReadName = keyof typeof readSchemas;
@@ -46,6 +47,7 @@ const readRoutes: { [Name in ReadName]: { path: string; schema: z.ZodType<ReadRe
   tasks: { path: "/api/tasks", schema: readSchemas.tasks },
   sessions: { path: "/api/sessions", schema: readSchemas.sessions },
   chat: { path: "/api/chat", schema: readSchemas.chat },
+  config: { path: "/api/config", schema: readSchemas.config },
 };
 
 const resultSchemas: { [Name in ActionName]: z.ZodType<ActionResults[Name]> } = actionResultSchemas;

@@ -15,6 +15,7 @@ export type ProposalOutcome = z.infer<typeof proposalOutcomeSchema>;
 
 export const proposalMetaSchema = z.object({
   proposalId: z.int(),
+  taskId: z.string().optional(),
   status: proposalStatusSchema.optional(),
 });
 export type ProposalMeta = z.infer<typeof proposalMetaSchema>;
@@ -34,7 +35,10 @@ export const proposePlanInputSchema = z.strictObject({
   tasks: z.array(plannedTaskSchema).min(1),
 });
 
-export const planMetaSchema = z.object({ tasks: z.array(newTaskSchema) });
+export const planMetaSchema = z.object({
+  tasks: z.array(newTaskSchema),
+  notes: z.record(z.string(), z.string()).default({}),
+});
 export type PlanMeta = z.infer<typeof planMetaSchema>;
 
 export const sessionEventsInputSchema = z.strictObject({

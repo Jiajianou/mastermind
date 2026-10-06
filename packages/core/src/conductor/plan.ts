@@ -20,6 +20,9 @@ export function proposePlan(sink: ConductorChatSink, { tasks }: PlanInput): Chat
   const lines = tasks.map(
     ({ id, title, note }, index) => `${String(index + 1)}. ${id}: ${note ?? title}`,
   );
-  const meta: PlanMeta = { tasks: planned };
+  const notes = Object.fromEntries(
+    tasks.flatMap(({ id, note }) => (note === undefined ? [] : [[id, note]])),
+  );
+  const meta: PlanMeta = { tasks: planned, notes };
   return postConductorMessage(sink, { kind: "plan", content: lines.join("\n"), meta });
 }

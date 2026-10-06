@@ -1,5 +1,5 @@
-import { configLayerSchema, noInputSchema } from "../contracts/index.js";
-import type { RuntimeFlags } from "../contracts/index.js";
+import { configLayerSchema, confirmSetupInputSchema, noInputSchema } from "../contracts/index.js";
+import type { RuntimeFlags, SetupMeta } from "../contracts/index.js";
 import { defineAction } from "./registry.js";
 import type { ActionScope } from "./registry.js";
 
@@ -40,6 +40,27 @@ export const setConfig = defineAction({
   handler: async (change, scope) => {
     const config = await scope.config.set(change);
     scope.emit({ type: "config.updated", config });
+    return config;
+  },
+});
+
+const commandText = (command: string): string => (command === "" ? "none" : command);
+
+export const confirmSetup = defineAction({
+  name: "confirmSetup",
+  description:
+    "Confirm the project's build and test commands on first run. They are saved to .mastermind/config.yaml and the confirmation is posted to the chat.",
+  input: confirmSetupInputSchema,
+  emits: ["config.updated", "chat.message"],
+  handler: async ({ build, test }, scope) => {
+    const config = await scope.config.set({ commands: { build, test } });
+    scope.emit({ type: "config.updated", config });
+    const message = scope.db.chat.append({
+      kind: "system",
+      content: `Build and test commands confirmed: build ${commandText(build)}, test ${commandText(test)}`,
+      meta: { setup: "confirmed" } satisfies SetupMeta,
+    });
+    scope.emit({ type: "chat.message", message });
     return config;
   },
 });

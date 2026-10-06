@@ -62,6 +62,8 @@ export const commandKindSchema = z.enum(["setup", "build", "test"]);
 export type CommandKind = z.infer<typeof commandKindSchema>;
 
 const commandsSchema = z.strictObject({ setup: z.string(), build: z.string(), test: z.string() });
+
+export const confirmSetupInputSchema = commandsSchema.pick({ build: true, test: true });
 const reviewerSchema = z.strictObject({ enabled: z.boolean() });
 const notificationsSchema = z.strictObject({ desktop: z.boolean() });
 const stuckCheckSchema = z.strictObject({ after: durationSchema, every: durationSchema });

@@ -35,6 +35,7 @@ const healthyServer: Record<string, Reply> = {
   "/api/tasks": () => json([task("alpha")]),
   "/api/sessions": () => json([]),
   "/api/chat": () => json(served.chat),
+  "/api/config": () => json(served.config),
 };
 
 const authorizations: (string | null)[] = [];
@@ -146,6 +147,19 @@ describe("live connection", () => {
 
     await connection("unauthorized");
     expect(sockets).toHaveLength(0);
+  });
+
+  it("shows stopped when a later run refuses the token after the page was live", async () => {
+    serve(healthyServer);
+    const { sockets, nextSocket, connection } = connect();
+    (await nextSocket(1)).open();
+    await connection("live");
+
+    serve({ ...healthyServer, "/api/instance": () => json({}, 401) });
+    (await nextSocket(1)).close();
+
+    await connection("stopped");
+    expect(sockets).toHaveLength(1);
   });
 
   it("shows stopped at once when mastermind says it is stopping", async () => {

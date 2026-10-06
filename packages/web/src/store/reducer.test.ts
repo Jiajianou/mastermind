@@ -222,10 +222,11 @@ const cases: Case[] = [
     },
   },
   {
-    name: "config.updated follows the chat model",
+    name: "config.updated stores the config and follows the chat model",
     before: stateWith({}),
     action: { type: "config.updated", config: config("sonnet") },
     after: (next) => {
+      expect(next.config).toEqual(config("sonnet"));
       expect(next.chat.model).toBe("sonnet");
     },
   },

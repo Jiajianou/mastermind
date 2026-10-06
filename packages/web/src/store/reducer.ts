@@ -52,11 +52,12 @@ function keepUnchanged<Entity>(stored: Entity | undefined, fresh: Entity): Entit
 
 function applySnapshot(
   state: LiveState,
-  { instance, summary, tasks, sessions, chat }: Snapshot,
+  { instance, summary, tasks, sessions, chat, config }: Snapshot,
 ): LiveState {
   return {
     ...state,
     instance,
+    config,
     scheduler: {
       paused: summary.paused,
       authRequired: summary.authRequired,
@@ -143,7 +144,11 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     case "scheduler.updated":
       return withScheduler(state, { paused: action.paused, resumeAt: action.resumeAt });
     case "config.updated":
-      return withChat(state, { model: action.config.models.conductor });
+      return {
+        ...state,
+        config: action.config,
+        chat: { ...state.chat, model: action.config.models.conductor },
+      };
     case "service.stopping":
       return { ...state, connection: "stopped" };
   }

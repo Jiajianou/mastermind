@@ -144,6 +144,7 @@ export async function conductorHarness(
     chat: runner,
     instance: testInstance,
     summary: () => scheduler.summary(),
+    config: () => config,
     webRoot: join(env.root, "no-web"),
     onError,
     stateDir,

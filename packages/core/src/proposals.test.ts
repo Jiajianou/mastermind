@@ -229,6 +229,11 @@ describe("proposal gate", () => {
     expect((await harness.gate.run(tool("hold"), { taskId: "sched-prio" })).kind).toBe(
       "awaiting_confirmation",
     );
+    expect(harness.db.chat.list().at(-1)).toMatchObject({
+      kind: "proposal",
+      content: "Hold sched-prio?",
+      meta: { taskId: "sched-prio" },
+    });
     expect((await harness.gate.run(tool("set_config"), { maxAttempts: 5 })).kind).toBe("done");
     expect(harness.config().maxAttempts).toBe(5);
     expect(harness.db.tasks.get("sched-prio")?.held).toBe(false);

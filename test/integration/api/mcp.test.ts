@@ -151,7 +151,11 @@ describe("MCP server", () => {
     expect(result.isError).toBeFalsy();
     expect(test.db.tasks.list()).toEqual([]);
     expect(test.db.chat.list()).toMatchObject([
-      { kind: "plan", content: "1. a: Task a\n2. b: Task b\n3. c: after the first two" },
+      {
+        kind: "plan",
+        content: "1. a: Task a\n2. b: Task b\n3. c: after the first two",
+        meta: { notes: { c: "after the first two" } },
+      },
     ]);
   });
 

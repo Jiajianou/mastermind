@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { ActionError, defineAction, parseInput } from "./actions/index.js";
 import type { ActionRegistry, ContractedActions } from "./actions/index.js";
 import { postChatMessage, postConductorMessage } from "./chat.js";
@@ -50,6 +51,15 @@ type Decision = Exclude<ProposalStatus, "pending">;
 
 function toJsonValue(value: unknown): JsonValue {
   return value === undefined ? null : jsonValueSchema.parse(JSON.parse(JSON.stringify(value)));
+}
+
+const taskArgsSchema = z.object({ taskId: z.string() });
+
+function proposalMeta(proposal: Proposal): ProposalMeta {
+  const args = taskArgsSchema.safeParse(proposal.args);
+  return args.success
+    ? { proposalId: proposal.id, taskId: args.data.taskId }
+    : { proposalId: proposal.id };
 }
 
 const isActionFailure = (error: unknown): error is Error =>
@@ -139,7 +149,7 @@ export function createProposalGate(options: ProposalGateOptions): ProposalGate {
       postConductorMessage(options, {
         kind: "proposal",
         content: question,
-        meta: { proposalId: proposal.id } satisfies ProposalMeta,
+        meta: proposalMeta(proposal),
       });
       return { kind: "awaiting_confirmation", proposal, question };
     },

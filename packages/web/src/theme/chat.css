@@ -1,0 +1,251 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+  min-height: calc(100vh - 140px);
+  margin: 0 auto;
+}
+
+.status-pill {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-min-height);
+  padding: 0 16px;
+  border: 1px solid var(--color-panel-border);
+  border-radius: 999px;
+  background: var(--color-panel);
+  color: var(--color-text);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.status-pill:hover {
+  background: var(--color-raised);
+}
+
+.first-run {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 24px;
+}
+
+.first-run h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.transcript {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bubble {
+  align-self: flex-end;
+  max-width: 80%;
+  margin: 8px 0 0;
+  padding: 10px 14px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--color-raised);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reply {
+  overflow-wrap: anywhere;
+}
+
+.reply > :first-child {
+  margin-top: 0;
+}
+
+.reply > :last-child {
+  margin-bottom: 0;
+}
+
+.reply pre {
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: var(--radius-control);
+  background: var(--color-panel);
+}
+
+.action-line,
+.muted-line {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.event-line {
+  align-self: center;
+  margin: 4px 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.decision,
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-panel);
+}
+
+.decision-question {
+  margin: 0;
+  font-weight: 500;
+}
+
+.decision-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.setup-commands {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.setup-commands dt {
+  color: var(--color-text-muted);
+}
+
+.setup-commands dd {
+  margin: 0;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.setup-form input {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+}
+
+.plan .primary {
+  align-self: flex-start;
+}
+
+.plan-items {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 16px;
+  background: var(--color-page);
+}
+
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 4px 4px 4px 18px;
+  border: 1px solid var(--color-control-border);
+  border-radius: 26px;
+  background: var(--color-panel);
+}
+
+.composer-box:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.composer textarea {
+  flex: 1;
+  field-sizing: content;
+  min-width: 0;
+  max-height: 40vh;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  resize: none;
+}
+
+.composer textarea:focus-visible {
+  outline: none;
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-controls button {
+  border-radius: 22px;
+}
+
+.model-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-menu select {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.suggestions {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-raised);
+}
+
+.suggestions [role="option"] {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-min-height);
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.suggestions [aria-selected="true"] {
+  background: var(--color-panel);
+  outline: 1px solid var(--color-frost);
+}

@@ -76,3 +76,6 @@ export const eventLineMetaSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("usage_limit"), resumeAt: isoTimestampSchema }),
 ]);
 export type EventLineMeta = z.infer<typeof eventLineMetaSchema>;
+
+export const setupMetaSchema = z.object({ setup: z.literal("confirmed") });
+export type SetupMeta = z.infer<typeof setupMetaSchema>;

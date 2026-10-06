@@ -155,6 +155,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     },
     instance: testInstance,
     summary: () => scheduler.summary(),
+    config: () => config,
     webRoot,
     onError: (error) => errors.push(error),
     stateDir,

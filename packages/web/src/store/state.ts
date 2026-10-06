@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ChatView,
   Check,
+  Config,
   InstanceInfo,
   IsoTimestamp,
   Proposal,
@@ -37,6 +38,7 @@ export interface ChatState {
 export interface LiveState {
   connection: Connection;
   instance: InstanceInfo | null;
+  config: Config | null;
   scheduler: SchedulerState;
   tasks: Readonly<Record<string, Task>>;
   sessions: Readonly<Record<number, Session>>;
@@ -54,6 +56,7 @@ export interface Snapshot {
   tasks: readonly Task[];
   sessions: readonly Session[];
   chat: ChatView;
+  config: Config;
 }
 
 export type StoreAction =
@@ -65,6 +68,7 @@ export type StoreAction =
 export const initialState: LiveState = {
   connection: "connecting",
   instance: null,
+  config: null,
   scheduler: { paused: false, authRequired: false, resumeAt: null },
   tasks: {},
   sessions: {},

@@ -933,3 +933,58 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   opened in the page. Cleanup runs the shared `runCleanups` after each test. `global-setup.ts` runs the fake-claude
   PATH guard and fails early if `pnpm build` hasn't produced `packages/cli/dist` with the web app. The stopped banner
   is tested for SIGTERM (the `service.stopping` frame) and SIGKILL (no frame, reconnects fail).
+
+## m3-chat
+
+- **Where it lives.** `packages/web/src/screens/ChatScreen.tsx` composes the screen from `src/chat/`: `entries.ts`
+  (pure: chat messages, drafts and proposals become display entries; first-run and setup checks), `progress.ts`
+  (the status pill text), `mentions.ts` (`@task` completion), `models.ts`, `use-send.ts`, `use-request.ts`, and one
+  component per element (`Transcript`, `Reply`, `DecisionBox`, `PlanList`, `EventLine`, `Composer`, `ModelMenu`,
+  `StatusPill`, `FirstRun`, `SetupQuestion`). Styles are in `theme/chat.css`; `base.css` gained `button.primary`,
+  form control styling and `.visually-hidden`.
+- **Message styles.** `user` is a right-aligned bubble (plain text). `conductor` is markdown through `react-markdown`
+  with `skipHtml`, so raw HTML is dropped and unsafe URLs are stripped by its default URL transform; links open in a
+  new tab. Markdown images render as links, so a reply can never make the browser fetch a URL on its own. A stopped reply gets a muted "Stopped". `action` is the muted line under the reply. Every `system`
+  message (6.4 event lines, proposal outcomes, turn failures, the setup confirmation) is a centred line with the local
+  time. Streamed drafts render after the stored messages and disappear when the turn's reply is stored.
+- **Decision box.** The button label is the first word of the question, because each question is the tool's
+  imperative `describe` phrase ("Rebase sched-prio onto main?" → **Rebase**; set_config → **Change**). The second
+  button is **Not now**. "See changes" links to `/review?task=<id>` only when the proposal names a task: the gate
+  copies a `taskId` arg into the proposal message's meta (`proposalMetaSchema.taskId`), so the link survives a
+  reload. The status comes from the live proposal, else from the decision's
+  `system` message meta, else pending, so a reload still shows decided boxes as decided.
+- **Status pill.** `N working · N needs you · N of M done`: working is running, checking and rebasing; needs you is
+  review, blocked and pending decisions in the chat. With no tasks and no decisions it reads "No tasks yet".
+- **Plans.** `planMetaSchema` gained `notes` (task id → note, default `{}`), so the list shows each note without
+  parsing the message text; Start posts `meta.tasks` to `createTasks` unchanged and turns into "Started" once every
+  planned task exists.
+- **Model menu.** A native `<select>` labelled Model (Opus, Sonnet, Haiku, plus the configured model if it is
+  something else). A change calls `setConfig({ models: { conductor } })` at once, so the choice persists per project
+  even before the next message; the runner reads the model per turn.
+- **Input.** Enter sends, Shift+Enter adds a newline, IME composition is respected. Typing `@` shows a listbox of
+  matching task ids (arrow keys, Enter or Tab to accept, Escape to dismiss). `/pause` and `/resume` call the
+  scheduler actions instead of chatting. Neither is advertised. A message sent while replying joins the turn; the
+  button shows Stop while `chat.replying`.
+- **First run** is "no owner message in the chat yet". It shows the heading, the setup question while no setup
+  confirmation exists, and the three starters. "Plan work from a goal" prefills "Plan work from this goal: " and
+  focuses the input; "Import tasks.yaml" opens a file picker and posts the file to `importTasks`, then reports the
+  count and warnings; "What can you do?" sends that message.
+- **Setup confirmation (new action `confirmSetup`, `POST /api/setup/confirm`).** Use these and Change → Save both
+  call it with `{ build, test }`. It writes them through the same config writer as `setConfig`, emits
+  `config.updated`, and posts a `system` message with `meta: { setup: "confirmed" }` (`setupMetaSchema`). The chat
+  history therefore records that the question was answered (it survives restarts without a new table or flag), and
+  the Conductor sees the confirmed commands in its next turn's updates. It is not an MCP tool.
+- **Config read.** New `GET /api/config` returns the merged file-form `Config` (`apiResponseSchemas.config`);
+  `ApiServerOptions`/`ReadSources` gained `config()`, and the runtime keeps the latest merged config for it. The web
+  snapshot loads it and `config.updated` replaces it, so the setup question shows the detected commands (and
+  Settings can use it in M8).
+- **Connection fix.** A 401 after the page has been live now shows the stopped banner instead of "No access": each
+  run has its own token, so a refusal then means the run stopped and something else answered on that port. This
+  also fixed a Playwright flake where a parallel test's instance took the port of a SIGKILLed one.
+- **Tests.** `chat/chat-screen.test.tsx` (Testing Library, new dev dependency): a streamed reply assembled from
+  deltas and replaced by the stored reply plus action line; Enter vs Shift+Enter with the real API client over a
+  stubbed fetch; `@task` completion and `/pause`; and no internal name (Conductor, MCP, tool or action names) in the
+  rendered text or accessible attributes. `test/e2e/web/chat.spec.ts`: first run with a Makefile repo then Use these
+  (and it stays answered after a reload); a streamed reply with Stop, markdown, the action line, the pill and model
+  persistence; confirming a set_config decision box. The Playwright fixture gained `repoFiles` and `scenario`
+  options and exposes `repoPath`.

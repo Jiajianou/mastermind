@@ -14,7 +14,12 @@ import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } f
 import type { ChatTurn, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
 import { proposalRefInputSchema } from "./conductor.js";
-import { configLayerSchema, configSchema, subscriptionPlanSchema } from "./config.js";
+import {
+  configLayerSchema,
+  configSchema,
+  confirmSetupInputSchema,
+  subscriptionPlanSchema,
+} from "./config.js";
 import type { Config } from "./config.js";
 import { busEventSchema } from "./events.js";
 import { runtimeFlagsSchema, summarySchema } from "./runtime.js";
@@ -53,6 +58,7 @@ export interface ActionResults {
   pause: RuntimeFlags;
   resume: RuntimeFlags;
   setConfig: Config;
+  confirmSetup: Config;
   confirmProposal: Proposal;
   rejectProposal: Proposal;
   sendChat: ChatTurn;
@@ -85,6 +91,7 @@ export const actionRoutes = {
   pause: { method: "POST", path: "/api/pause" },
   resume: { method: "POST", path: "/api/resume" },
   setConfig: { method: "PATCH", path: "/api/config" },
+  confirmSetup: { method: "POST", path: "/api/setup/confirm" },
   confirmProposal: {
     method: "POST",
     path: "/api/proposals/:proposalId/confirm",
@@ -113,6 +120,7 @@ export const actionInputSchemas = {
   pause: noInputSchema,
   resume: noInputSchema,
   setConfig: configLayerSchema,
+  confirmSetup: confirmSetupInputSchema,
   confirmProposal: proposalRefInputSchema,
   rejectProposal: proposalRefInputSchema,
   sendChat: sendChatInputSchema,
@@ -136,6 +144,7 @@ export const actionResultSchemas = {
   pause: runtimeFlagsSchema,
   resume: runtimeFlagsSchema,
   setConfig: configSchema,
+  confirmSetup: configSchema,
   confirmProposal: proposalSchema,
   rejectProposal: proposalSchema,
   sendChat: chatTurnSchema,
@@ -180,6 +189,7 @@ export const apiResponseSchemas = {
   sessions: z.array(sessionSchema),
   sessionEvents: z.array(sessionEventSchema),
   chat: chatViewSchema,
+  config: configSchema,
 };
 
 export const accessTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);

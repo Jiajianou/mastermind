@@ -23,13 +23,14 @@ function startOfToday(): string {
 }
 
 async function loadSnapshot(api: ApiClient, instance: InstanceInfo): Promise<Snapshot> {
-  const [summary, tasks, sessions, chat] = await Promise.all([
+  const [summary, tasks, sessions, chat, config] = await Promise.all([
     api.read("summary"),
     api.read("tasks"),
     api.read("sessions", { since: startOfToday() }),
     api.read("chat"),
+    api.read("config"),
   ]);
-  return { instance, summary, tasks, sessions, chat };
+  return { instance, summary, tasks, sessions, chat, config };
 }
 
 function parseMessage(data: unknown): StreamMessage | null {
@@ -54,6 +55,7 @@ export function connectLive({
 }: LiveConnectionOptions): () => void {
   let failures = 0;
   let ended = false;
+  let wasLive = false;
   let socket: LiveSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -75,9 +77,11 @@ export function connectLive({
     retryTimer = setTimeout(() => void connect(), delay);
   };
 
+  // Each run has its own token, so a refusal after this page was live means that run stopped and another one
+  // (possibly on the same port) answered.
   const fail = (error: unknown) => {
     if (error instanceof UnauthorizedError) {
-      end("unauthorized");
+      end(wasLive ? "stopped" : "unauthorized");
       return;
     }
     console.error("lost the connection to mastermind", error);
@@ -106,6 +110,7 @@ export function connectLive({
           for (const message of held ?? []) store.dispatch(message);
           held = null;
           failures = 0;
+          wasLive = true;
           store.dispatch({ type: "connection.changed", connection: "live" });
         },
         (error: unknown) => {

@@ -126,6 +126,7 @@ export function snapshot(change: Partial<Snapshot> = {}): Snapshot {
     tasks: [],
     sessions: [],
     chat: { model: "opus", replying: false, messages: [] },
+    config: config("opus"),
     ...change,
   };
 }

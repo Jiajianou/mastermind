@@ -3,6 +3,7 @@ import type { ChatState } from "./chat.js";
 import type {
   ApiSummary,
   ChatView,
+  Config,
   InstanceInfo,
   Session,
   SessionEvent,
@@ -18,6 +19,7 @@ export interface ReadSources {
   instance: InstanceInfo;
   summary: () => Summary;
   chat: Pick<ChatState, "status">;
+  config: () => Config;
 }
 
 export interface ReadModels {
@@ -28,6 +30,7 @@ export interface ReadModels {
   sessions(query: SessionsQuery): Session[];
   sessionEvents(sessionId: number, afterId?: number): SessionEvent[];
   chat(afterId?: number): ChatView;
+  config(): Config;
 }
 
 function taskViews(tasks: readonly Task[]): TaskView[] {
@@ -38,7 +41,7 @@ function taskViews(tasks: readonly Task[]): TaskView[] {
   return tasks.map((task) => ({ ...task, unblocks: unblocks.get(task.id) ?? [] }));
 }
 
-export function createReadModels({ db, instance, summary, chat }: ReadSources): ReadModels {
+export function createReadModels({ db, instance, summary, chat, config }: ReadSources): ReadModels {
   return {
     instance: () => instance,
 
@@ -71,5 +74,7 @@ export function createReadModels({ db, instance, summary, chat }: ReadSources): 
     },
 
     chat: (afterId) => ({ ...chat.status(), messages: db.chat.list(afterId) }),
+
+    config,
   };
 }

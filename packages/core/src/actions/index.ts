@@ -1,6 +1,6 @@
 import type { ActionName } from "../contracts/index.js";
 import type { AnyActionDefinition, ContractedActions } from "./registry.js";
-import { pause, resume, setConfig } from "./runtime.js";
+import { confirmSetup, pause, resume, setConfig } from "./runtime.js";
 import { exportTasks, importTasks } from "./tasks-file.js";
 import { createTasks, hold, moveToTop, release, retry, setPriority, updateTask } from "./tasks.js";
 
@@ -25,6 +25,7 @@ export { readTasksFile, writeTasksFile } from "./tasks-file.js";
 export type { TasksFile } from "./tasks-file.js";
 export { assertTransition, canTransition } from "./transitions.js";
 export {
+  confirmSetup,
   createTasks,
   exportTasks,
   hold,
@@ -50,6 +51,7 @@ const builtins = {
   pause,
   resume,
   setConfig,
+  confirmSetup,
   importTasks,
   exportTasks,
 } satisfies ContractedActions<
