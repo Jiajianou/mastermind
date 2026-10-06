@@ -7,6 +7,7 @@ import type {
   Config,
   InstanceInfo,
   IsoTimestamp,
+  OwnerNotification,
   Proposal,
   Rebase,
   ReviewNotes,
@@ -71,6 +72,7 @@ export interface LiveState {
   terminals: Readonly<Record<string, TerminalState>>;
   proposals: Readonly<Record<number, Proposal>>;
   chat: ChatState;
+  notification: OwnerNotification | null;
 }
 
 export interface Snapshot {
@@ -111,4 +113,5 @@ export const initialState: LiveState = {
   terminals: {},
   proposals: {},
   chat: { model: null, replying: false, messages: [], drafts: {} },
+  notification: null,
 };

@@ -6,6 +6,7 @@ import { makeTempDir } from "../support/cleanup.js";
 import { spawnCli } from "../support/cli.js";
 import { fakeClaudePath } from "../support/fake-claude.js";
 import type { Scenario } from "../support/fake-claude.js";
+import { installFakeNotifier } from "../support/fake-notifier.js";
 import { conductorToolCalls, openProjectDb, startMastermind } from "../support/mastermind.js";
 import type { RunningMastermind } from "../support/mastermind.js";
 import { waitFor } from "../support/processes.js";
@@ -63,6 +64,7 @@ async function writeDispatchingClaude(binDir: string): Promise<void> {
 async function liveEnv(root: string): Promise<Record<string, string>> {
   const binDir = join(root, "bin");
   await writeDispatchingClaude(binDir);
+  await installFakeNotifier(binDir);
   const scenarioPath = join(root, "scenario.json");
   await writeFile(scenarioPath, JSON.stringify(workerScenario));
   const inherited = Object.entries(process.env).filter(

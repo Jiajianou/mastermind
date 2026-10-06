@@ -1,0 +1,73 @@
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 760px;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+}
+
+.settings-group > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.settings-group select {
+  max-width: 320px;
+}
+
+.check-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.check-field input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--color-frost);
+}
+
+.check-field label {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-min-height);
+  font-weight: 500;
+}
+
+.check-field .field-hint {
+  grid-column: 2;
+}
+
+.choice-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-field > legend {
+  margin-bottom: 4px;
+  padding: 0;
+  font-weight: 500;
+}
+
+.settings-actions p {
+  margin: 0;
+}

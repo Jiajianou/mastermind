@@ -42,6 +42,7 @@ export interface ApiServerOptions {
 export interface ApiServer {
   app: FastifyInstance;
   server: Server;
+  webClientConnected(): boolean;
   closeSync(): void;
 }
 
@@ -119,6 +120,7 @@ export async function createApiServer(options: ApiServerOptions): Promise<ApiSer
   return {
     app,
     server,
+    webClientConnected: () => stream.webClientConnected(),
     closeSync() {
       stream.closeSync();
       server.closeAllConnections();

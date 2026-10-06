@@ -3,6 +3,7 @@ import { chatMessageSchema, proposalSchema } from "./chat.js";
 import { checkSchema, rebaseSchema } from "./checks.js";
 import { isoTimestampSchema } from "./common.js";
 import { configSchema } from "./config.js";
+import { ownerNotificationSchema } from "./notifications.js";
 import { commentSchema, findingSchema } from "./review.js";
 import { sessionEventSchema, sessionSchema } from "./sessions.js";
 import { taskSchema } from "./tasks.js";
@@ -66,6 +67,7 @@ export const busEventSchema = z.discriminatedUnion("type", [
     resumeAt: isoTimestampSchema.nullable(),
   }),
   z.object({ type: z.literal("config.updated"), config: configSchema }),
+  z.object({ type: z.literal("notification"), notification: ownerNotificationSchema }),
   z.object({ type: z.literal("service.stopping") }),
 ]);
 export type BusEvent = z.infer<typeof busEventSchema>;

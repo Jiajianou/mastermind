@@ -7,9 +7,10 @@ import { DecideScreen } from "./screens/DecideScreen.js";
 import { OverviewScreen } from "./screens/OverviewScreen.js";
 import { RequestChangesScreen } from "./screens/RequestChangesScreen.js";
 import { ReviewScreen } from "./screens/ReviewScreen.js";
-import { Screen } from "./screens/Screen.js";
 import { SessionsScreen } from "./screens/SessionsScreen.js";
+import { SettingsScreen } from "./screens/SettingsScreen.js";
 import { TasksScreen } from "./screens/TasksScreen.js";
+import { DesktopNotifications } from "./notifications/DesktopNotifications.js";
 import { LiveProvider } from "./store/hooks.js";
 import type { Store } from "./store/store.js";
 
@@ -19,6 +20,7 @@ export function App({ store, api }: { store: Store; api: ApiClient }) {
       <BrowserRouter>
         <TopBar />
         <Banners />
+        <DesktopNotifications />
         <main className="content">
           <Routes>
             <Route index element={<ChatScreen />} />
@@ -31,7 +33,7 @@ export function App({ store, api }: { store: Store; api: ApiClient }) {
               path="review/decide/:taskId/request-changes"
               element={<RequestChangesScreen />}
             />
-            <Route path="settings" element={<Screen title="Settings" />} />
+            <Route path="settings" element={<SettingsScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

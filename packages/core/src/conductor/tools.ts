@@ -26,6 +26,7 @@ import type { ActionName, AwaitingConfirmation } from "../contracts/index.js";
 import type { GateableTool, GateOutcome, ProposalGate } from "../proposals.js";
 import type { ReadModels } from "../reads.js";
 import { proposePlan } from "./plan.js";
+import { describeSettingChanges } from "./setting-changes.js";
 
 export interface ToolSources {
   actions: ActionRegistry;
@@ -236,8 +237,8 @@ export const actionTools: readonly ActionTool[] = [
     input: configLayerSchema,
     description:
       "Change project settings in .mastermind/config.yaml. Only the keys given change, and nested objects such as models merge key by key.",
-    describe: (change) => `Change ${fieldList(change)} in settings`,
-    done: (change) => `Changed ${fieldList(change)} in settings`,
+    describe: (change) => `Change ${describeSettingChanges(change)} in settings`,
+    done: (change) => `Changed ${describeSettingChanges(change)} in settings`,
   }),
 ];
 

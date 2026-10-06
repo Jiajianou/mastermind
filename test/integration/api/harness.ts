@@ -12,6 +12,7 @@ import type { InstanceInfo } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
+import type { EventBus } from "@mastermind/core/events";
 import { createGit } from "@mastermind/core/git";
 import type { Git } from "@mastermind/core/git";
 import { acquireLock, tokenPath } from "@mastermind/core/lock";
@@ -26,6 +27,7 @@ import { makeTempDir, onCleanup } from "../../support/cleanup.js";
 export interface TestApi {
   api: ServedApi;
   db: Db;
+  bus: EventBus;
   root: string;
   git: Git;
   stateDir: string;
@@ -203,6 +205,7 @@ export async function serveTestApi({
   return {
     api,
     db,
+    bus,
     root,
     git,
     stateDir,

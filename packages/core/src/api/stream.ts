@@ -2,15 +2,16 @@ import type { IncomingMessage } from "node:http";
 import { STATUS_CODES } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import { streamPath, streamProtocol } from "../contracts/index.js";
+import { streamPath, streamProtocol, webClientProtocol } from "../contracts/index.js";
 import type { StreamMessage } from "../contracts/index.js";
 import type { EventBus } from "../events.js";
 import { apiError } from "./errors.js";
 import type { ErrorReply } from "./errors.js";
-import { siteRejection, streamRejection } from "./local-request.js";
+import { offeredProtocols, siteRejection, streamRejection } from "./local-request.js";
 
 export interface EventStream {
   handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void;
+  webClientConnected(): boolean;
   closeSync(): void;
 }
 
@@ -54,6 +55,7 @@ export function createEventStream({ bus, token }: EventStreamOptions): EventStre
     perMessageDeflate: false,
     handleProtocols: () => streamProtocol,
   });
+  const webClients = new Set<WebSocket>();
 
   function send(client: WebSocket, data: string): void {
     if (client.readyState !== WebSocket.OPEN) return;
@@ -83,10 +85,22 @@ export function createEventStream({ bus, token }: EventStreamOptions): EventStre
         refuse(socket, rejection);
         return;
       }
+      const fromWebApp = offeredProtocols(request.headers["sec-websocket-protocol"]).includes(
+        webClientProtocol,
+      );
       server.handleUpgrade(request, socket, head, (client) => {
+        if (fromWebApp) {
+          webClients.add(client);
+          client.once("close", () => {
+            webClients.delete(client);
+          });
+        }
         server.emit("connection", client, request);
       });
     },
+
+    webClientConnected: () =>
+      [...webClients].some((client) => client.readyState === WebSocket.OPEN),
 
     // The kill path can't wait, so the goodbye is written synchronously and may not arrive.
     closeSync() {

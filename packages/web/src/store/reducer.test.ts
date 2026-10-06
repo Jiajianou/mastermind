@@ -486,6 +486,23 @@ const cases: Case[] = [
     },
   },
   {
+    name: "notification keeps the latest one for the browser to show",
+    before: stateWith({}),
+    action: {
+      type: "notification",
+      notification: {
+        id: 9,
+        title: "mastermind · demo",
+        body: "alpha is blocked",
+        reason: "blocked",
+        taskId: "alpha",
+      },
+    },
+    after: (next) => {
+      expect(next.notification?.id).toBe(9);
+    },
+  },
+  {
     name: "connection.changed records the connection",
     before: stateWith({}),
     action: { type: "connection.changed", connection: "reconnecting" },

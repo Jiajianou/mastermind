@@ -1623,3 +1623,51 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   was a subset of `m7.spec.ts`, so its two extra checks (the chat reads "No tasks yet" before Start, and the
   "Plan started" system message stays hidden) moved into `m7.spec.ts` and it was deleted. `planning.spec.ts` keeps
   the Import tasks.yaml starter.
+
+## m8-settings-notify
+
+- **Where it lives.** Core: `src/notify.ts` (`createNativeNotifier`, `notifyOwner`, a new `@mastermind/core/notify`
+  export), `contracts/notifications.ts` (`ownerNotificationSchema`), a `notification` bus event, and
+  `conductor/setting-changes.ts`. Web: `screens/SettingsScreen.tsx` over `src/settings/` (`form.ts` pure,
+  `fields.tsx`, `NotificationsField.tsx`, styles in `theme/settings.css`) and `src/notifications/` (`browser.ts`,
+  `DesktopNotifications.tsx`, mounted once in `App`).
+- **What notifies.** `notifyOwner` listens for the 6.4 event lines (`system` chat messages whose meta is
+  `EventLineMeta`) and notifies for `blocked`, `review`, `sign_in` and `usage_limit`. Every task that enters
+  `review` is one waiting for the owner (protected paths or `autoRebase: false`), so `review` is decision 16's
+  "protected task waiting for review". Reusing the event lines keeps one place that decides what needs the owner.
+  The text is the event line itself; the title is `mastermind · <project>`. `notifications.desktop: false` stops
+  both channels, because the service makes the choice for both.
+- **Tab or OS.** The web app opens the stream with `webStreamProtocols(token)`, which adds the `mastermind.web`
+  subprotocol, and the stream counts those sockets (`ApiServer.webClientConnected()`). A CLI client (`logs -f`,
+  `chat`) is not a tab, so it doesn't suppress the native notification. With a tab open the service emits
+  `{ type: "notification", notification }` on the bus; the web stores the latest in `state.notification` and shows
+  it with the Notification API (tag `mastermind-<id>`, so several tabs show it once). A click focuses the tab and
+  opens Tasks with the task selected (blocked), Test and decide (review), the chat (sign-in) or Overview (usage
+  limit). If the browser has notifications blocked, the tab shows nothing beyond the chat line and banners; Settings
+  says so.
+- **Permission asked once.** Browsers only prompt after a user gesture, so the app asks on the first pointer or key
+  press after load, and a `localStorage` flag stops it asking again on later visits (a dismissed prompt stays at
+  `default`). Turning the Settings toggle on asks too, as that click is a gesture.
+- **Native.** `osascript` on macOS (title and body passed as `on run argv` arguments, so nothing is parsed as
+  AppleScript) and `notify-send --app-name=mastermind` on Linux, spawned through the process registry (kind
+  `utility`, own process group) with the cleaned environment and looked up on PATH. A non-zero exit or another
+  platform is a `NotificationError` that goes to `onError` (the terminal notice line). `RuntimeOptions` now
+  requires `nativeNotifier`; the CLI passes the real one.
+- **Tests never notify for real.** `test/support/fake-notifier.ts` writes stand-in `osascript` and `notify-send`
+  scripts that log their arguments; `isolatedEnv` installs them in its bin dir (first on PATH), so every e2e and
+  Playwright run of the binary uses them, and `IsolatedEnv.notifications()` reads the calls. The live test installs
+  them too.
+- **Settings form.** One form per project with Models (chat, worker, fixer, reviewer and the judge, plus the reviewer
+  toggle), Workers (parallel workers as Auto or 1–8, permissions, the allowlist shown for `allowlist`), Sandbox,
+  Commands, Protected paths and Notifications. Lists are one entry per line. Save sends `setConfig` with only the
+  leaves the owner changed since they started editing, so a change the chat made in the meantime is not overwritten
+  with the value the form started from. Until the owner edits, the form follows the live config.
+- **Chat confirmations name the change.** `set_config`'s question now lists each leaf and its new value ("Change
+  models.worker to sonnet in settings?") instead of only the top-level keys, so the owner knows what Confirm does.
+  `set_config` was already gated by the default `conductor.confirm`.
+- **Tests.** `test/integration/notify.test.ts` (a blocked task goes to the fake native notifier once with only a
+  CLI client connected, and to the web client instead when one is connected; the native commands per platform and a
+  failing one). Web: `settings/settings-screen.test.tsx`, `notifications/notifications.test.tsx`. Playwright:
+  `settings.spec.ts` (the worker model persists to config.yaml; a change confirmed in the chat shows in Settings)
+  and `notifications.spec.ts` (a usage-limit pause is a browser notification with a tab open, and an OS one after
+  the tab closes).

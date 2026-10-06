@@ -1,6 +1,7 @@
 import { writeSync } from "node:fs";
 import type { Environment } from "@mastermind/core/env";
 import type { ProcessRegistry } from "@mastermind/core/procs";
+import { createNativeNotifier } from "@mastermind/core/notify";
 import { createRuntime } from "@mastermind/core/runtime";
 import type { Startup } from "@mastermind/core/startup";
 import { promptsDir, webRoot } from "./assets.js";
@@ -107,6 +108,7 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
     promptsDir,
     webRoot,
     pathGuardCommand: pathGuardCommand(),
+    nativeNotifier: createNativeNotifier({ registry, env, platform: process.platform }),
     onError: (error) => {
       reportError(error);
     },

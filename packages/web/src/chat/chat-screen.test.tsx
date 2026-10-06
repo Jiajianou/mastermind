@@ -289,7 +289,7 @@ describe("chat screen", () => {
           }),
           message(4, {
             kind: "proposal",
-            content: "Change models.worker in settings?",
+            content: "Change models.worker to sonnet in settings?",
             meta: { proposalId: 4 },
             turnId: "t",
           }),

@@ -6,6 +6,7 @@ import { runCleanups } from "../../support/cleanup.js";
 import type { CliProcess } from "../../support/cli.js";
 import { isolatedEnv } from "../../support/isolated-env.js";
 import type { Scenario } from "../../support/fake-claude.js";
+import type { NotifierCall } from "../../support/fake-notifier.js";
 import { startMastermind } from "../../support/mastermind.js";
 import { createTempRepo } from "../../support/temp-repo.js";
 
@@ -19,6 +20,7 @@ export interface ServedMastermind {
   token: string;
   readApi<Schema extends z.ZodType>(path: string, schema: Schema): Promise<z.output<Schema>>;
   postApi(path: string, data: unknown): Promise<APIResponse>;
+  nativeNotifications(): Promise<NotifierCall[]>;
 }
 
 export interface MastermindOptions {
@@ -52,6 +54,7 @@ export const test = base.extend<MastermindOptions & { mastermind: ServedMastermi
           return schema.parse(await response.json());
         },
         postApi: (path, data) => page.request.post(`${origin}${path}`, { ...authorized, data }),
+        nativeNotifications: () => env.notifications(),
       });
       if (testInfo.status !== testInfo.expectedStatus) {
         const { stdout, stderr } = mastermind.output;

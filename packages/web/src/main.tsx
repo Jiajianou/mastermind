@@ -1,4 +1,4 @@
-import { streamPath, streamProtocols } from "@mastermind/core/contracts";
+import { streamPath, webStreamProtocols } from "@mastermind/core/contracts";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createApiClient } from "./api/client.js";
@@ -17,7 +17,11 @@ if (token === null) {
 } else {
   const scheme = window.location.protocol === "https:" ? "wss" : "ws";
   const streamUrl = `${scheme}://${window.location.host}${streamPath}`;
-  connectLive({ store, api, openSocket: () => new WebSocket(streamUrl, streamProtocols(token)) });
+  connectLive({
+    store,
+    api,
+    openSocket: () => new WebSocket(streamUrl, webStreamProtocols(token)),
+  });
 }
 
 const container = document.getElementById("root");

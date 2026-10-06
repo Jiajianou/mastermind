@@ -26,6 +26,8 @@ import type { Environment } from "./env.js";
 import { createEventBus } from "./events.js";
 import type { EventBus } from "./events.js";
 import { GitError } from "./git/index.js";
+import { notifyOwner } from "./notify.js";
+import type { NativeNotifier } from "./notify.js";
 import type { KillReport, ProcessRegistry } from "./procs.js";
 import { createProposalGate, proposalActions } from "./proposals.js";
 import { approve, createRebaseQueue, discardAction } from "./rebase/index.js";
@@ -46,6 +48,7 @@ export interface RuntimeOptions {
   promptsDir: string;
   webRoot: string;
   pathGuardCommand: readonly string[];
+  nativeNotifier: NativeNotifier;
   onError: (error: unknown) => void;
   clock?: Clock;
 }
@@ -240,6 +243,14 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   );
 
   const stopEventLines = postEventLines({ db, bus, mainBranch: () => config.mainBranch });
+  const stopNotifications = notifyOwner({
+    bus,
+    project: basename(repoRoot),
+    enabled: () => config.notifications.desktop,
+    webClientConnected: () => api.webClientConnected(),
+    native: options.nativeNotifier,
+    onError,
+  });
 
   let proposalSweep: ReturnType<typeof setInterval> | null = null;
   const expireProposals = () => {
@@ -279,6 +290,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     closeSync() {
       if (proposalSweep !== null) clearInterval(proposalSweep);
       stopEventLines();
+      stopNotifications();
       terminals.dispose();
       runner.dispose();
       api.closeSync();

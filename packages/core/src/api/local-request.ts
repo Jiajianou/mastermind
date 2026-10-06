@@ -46,7 +46,7 @@ export function bearerRejection(
   return match?.[1] !== undefined && matchesToken(match[1], token) ? null : unauthorized;
 }
 
-function offeredProtocols(header: string | undefined): string[] {
+export function offeredProtocols(header: string | undefined): string[] {
   return (header ?? "")
     .split(",")
     .map((protocol) => protocol.trim())

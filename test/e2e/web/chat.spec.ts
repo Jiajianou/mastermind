@@ -128,7 +128,7 @@ test.describe("a decision", () => {
     await input.press("Enter");
 
     const decision = page.getByRole("region", { name: "Decision" });
-    await expect(decision).toContainText("Change models in settings?");
+    await expect(decision).toContainText("Change models.worker to sonnet in settings?");
     await expect(page.getByRole("link", { name: /1 needs you/ })).toBeVisible();
 
     await decision.getByRole("button", { name: "Change" }).click();
@@ -136,7 +136,7 @@ test.describe("a decision", () => {
     await expect(decision).toContainText("Confirmed");
     await expect(decision.getByRole("button")).toHaveCount(0);
     await expect(page.getByRole("log")).toContainText(
-      "Change models in settings: confirmed by the owner and done.",
+      "Change models.worker to sonnet in settings: confirmed by the owner and done.",
     );
     await expect(page.getByRole("link", { name: "No tasks yet" })).toBeVisible();
     const config = await readFile(join(mastermind.repoPath, ".mastermind", "config.yaml"), "utf8");

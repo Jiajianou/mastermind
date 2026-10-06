@@ -8,6 +8,8 @@ import type { AccountKind } from "../fixtures/fake-claude/src/config.js";
 import type { Scenario } from "../fixtures/fake-claude/src/scenario.js";
 import { makeTempDir, onCleanup } from "./cleanup.js";
 import { fakeClaudeBinDir } from "./fake-claude.js";
+import { installFakeNotifier } from "./fake-notifier.js";
+import type { NotifierCall } from "./fake-notifier.js";
 import { findPids, killLiveGroups, killMarkedProcesses } from "./processes.js";
 import { owner } from "./temp-repo.js";
 
@@ -25,6 +27,7 @@ export interface IsolatedEnv {
   env: Record<string, string>;
   writeScenario(scenario: Scenario): Promise<void>;
   readLog(): Promise<FakeClaudeLogRecord[]>;
+  notifications(): Promise<NotifierCall[]>;
   invocations(): Promise<InvocationRecord[]>;
   livePids(): number[];
 }
@@ -61,6 +64,7 @@ export async function isolatedEnv(options: IsolatedEnvOptions = {}): Promise<Iso
   await symlink(join(fakeClaudeBinDir, "claude"), join(binDir, "claude"));
   await symlink(join(fakeClaudeBinDir, "run.js"), join(binDir, "run.js"));
   await writeFile(join(home, ".gitconfig"), gitConfig);
+  const notifier = await installFakeNotifier(binDir);
 
   const env: Record<string, string> = {
     ...inheritedEnv(),
@@ -101,6 +105,7 @@ export async function isolatedEnv(options: IsolatedEnvOptions = {}): Promise<Iso
       await writeFile(scenarioPath, JSON.stringify(scenarioSchema.parse(scenario)));
     },
     readLog,
+    notifications: () => notifier.calls(),
     async invocations() {
       return (await readLog()).filter((record) => record.kind === "invocation");
     },

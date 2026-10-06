@@ -110,10 +110,10 @@ describe("proposal gate", () => {
     expect(outcome).toMatchObject({
       kind: "awaiting_confirmation",
       proposal: { action: "setConfig", args: { maxWorkers: 3 }, status: "pending" },
-      question: "Change maxWorkers in settings?",
+      question: "Change maxWorkers to 3 in settings?",
     });
     expect(harness.db.chat.list()).toMatchObject([
-      { kind: "proposal", content: "Change maxWorkers in settings?" },
+      { kind: "proposal", content: "Change maxWorkers to 3 in settings?" },
     ]);
   });
 
@@ -147,7 +147,7 @@ describe("proposal gate", () => {
     ]);
     expect(harness.db.chat.list().at(-1)).toMatchObject({
       kind: "system",
-      content: "Change maxWorkers in settings: confirmed by the owner and done.",
+      content: "Change maxWorkers to 3 in settings: confirmed by the owner and done.",
       meta: { proposalId, status: "confirmed" },
     });
   });
@@ -180,7 +180,7 @@ describe("proposal gate", () => {
     expect(harness.config().maxWorkers).toBe("auto");
     expect(eventTypes(harness.events)).toEqual(["proposal.updated", "chat.message"]);
     expect(harness.db.chat.list().at(-1)?.content).toBe(
-      "Change maxWorkers in settings: declined by the owner.",
+      "Change maxWorkers to 3 in settings: declined by the owner.",
     );
   });
 
@@ -199,7 +199,7 @@ describe("proposal gate", () => {
     expect(harness.db.proposals.get(freshId)?.status).toBe("pending");
     expect(harness.config().maxWorkers).toBe("auto");
     expect(harness.db.chat.list().at(-1)?.content).toBe(
-      "Change maxWorkers in settings: expired without an answer from the owner.",
+      "Change maxWorkers to 3 in settings: expired without an answer from the owner.",
     );
   });
 

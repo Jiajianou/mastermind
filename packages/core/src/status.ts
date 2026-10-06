@@ -272,6 +272,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "chat.delta":
       case "chat.turn":
       case "proposal.updated":
+      case "notification":
       case "service.stopping":
         return null;
     }

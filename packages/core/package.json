@@ -19,6 +19,7 @@
     "./executables": "./src/executables.ts",
     "./git": "./src/git/index.ts",
     "./lock": "./src/lock.ts",
+    "./notify": "./src/notify.ts",
     "./procs": "./src/procs.ts",
     "./proposals": "./src/proposals.ts",
     "./rebase": "./src/rebase/index.ts",

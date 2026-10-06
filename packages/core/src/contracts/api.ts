@@ -282,10 +282,16 @@ export const accessTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);
 export const streamPath = "/api/stream";
 export const streamProtocol = "mastermind";
 export const streamTokenProtocolPrefix = "mastermind.token.";
+export const webClientProtocol = "mastermind.web";
 
 // Browsers can't set headers on a WebSocket, so the token travels as a second offered subprotocol.
 export function streamProtocols(token: string): [string, string] {
   return [streamProtocol, `${streamTokenProtocolPrefix}${token}`];
+}
+
+// The web app also offers webClientProtocol, so the service knows a tab is open to show desktop notifications.
+export function webStreamProtocols(token: string): [string, string, string] {
+  return [...streamProtocols(token), webClientProtocol];
 }
 
 export const streamMessageSchema = busEventSchema;

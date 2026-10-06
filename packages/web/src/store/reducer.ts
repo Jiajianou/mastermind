@@ -282,6 +282,8 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
         config: action.config,
         chat: { ...state.chat, model: action.config.models.conductor },
       };
+    case "notification":
+      return { ...state, notification: action.notification };
     case "service.stopping":
       return { ...state, connection: "stopped" };
   }

@@ -13,3 +13,4 @@ import "./review.css";
 import "./decide.css";
 import "./request.css";
 import "./tasks.css";
+import "./settings.css";
