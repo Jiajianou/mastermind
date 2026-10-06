@@ -1843,3 +1843,34 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   count in the outcome; a dirty checkout is refused with nothing moved and no Claude call; a fake fixer's resolution
   ends up inside the owner's commit, with no extra commit and no attribution; and the main-moved offer, confirmed,
   rebases the branch. Web: `overview/owner-branch.test.tsx` and a reducer case.
+
+## m8-install
+
+- **Global link on pnpm 12 (deviation from decision 10's wording).** pnpm 12.9.1, which the repo pins, has no
+  `pnpm link --global` (`link` only takes paths and links them into the current project). The equivalent is
+  `pnpm add --global "link:$PWD/packages/cli"`, which links the CLI package and puts its `mastermind` bin in pnpm's
+  global bin directory (`$PNPM_HOME/bin` on pnpm 12). The README documents that command; the intent of decision 10
+  (install privately from the repo with a build and a link) is unchanged. The link must use an absolute path.
+- **`pnpm smoke:install`** (`scripts/smoke-install.sh`) clones the repo's HEAD (so uncommitted changes are not
+  tested, and it says so), runs `pnpm install --frozen-lockfile` and `pnpm build`, checks that `packages/cli/dist`
+  holds the web app and prompts, links the CLI with a temporary `PNPM_HOME`, then runs the linked `mastermind`
+  under `env -i` with a temp HOME and fake-claude (symlinked from the clone) first on PATH: `--version` must equal
+  the CLI package version and `doctor` on a fresh repo (branch `dev`) must exit 0. It writes Claude's attribution
+  setting so the report is all green, and stubs `bwrap` and `socat` on Linux as the doctor test does. Everything
+  lives in one temp dir, removed on exit. It is not part of `pnpm verify`.
+- **Log retention.** New config key `logRetention` (a duration, default `30d`). `pruneLogs` (`src/logs.ts`) deletes regular files anywhere under `.mastermind/logs/` whose mtime is older than
+  the retention, judged by the injected clock; folders are kept. It runs in `startMastermind` right after the
+  config is loaded (the lock is held, so no other instance is writing logs) and the startup says
+  `Removed N log files older than 30d.` when it removed any. A file it can't remove (say, owned by root) does
+  not stop startup: like recovery failures, it is reported as `Could not remove N log files older than 30d, such
+  as <path>: <error>` and the rest are still pruned. Logs still being written have a fresh mtime. Readers of
+  a pruned check log already treat a missing file as "the log is gone". `projectPaths` gained `logs`, and the
+  runtime and session manager use it. Settings doesn't show the key (like `stuckCheck`); it is set in config files
+  or through `set_config`.
+- **Doctor** already covered 14.3 (git, claude version, sign-in and plan, attribution, config) plus worktree disk
+  usage and the sandbox. It gains a `logs` line between `worktrees` and `sandbox`: size and file count of
+  `.mastermind/logs` and the retention, skipped without a valid config.
+- **Tests.** `test/integration/startup/log-retention.test.ts` drives `startMastermind` with an injected clock over
+  logs of different ages in every log folder, for the default and a configured retention, and with a read-only
+  log folder (skipped as root) to show startup continues and reports the file it couldn't remove. The doctor integration
+  test asserts the new line.

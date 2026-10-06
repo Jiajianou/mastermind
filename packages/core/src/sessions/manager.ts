@@ -136,7 +136,7 @@ const conflict = (message: string) => ActionError.fromMessage("conflict", messag
 
 export function createSessionManager(options: SessionManagerOptions): SessionManager {
   const { db, bus, git, repoRoot, onError, clock = systemClock } = options;
-  const logsDir = join(projectPaths(repoRoot).stateDir, "logs");
+  const logsDir = projectPaths(repoRoot).logs;
   const spawner = createSessionSpawner({
     db,
     bus,

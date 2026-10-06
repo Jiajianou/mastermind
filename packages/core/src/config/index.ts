@@ -8,7 +8,7 @@ export { projectPaths } from "./paths.js";
 export type { ConfigContext, ProjectPaths } from "./paths.js";
 export { hostPlatform, sandboxPreset } from "./presets.js";
 export type { HostPlatform, SandboxPreset } from "./presets.js";
-export { resolveConfig, resolveConfigPath } from "./resolve.js";
+export { durationMs, resolveConfig, resolveConfigPath } from "./resolve.js";
 export type { ResolveContext, ResolvedConfig } from "./resolve.js";
 export { GitDirError, prepareProject } from "./setup.js";
 export type { ProjectSetupContext, ProjectSetupResult } from "./setup.js";

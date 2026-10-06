@@ -9,6 +9,7 @@ import {
   hostPlatform,
   isMissingFileError,
   loadConfig,
+  projectPaths,
   readOptionalFile,
   resolveConfigPath,
 } from "../config/index.js";
@@ -19,6 +20,7 @@ import { cleanEnv } from "../env.js";
 import type { Environment } from "../env.js";
 import { isExecutableFile, locateOnPath } from "../executables.js";
 import { createGit } from "../git/index.js";
+import { listLogFiles } from "../logs.js";
 import { collectOutput, SpawnError } from "../procs.js";
 import type { ProcessRegistry } from "../procs.js";
 import { StartupError } from "./errors.js";
@@ -31,6 +33,7 @@ export const doctorCheckNames = [
   "attribution",
   "config",
   "worktrees",
+  "logs",
   "sandbox",
 ] as const;
 export type DoctorCheckName = (typeof doctorCheckNames)[number];
@@ -196,6 +199,16 @@ async function checkWorktrees(
   return ok(`${formatKilobytes(kilobytes)} in ${count} in ${dir}`);
 }
 
+async function checkLogs(context: ConfigContext, config: Config): Promise<Outcome> {
+  const dir = projectPaths(context.repoRoot).logs;
+  const kept = `kept for ${config.logRetention}`;
+  const files = await listLogFiles(dir);
+  if (files.length === 0) return ok(`no logs yet in ${dir}, ${kept}`);
+  const kilobytes = Math.ceil(files.reduce((total, { bytes }) => total + bytes, 0) / 1024);
+  const count = `${String(files.length)} file${files.length === 1 ? "" : "s"}`;
+  return ok(`${formatKilobytes(kilobytes)} in ${count} in ${dir}, ${kept}`);
+}
+
 const linuxSandboxTools = [
   { command: "bwrap", label: "bubblewrap (bwrap)" },
   { command: "socat", label: "socat" },
@@ -238,6 +251,10 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorCheck[]> 
     context === null || validConfig === null
       ? skipped("needs a valid config")
       : await checkWorktrees(options, context, validConfig);
+  const logs =
+    context === null || validConfig === null
+      ? skipped("needs a valid config")
+      : await checkLogs(context, validConfig);
   const sandbox = checkSandbox(options, validConfig);
 
   const outcomes: Record<DoctorCheckName, Outcome> = {
@@ -247,6 +264,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorCheck[]> 
     attribution,
     config: config?.outcome ?? skipped("needs a git repository"),
     worktrees,
+    logs,
     sandbox,
   };
   return doctorCheckNames.map((name) => ({ name, ...outcomes[name] }));

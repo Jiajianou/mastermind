@@ -2,9 +2,11 @@ import type { PortChoice } from "../api/index.js";
 import type { AcceptedAuth } from "../auth.js";
 import { checkClaude, createClaudeCli, describeClaudeCheck } from "../claude.js";
 import type { ClaudeCli } from "../claude.js";
+import { systemClock } from "../clock.js";
 import type { Clock } from "../clock.js";
 import {
   ConfigError,
+  durationMs,
   hostPlatform,
   loadConfig,
   prepareProject,
@@ -19,6 +21,7 @@ import { createGit } from "../git/index.js";
 import type { Git } from "../git/index.js";
 import { acquireLock, alreadyRunningMessage } from "../lock.js";
 import type { InstanceLock } from "../lock.js";
+import { pruneLogs } from "../logs.js";
 import type { ProcessRegistry } from "../procs.js";
 import { recoverPreviousRun } from "../recovery.js";
 import type { RecoveryReport } from "../recovery.js";
@@ -27,7 +30,7 @@ import { guardBranch } from "./branch-guard.js";
 import { StartupError } from "./errors.js";
 import type { StartupPrompts } from "./prompts.js";
 import { findRepo } from "./repo.js";
-import { describeFirstRun, describeRecovery } from "./reports.js";
+import { describeFirstRun, describeLogPruning, describeRecovery } from "./reports.js";
 
 export const startupBanner = "Ctrl+C twice stops mastermind and every session it started.";
 
@@ -106,6 +109,12 @@ export async function startMastermind(options: StartupOptions): Promise<Startup>
     const setup = await prepareProject({ ...context, platform });
     if (setup.firstRun) sayAll(prompts, describeFirstRun(setup.detection));
     const config = await loadProjectConfig(context);
+    const pruned = await pruneLogs({
+      logsDir: paths.logs,
+      retentionMs: durationMs(config.logRetention),
+      clock: options.clock ?? systemClock,
+    });
+    sayAll(prompts, describeLogPruning(pruned, config.logRetention));
 
     const db = openDb(paths.database, { clock: options.clock });
     try {

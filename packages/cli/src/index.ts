@@ -42,7 +42,7 @@ const program = new Command()
 program
   .command("doctor")
   .description(
-    "check git, Claude Code, the sign-in and plan, attribution, config, disk and sandbox",
+    "check git, Claude Code, the sign-in and plan, attribution, config, disk, logs and sandbox",
   )
   .argument("[path]", "the git repository to check", ".")
   .action(async (path: unknown) => {

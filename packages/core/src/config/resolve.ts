@@ -22,7 +22,7 @@ export function resolveConfigPath(path: string, { repoRoot, homeDir }: ConfigCon
   return isAbsolute(expanded) ? expanded : resolve(repoRoot, expanded);
 }
 
-function durationMs(text: string): number {
+export function durationMs(text: string): number {
   const ms = parseDuration(text);
   if (ms === null) throw new RangeError(`Invalid duration "${text}" in a validated config`);
   return ms;

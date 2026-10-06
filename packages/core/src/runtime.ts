@@ -1,4 +1,4 @@
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { serveApi } from "./api/index.js";
 import type { ServedApi } from "./api/index.js";
 import { builtinActions, createActionRegistry, pause, resume } from "./actions/index.js";
@@ -110,7 +110,7 @@ async function closeOnFailure<T>(api: ServedApi, build: () => T | Promise<T>): P
 export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const { startup, registry, env, homeDir, onError, clock = systemClock } = options;
   const { repoRoot, db } = startup;
-  const { stateDir } = projectPaths(repoRoot);
+  const { stateDir, logs: logsDir } = projectPaths(repoRoot);
   const context = { repoRoot, homeDir };
   const resolve = (merged: Config): ResolvedConfig =>
     resolveConfig(merged, { ...context, plan: startup.auth.plan });
@@ -187,7 +187,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     registry,
     env,
     repoRoot,
-    logsDir: join(stateDir, "logs"),
+    logsDir,
     config: () => config,
     launcher,
     onError,
@@ -207,7 +207,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     db,
     bus,
     cli: startup.cli,
-    logsDir: join(stateDir, "logs"),
+    logsDir,
     onError,
   });
   const ownerRebaser = createOwnerRebaser({
@@ -258,7 +258,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     cli: startup.cli,
     repoRoot,
     systemPromptFile,
-    logsDir: join(stateDir, "logs"),
+    logsDir,
     mcpConfigPath,
     model: () => config.models.conductor,
     digest: () => buildDigest(readDigestInput({ db, clock, summary: () => scheduler.summary() })),

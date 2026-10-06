@@ -18,6 +18,7 @@
     "test:e2e": "vitest run --project e2e && playwright install chromium && playwright test --pass-with-no-tests",
     "test:live": "MASTERMIND_LIVE=1 vitest run --project live",
     "coverage": "vitest run --coverage --project unit --project web --project integration",
+    "smoke:install": "sh scripts/smoke-install.sh",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"
   },
   "devDependencies": {

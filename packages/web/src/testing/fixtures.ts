@@ -193,6 +193,7 @@ export function config(conductorModel: string): Config {
     stuckCheck: { after: "60m", every: "20m" },
     sandbox: { enabled: true, allowedDomains: [], allowWrite: [] },
     conductor: { confirm: [], wakeOnEvents: [] },
+    logRetention: "30d",
     port: 4700,
   };
 }

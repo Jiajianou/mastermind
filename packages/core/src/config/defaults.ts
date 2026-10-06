@@ -35,6 +35,7 @@ export function defaultConfig(context: ConfigContext): Config {
       confirm: ["approve_rebase", "rebase_my_branch", "discard_task", "set_config"],
       wakeOnEvents: [],
     },
+    logRetention: "30d",
     port: 4700,
   };
 }

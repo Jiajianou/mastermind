@@ -106,6 +106,7 @@ export const configSchema = z.strictObject({
   stuckCheck: stuckCheckSchema,
   sandbox: sandboxSchema,
   conductor: conductorSchema,
+  logRetention: durationSchema,
   port: z.int().min(1).max(65_535),
 });
 export type Config = z.infer<typeof configSchema>;

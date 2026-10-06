@@ -1,5 +1,6 @@
 import type { CommandKind, ProjectDetection } from "../contracts/index.js";
 import { commandKindSchema } from "../contracts/index.js";
+import type { PruneReport } from "../logs.js";
 import type { RecoveryFailure, RecoveryReport } from "../recovery.js";
 
 function count(amount: number, singular: string, plural = `${singular}s`): string {
@@ -36,6 +37,18 @@ export function describeRecovery(report: RecoveryReport): string[] {
 function commandLabel(kind: CommandKind, detection: ProjectDetection): string | null {
   const detected = detection.commands[kind];
   return detected === null ? null : `${kind} \`${detected.command}\``;
+}
+
+export function describeLogPruning({ removed, failed }: PruneReport, retention: string): string[] {
+  const lines: string[] = [];
+  if (removed.length > 0)
+    lines.push(`Removed ${count(removed.length, "log file")} older than ${retention}.`);
+  const [first] = failed;
+  if (first !== undefined)
+    lines.push(
+      `Could not remove ${count(failed.length, "log file")} older than ${retention}, such as ${first.path}: ${describeError(first.error)}`,
+    );
+  return lines;
 }
 
 export function describeFirstRun(detection: ProjectDetection): string[] {

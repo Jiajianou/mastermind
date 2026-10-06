@@ -6,7 +6,16 @@ import { isolatedEnv } from "../support/isolated-env.js";
 import type { IsolatedEnv, IsolatedEnvOptions } from "../support/isolated-env.js";
 import { createTempRepo } from "../support/temp-repo.js";
 
-const checkNames = ["git", "claude", "sign-in", "attribution", "config", "worktrees", "sandbox"];
+const checkNames = [
+  "git",
+  "claude",
+  "sign-in",
+  "attribution",
+  "config",
+  "worktrees",
+  "logs",
+  "sandbox",
+];
 
 function reportLines(stdout: string): Record<string, string> {
   return Object.fromEntries(
@@ -49,6 +58,11 @@ describe("mastermind doctor", () => {
     );
     await mkdir(join(env.worktreeRoot, "ext2-driver"));
     await writeFile(join(env.worktreeRoot, "ext2-driver", "data.bin"), Buffer.alloc(64 * 1024));
+    await mkdir(join(repo.path, ".mastermind", "logs", "checks"), { recursive: true });
+    await writeFile(
+      join(repo.path, ".mastermind", "logs", "checks", "ext2-driver-test.log"),
+      Buffer.alloc(3 * 1024),
+    );
 
     const run = await runCli(["doctor", repo.path], { env: env.env });
 
@@ -59,6 +73,7 @@ describe("mastermind doctor", () => {
     expect(lines.claude).toContain("Claude Code 2.1.283");
     expect(lines["sign-in"]).toContain("owner@example.com (Max)");
     expect(lines.worktrees).toMatch(/\d+ KB in 1 task clone in /);
+    expect(lines.logs).toMatch(/3 KB in 1 file in .*, kept for 30d$/);
     expect(run.stdout).toContain("All checks passed.");
     expect(run.code).toBe(0);
   });
@@ -79,6 +94,7 @@ describe("mastermind doctor", () => {
     expect(lines.attribution).toMatch(/^! attribution .*Claude attribution is not fully off/);
     expect(lines.config).toMatch(/^✗ config .*models\.wroker: unknown key/);
     expect(lines.worktrees).toMatch(/^- worktrees .*needs a valid config/);
+    expect(lines.logs).toMatch(/^- logs .*needs a valid config/);
     expect(run.stdout).toContain("2 checks failed.");
     expect(run.code).toBe(1);
   });
