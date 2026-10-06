@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { SQLOutputValue } from "node:sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { Clock } from "../clock.js";
+import { byPriority } from "../contracts/index.js";
 import { makeTempDir } from "../testing/temp-dir.js";
 import {
   InvalidRowError,
@@ -116,8 +117,8 @@ describe("tasks", () => {
       branch: null,
       worktree: null,
       baseCommit: null,
-      createdAt: noon,
-      updatedAt: noon,
+      createdAt: "2026-10-06T12:00:00.001Z",
+      updatedAt: "2026-10-06T12:00:00.001Z",
     });
 
     const updated = db.tasks.update("parser", {
@@ -132,6 +133,14 @@ describe("tasks", () => {
       ["parser", ["lexer"]],
       ["lexer", []],
     ]);
+  });
+
+  it("keeps the creation order of tasks with equal priority created within one millisecond", async () => {
+    const db = useDb(await tempDbPath());
+    for (const id of ["zeta", "alpha", "mid"]) db.tasks.create({ ...lexer, id });
+
+    expect(db.tasks.list().map((task) => task.id)).toEqual(["zeta", "alpha", "mid"]);
+    expect(byPriority(db.tasks.list()).map((task) => task.id)).toEqual(["zeta", "alpha", "mid"]);
   });
 });
 

@@ -92,7 +92,17 @@ function taskColumns(fields: TaskPatch): Columns {
   };
 }
 
+const latestCreatedSchema = z.object({ latest: isoTimestampSchema.nullable() });
+
+// Board and start order break priority ties by created_at, so a batch created within one millisecond must still
+// keep the order it was given in rather than falling back to id order.
+function creationTimestamp(now: Date, latest: string | null): string {
+  if (latest === null || now.toISOString() > latest) return now.toISOString();
+  return new Date(Date.parse(latest) + 1).toISOString();
+}
+
 export function createTaskRepository({ database, clock, transaction }: DbContext): TaskRepository {
+  const selectLatestCreated = database.prepare("SELECT MAX(created_at) AS latest FROM tasks");
   const selectTask = database.prepare("SELECT * FROM tasks WHERE id = ?");
   const selectTasks = database.prepare(
     "SELECT * FROM tasks ORDER BY priority DESC, created_at, id",
@@ -126,8 +136,9 @@ export function createTaskRepository({ database, clock, transaction }: DbContext
 
   return {
     create(task) {
-      const now = timestamp(clock);
       return transaction(() => {
+        const { latest } = readRow("tasks", latestCreatedSchema, selectLatestCreated.get());
+        const now = creationTimestamp(clock.now(), latest);
         insertRow(database, "tasks", {
           ...taskColumns({ status: "pending", priority: 0, ...task }),
           id: task.id,

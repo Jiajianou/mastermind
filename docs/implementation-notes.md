@@ -1603,3 +1603,23 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Browser coverage.** `test/e2e/web/planning.spec.ts` drives the M7 flows a user sees: a plan shown in the chat,
   Start, and the resulting graph on the Tasks board; and the "Import tasks.yaml" starter, which shows a cycle's
   message as an alert and an import's unknown-key warnings in its notice.
+
+## m7-verify
+
+- **What it proves.** `test/e2e/web/m7.spec.ts` shares a vision in the chat with the scheduler paused. The fake
+  Conductor first proposes a cyclic plan, which `propose_plan` refuses so nothing is shown, then a valid four-task
+  chain. A second message brings a revised five-task plan (a diamond plus an independent task). The first plan then
+  reads "Replaced by a newer plan" with no button. Clicking Start on the revised plan creates exactly its graph
+  (deps checked over HTTP). The board's Remaining column lists the tasks in plan order with their unmet deps as
+  pills. The graph has a Waiting node for every task and exactly one edge per dependency, each drawn from the
+  dependency to its dependent, left to right. The tasks.yaml export round trip stays covered by the integration
+  test.
+- **Defect fixed: a batch lost its order.** The board and the scheduler break priority ties by `createdAt`, then by
+  id. Tasks from one batch (a started plan, `create_tasks`, an import) often share a millisecond, so their order
+  depended on timing and usually fell back to alphabetical order instead of the plan's order. `db.tasks.create` now
+  gives each task a `created_at` strictly after the latest one (1 ms later on a tie), so a batch keeps the order it
+  was given in. `db.test.ts` covers it.
+- **One browser test for a plan.** The "a plan shown in the chat becomes the task graph" test in `planning.spec.ts`
+  was a subset of `m7.spec.ts`, so its two extra checks (the chat reads "No tasks yet" before Start, and the
+  "Plan started" system message stays hidden) moved into `m7.spec.ts` and it was deleted. `planning.spec.ts` keeps
+  the Import tasks.yaml starter.
