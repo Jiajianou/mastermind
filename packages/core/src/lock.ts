@@ -18,6 +18,11 @@ export interface InstanceLock {
 export type LockAttempt =
   { kind: "acquired"; lock: InstanceLock } | { kind: "held"; pid: number; link: string | null };
 
+export type RunningInstance =
+  | { kind: "none" }
+  | { kind: "starting"; pid: number }
+  | { kind: "running"; pid: number; port: number; token: string };
+
 export interface AcquireLockOptions {
   pid?: number;
 }
@@ -43,6 +48,14 @@ export function alreadyRunningMessage(held: { pid: number; link: string | null }
 export function readLock(stateDir: string): LockRecord | null {
   const text = readText(lockPath(stateDir));
   return text === null ? null : parseRecord(text);
+}
+
+export function findRunningInstance(stateDir: string): RunningInstance {
+  const record = readLock(stateDir);
+  if (record === null || !isAlive(record.pid)) return { kind: "none" };
+  const token = readToken(stateDir);
+  if (record.port === null || token === "") return { kind: "starting", pid: record.pid };
+  return { kind: "running", pid: record.pid, port: record.port, token };
 }
 
 export function acquireLock(stateDir: string, options: AcquireLockOptions = {}): LockAttempt {
@@ -126,8 +139,12 @@ function removeIfUnchanged(path: string, observed: string): void {
   }
 }
 
+function readToken(stateDir: string): string {
+  return readText(tokenPath(stateDir))?.trim() ?? "";
+}
+
 function linkFor(stateDir: string, holder: LockRecord): string | null {
-  const token = readText(tokenPath(stateDir))?.trim() ?? "";
+  const token = readToken(stateDir);
   return holder.port === null || token === "" ? null : webAppLink(holder.port, token);
 }
 

@@ -3,6 +3,7 @@ import { productName } from "@mastermind/core/contracts";
 import { Command, InvalidArgumentError } from "commander";
 import { z } from "zod";
 import cliPackage from "../package.json" with { type: "json" };
+import { registerClientCommands } from "./client/commands.js";
 import { runDoctorCommand, runForeground, runPathGuard } from "./commands.js";
 
 const portSchema = z.coerce.number().int().min(1).max(65_535);
@@ -47,6 +48,8 @@ program
   .action(async (path: unknown) => {
     process.exitCode = await runDoctorCommand(pathSchema.parse(path));
   });
+
+registerClientCommands(program);
 
 program
   .command("path-guard", { hidden: true })

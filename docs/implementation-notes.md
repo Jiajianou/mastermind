@@ -799,3 +799,40 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   reported as done. A conversation is forgotten only when the CLI refused it outright (no `init`, no `result`, a
   plain failure); a sign-in or usage-limit exit keeps it for `--resume`. When the tools are unreachable, the
   process is ended before the turn fails, so a held message never goes to the dying process.
+
+## m2-cli-client
+
+- **Where it lives.** `packages/cli/src/client/`: `instance.ts` (find the running instance), `api.ts` (HTTP client),
+  `stream.ts` (WebSocket client), `chat.ts`, `logs.ts`, `format.ts` (human output), `output.ts` and `commands.ts`,
+  which registers the subcommands on the commander program. Core gained `findRunningInstance(stateDir)` in
+  `lock.ts`: `none` (no lock, an unreadable one, or a dead pid), `starting` (no port or token yet) or `running` with
+  port and token. The client always talks to `127.0.0.1:<port>` with the bearer token, like the web app.
+- **Which repo.** Client commands find the repo from the current directory (`git rev-parse --show-toplevel`, so a
+  subdirectory works) or from `--repo <path>`, an addition to 14.3 for scripts and tests. Without a live instance
+  they exit 1 with `mastermind is not running for <repo>. Start it with \`mastermind .\` in that repo.`; every
+  error goes to stderr with exit 1, and multi-issue API errors print one issue per line.
+- **Task controls are generated** from `actionRoutes`: every action routed as `POST /api/tasks/:taskId/<its own
+  name>` becomes `mastermind <name> <task>`. Today that is hold, release and retry; discard and approve appear as
+  soon as M5 registers actions named `discard` and `approve` on `/api/tasks/:taskId/{discard,approve}` (14.1).
+  Help texts for all five are written already. The result is validated as a `Task`; if M5's results differ, the
+  command needs its own schema.
+- **chat** opens the WebSocket before `POST /api/chat`, buffers events until the turn id is known, then prints the
+  turn's `chat.delta` text as it streams, the rest of the stored reply if deltas were missed, then the action,
+  proposal, plan and system lines (proposals and plans with a hint to decide in the web app, since 14.3 has no
+  confirm command). It ends on `chat.turn` with `replying: false`, which the runner emits after storing the turn's
+  messages. Exit 1 if the turn posted a `system` (failure) message or mastermind stopped mid-turn. `--json` prints
+  `{ turnId, messages }` at the end instead of streaming.
+- **logs** prints every session of the task (oldest first) with its events and an `ended <status>` line, or
+  `No sessions yet for <task>.`
+  `-f` opens the stream before reading the history and de-duplicates by event id per session, so nothing is lost
+  or doubled in between; it ends with exit 0 on `service.stopping` and exit 1 if the connection drops. `--json`
+  prints one `SessionEvent` per line.
+- **import/export** use the `importTasks` and `exportTasks` routes. `export -` writes the YAML to stdout
+  (`{ yaml }` with `--json`).
+- **Output.** `status` is a label/value block (counts by status, workers, running sessions with elapsed time, up
+  next, blocked, rebasing when non-empty, scheduler state); `tasks` is a table with `pending (held)` for held tasks.
+  `--json` prints the validated API response.
+- **Tests.** `test/e2e/cli-client.test.ts` runs the built binary against a live instance per test (fake-claude
+  Conductor and workers; tasks, holds and a past session seeded in SQLite before start). The `logs -f` test waits
+  for the seeded history to print (so the stream is already open), then releases the task and sees the new
+  worker's events arrive. `packages/cli/src/client/chat.test.ts` is a table for the turn follower.
