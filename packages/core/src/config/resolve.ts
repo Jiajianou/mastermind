@@ -17,7 +17,7 @@ function expandHome(path: string, homeDir: string): string {
   return path.startsWith("~/") ? join(homeDir, path.slice(2)) : path;
 }
 
-function toAbsolutePath(path: string, { repoRoot, homeDir }: ConfigContext): string {
+export function resolveConfigPath(path: string, { repoRoot, homeDir }: ConfigContext): string {
   const expanded = expandHome(path, homeDir);
   return isAbsolute(expanded) ? expanded : resolve(repoRoot, expanded);
 }
@@ -31,7 +31,7 @@ function durationMs(text: string): number {
 export function resolveConfig(config: Config, context: ResolveContext): ResolvedConfig {
   return {
     ...config,
-    worktreeDir: toAbsolutePath(config.worktreeDir, context),
+    worktreeDir: resolveConfigPath(config.worktreeDir, context),
     maxWorkers: resolveMaxWorkers(config.maxWorkers, context.plan),
     stuckCheck: {
       afterMs: durationMs(config.stuckCheck.after),
@@ -39,7 +39,7 @@ export function resolveConfig(config: Config, context: ResolveContext): Resolved
     },
     sandbox: {
       ...config.sandbox,
-      allowWrite: config.sandbox.allowWrite.map((path) => toAbsolutePath(path, context)),
+      allowWrite: config.sandbox.allowWrite.map((path) => resolveConfigPath(path, context)),
     },
   };
 }

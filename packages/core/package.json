@@ -17,7 +17,8 @@
     "./procs": "./src/procs.ts",
     "./recovery": "./src/recovery.ts",
     "./scheduler": "./src/scheduler.ts",
-    "./sessions": "./src/sessions/index.ts"
+    "./sessions": "./src/sessions/index.ts",
+    "./startup": "./src/startup/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

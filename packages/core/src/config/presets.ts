@@ -2,6 +2,10 @@ import type { Toolchain } from "../contracts/config.js";
 
 export type HostPlatform = "darwin" | "linux";
 
+export function hostPlatform(platform: NodeJS.Platform): HostPlatform | null {
+  return platform === "darwin" || platform === "linux" ? platform : null;
+}
+
 export interface SandboxPreset {
   allowedDomains: string[];
   allowWrite: string[];

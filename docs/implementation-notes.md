@@ -499,3 +499,57 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Test.** The recovery test runs a real "previous mastermind" (`test/integration/recovery/previous-run.ts`, via
   `node --import tsx`) whose session manager starts a fake-claude worker, then SIGKILLs that process so the fake is
   a true orphan before recovery runs against the same database file.
+
+## m1-startup
+
+- **Where it lives.** `@mastermind/core/startup` (`src/startup/`, a new package export) holds every step, so tests
+  drive it without a terminal. `startMastermind` runs 3.1 steps 1 to 6 in order (repo, lock, Claude Code check, auth
+  gate, branch guard, first run, recovery) and prints the 3.4 banner last. It returns a `Startup` with the repo root,
+  branch, merged config, accepted account, first-run detection, recovery report, lock, db, git, claude CLI and an
+  idempotent `close()` (closes the db, releases the lock). Any failure after the lock is taken closes the db and
+  releases the lock before rethrowing. Each step is also exported (`findRepo`, `takeLock`, `requireClaudeCode`,
+  `passAuthGate`, `guardBranch`, `loadProjectConfig`).
+- **Injected IO.** Steps talk to the owner only through `StartupPrompts` (`say`, `pressEnter`, `choose(question,
+  choices, cancel)`); spawning goes through the injected `ProcessRegistry`, env and home. The CLI's
+  `terminal-prompts.ts` implements it: on a TTY, single keys in raw mode (Enter, Esc, `q`, Ctrl+C, arrows or j/k with a
+  `▸` marker); otherwise numbered menus read line by line from stdin, where end of input means Esc or Quit. Raw mode
+  is held only while a key is awaited and stdin is paused afterwards, so the login hand-off owns the terminal.
+- **Failures** are `StartupError { failure }` (`unsupported-platform`, `not-a-repo`, `already-running`,
+  `claude-unavailable`, `account-refused`, `sign-in-failed`, `config-invalid`, `quit`). The CLI prints the message to
+  stderr and exits 1; any other error is printed as `mastermind: <message>` with exit 1. Quitting at any prompt exits 1,
+  because mastermind did not start.
+- **Auth gate.** Texts are those of `auth.ts` (4.2). A failure is any sign-in attempt after which the check still isn't
+  accepted; after 3 the gate stops with `sign-in-failed`. A non-zero `claude auth login`/`logout` exit is reported in a
+  line before the re-check. **Deviation:** the switch-account choice is offered only for API billing, a non-Pro/Max
+  plan or an unknown method. For another provider, an `apiKeyHelper` or `CLAUDE_CODE_OAUTH_TOKEN`, the cause is in the
+  environment or Claude settings, which a new sign-in leaves in place, so mastermind prints the refusal and exits
+  instead of signing the owner out everywhere for nothing.
+- **Login hand-off stays detached** (m1-procs-auth's open question). A `setsid` child with no controlling terminal
+  can still read and set modes on the inherited tty descriptors, since job-control checks only apply to processes
+  whose controlling terminal it is. Verified with fake-claude under a real pty (`script`); the real interactive login
+  is still unverified live.
+- **Branch guard.** It runs before first-run setup, so it reads `mainBranch` from defaults and both config files without
+  writing anything. "New branch" is `git switch --create dev`, or `dev-2`, `dev-3`… if `dev` exists. "Existing branch"
+  lists local branches other than main, plus Quit. If `git switch` refuses (local changes that would conflict), the
+  reason is shown and the menu comes back. A detached HEAD is not main and passes.
+- **First run** prints `First run: wrote .mastermind/config.yaml.` and the detected commands. The `mainBranch` is not
+  detected (a repo whose main branch is `master` needs it set in config); `prepareProject` would be the place.
+- **`--port` and `--open`** are parsed and validated (zod, 1 to 65535). `Startup.port` is `--port` or `config.port`, the
+  port step 7 tries first. Until m1-runtime-tui and the server exist, `mastermind .` closes the startup and exits 0
+  after the banner; the runtime task replaces that tail and uses `--open`.
+- **Doctor** (`runDoctor` returns `{name, level: ok | warning | error | skipped, message}` for `git`, `claude`,
+  `sign-in`, `attribution`, `config`, `worktrees`, `sandbox`; `formatDoctorReport` renders `✓ ! ✗ -`). Only `error`
+  fails (exit 1); a check skipped because another one failed doesn't count again. Attribution reads `settings.json` in
+  `CLAUDE_CONFIG_DIR` (else `~/.claude`) and warns, not fails, because layer 2 already turns it off per spawn. Worktree
+  usage is `du -sk` of the resolved `worktreeDir` (hard-linked objects are counted, so it overstates the extra disk).
+  The sandbox check needs `/usr/bin/sandbox-exec` on macOS and `bwrap` plus `socat` on PATH on Linux, and warns if
+  the project turned the sandbox off. Doctor writes nothing and takes no lock.
+- **Small core changes.** `locateOnPath` moved to `src/executables.ts` (shared by claude and doctor), `auth.ts`
+  exports `AcceptedAuth` and `planLabel`, config exports `resolveConfigPath`, `hostPlatform`, `isMissingFileError` and `readOptionalFile`, and `projectPaths` gained `database`
+  (`.mastermind/db.sqlite`).
+- **Bundling fixes.** The CLI bundle is the first to include core's db and config: tsup's default `removeNodeProtocol`
+  turned `node:sqlite` into `sqlite`, so it is now off; and `yaml` (CommonJS) failed when inlined into ESM, so `yaml` is
+  a CLI dependency and stays external. Any new third-party dependency of core must be added to the CLI too.
+- **Tests.** `test/integration/startup/` drives `startMastermind` with scripted prompts, and runs the CLI from source
+  (`test/support/cli.ts`, `node --import tsx`) for the refusal and not-a-repo exits. `test/integration/doctor.test.ts`
+  runs `mastermind doctor` the same way, with stub `bwrap` and `socat` on PATH so it passes on Linux CI.

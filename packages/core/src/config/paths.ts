@@ -9,6 +9,7 @@ export interface ProjectPaths {
   stateDir: string;
   localConfig: string;
   sharedConfig: string;
+  database: string;
 }
 
 export function projectPaths(repoRoot: string): ProjectPaths {
@@ -17,5 +18,6 @@ export function projectPaths(repoRoot: string): ProjectPaths {
     stateDir,
     localConfig: join(stateDir, "config.yaml"),
     sharedConfig: join(repoRoot, "mastermind.yaml"),
+    database: join(stateDir, "db.sqlite"),
   };
 }

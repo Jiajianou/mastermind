@@ -22,10 +22,14 @@ export type WrongKindReason =
   | { reason: "unverified-token" }
   | { reason: "auth-method"; method: string };
 
+export interface AcceptedAuth {
+  kind: "accepted";
+  email: string | null;
+  plan: SubscriptionPlan;
+}
+
 export type AuthVerdict =
-  | { kind: "accepted"; email: string | null; plan: SubscriptionPlan }
-  | { kind: "not-signed-in" }
-  | ({ kind: "wrong-kind" } & WrongKindReason);
+  AcceptedAuth | { kind: "not-signed-in" } | ({ kind: "wrong-kind" } & WrongKindReason);
 
 export class AuthStatusError extends Error {
   override readonly name = "AuthStatusError";
@@ -97,6 +101,8 @@ export function logout(cli: ClaudeCli): Promise<ExitResult> {
 }
 
 const planNames: Record<SubscriptionPlan, string> = { pro: "Pro", max: "Max" };
+
+export const planLabel = (plan: SubscriptionPlan): string => planNames[plan];
 
 const providerNames: Readonly<Record<string, string>> = {
   bedrock: "Amazon Bedrock",

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 
-function isMissingFileError(error: unknown): boolean {
+export function isMissingFileError(error: unknown): boolean {
   return (
     error instanceof Error &&
     "code" in error &&

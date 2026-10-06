@@ -1,9 +1,8 @@
-import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, join } from "node:path";
 import { z } from "zod";
 import type { JsonValue } from "./contracts/index.js";
 import { cleanEnv } from "./env.js";
 import type { Environment } from "./env.js";
+import { locateOnPath } from "./executables.js";
 import { collectOutput } from "./procs.js";
 import type {
   ChildHandle,
@@ -181,24 +180,6 @@ export function createClaudeCli({ registry, env }: ClaudeCliOptions): ClaudeCli 
       return child.exited;
     },
   };
-}
-
-function isExecutableFile(path: string): boolean {
-  try {
-    accessSync(path, constants.X_OK);
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function locateOnPath(command: string, pathVariable: string): string | null {
-  for (const dir of pathVariable.split(delimiter)) {
-    if (dir === "") continue;
-    const candidate = join(dir, command);
-    if (isExecutableFile(candidate)) return candidate;
-  }
-  return null;
 }
 
 function parseVersion(text: string): VersionParts | null {
