@@ -7,6 +7,7 @@ import type {
   Config,
   InstanceInfo,
   IsoTimestamp,
+  OwnerBranch,
   OwnerNotification,
   Proposal,
   Rebase,
@@ -69,6 +70,7 @@ export interface LiveState {
   notes: Readonly<Record<string, ReviewNotes>>;
   checks: Readonly<Record<string, Readonly<Record<number, Check>>>>;
   rebases: Readonly<Record<string, Rebase>>;
+  ownerBranch: OwnerBranch | null;
   terminals: Readonly<Record<string, TerminalState>>;
   proposals: Readonly<Record<number, Proposal>>;
   chat: ChatState;
@@ -110,6 +112,7 @@ export const initialState: LiveState = {
   notes: {},
   checks: {},
   rebases: {},
+  ownerBranch: null,
   terminals: {},
   proposals: {},
   chat: { model: null, replying: false, messages: [], drafts: {} },

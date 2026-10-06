@@ -4,7 +4,7 @@ import type { Git } from "../git/index.js";
 export interface FastForwardRequest {
   repoRoot: string;
   mainBranch: string;
-  taskId: string;
+  subject: string;
   from: string;
   to: string;
 }
@@ -30,7 +30,7 @@ export async function mainCheckedOut(
 
 export async function fastForwardMain(git: Git, request: FastForwardRequest): Promise<FastForward> {
   const { repoRoot, mainBranch, from, to } = request;
-  const reason = `mastermind: rebase ${request.taskId} onto ${mainBranch}`;
+  const reason = `mastermind: rebase ${request.subject} onto ${mainBranch}`;
   try {
     await git.run(repoRoot, ["update-ref", "-m", reason, mainRef(mainBranch), to, from]);
     return { kind: "done" };

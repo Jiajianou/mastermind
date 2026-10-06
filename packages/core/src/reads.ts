@@ -12,6 +12,7 @@ import type {
   Config,
   Finding,
   InstanceInfo,
+  OwnerBranch,
   ReviewNotes,
   Round,
   Session,
@@ -33,6 +34,7 @@ export interface ReadSources {
   summary: () => Summary;
   chat: Pick<ChatState, "status">;
   config: () => Config;
+  ownerBranch: () => Promise<OwnerBranch>;
 }
 
 export interface ReadModels extends TaskFiles {
@@ -51,6 +53,7 @@ export interface ReadModels extends TaskFiles {
   taskCheckLog(input: CheckLogInput): Promise<CheckLog>;
   chat(afterId?: number): ChatView;
   config(): Config;
+  ownerBranch(): Promise<OwnerBranch>;
 }
 
 const notFound = (message: string) => ActionError.fromMessage("not_found", message);
@@ -88,6 +91,7 @@ export function createReadModels({
   summary,
   chat,
   config,
+  ownerBranch,
 }: ReadSources): ReadModels {
   return {
     ...createTaskFiles({ db, git }),
@@ -180,5 +184,7 @@ export function createReadModels({
     chat: (afterId) => ({ ...chat.status(), messages: db.chat.list(afterId) }),
 
     config,
+
+    ownerBranch,
   };
 }

@@ -224,6 +224,8 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     }
     case "rebase.updated":
       return { ...state, rebases: { ...state.rebases, [action.taskId]: action.rebase } };
+    case "branch.updated":
+      return { ...state, ownerBranch: action.branch };
     case "main.moved":
     case "checkout.updated":
       return state;

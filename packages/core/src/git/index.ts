@@ -1,8 +1,10 @@
 export {
   CloneLocationError,
   commitLeftovers,
+  createBranchCopy,
   createTaskClone,
   deleteClone,
+  fetchHeadIntoRepo,
   fetchMainIntoClone,
   fetchTaskIntoRepo,
   headCommit,
@@ -11,7 +13,7 @@ export {
   taskRef,
   upstreamRef,
 } from "./clones.js";
-export type { CloneRequest, TaskClone } from "./clones.js";
+export type { BranchCopyRequest, CloneRequest, TaskClone } from "./clones.js";
 export { createGit, GitError } from "./runner.js";
 export type { Git, GitOptions } from "./runner.js";
 export {

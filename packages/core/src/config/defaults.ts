@@ -31,7 +31,10 @@ export function defaultConfig(context: ConfigContext): Config {
     notifications: { desktop: true },
     stuckCheck: { after: "60m", every: "20m" },
     sandbox: { enabled: true, allowedDomains: [], allowWrite: [] },
-    conductor: { confirm: ["approve_rebase", "discard_task", "set_config"], wakeOnEvents: [] },
+    conductor: {
+      confirm: ["approve_rebase", "rebase_my_branch", "discard_task", "set_config"],
+      wakeOnEvents: [],
+    },
     port: 4700,
   };
 }

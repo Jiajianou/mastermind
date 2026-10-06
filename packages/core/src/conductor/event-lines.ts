@@ -19,6 +19,7 @@ interface WatchedState {
   taskStatuses: Map<string, TaskStatus>;
   authRequired: boolean;
   resumeAt: string | null;
+  branchRebaseEnded: string | null;
 }
 
 function taskLine(taskId: string, status: TaskStatus, mainBranch: string): EventLine | null {
@@ -63,6 +64,19 @@ function lineFor(state: WatchedState, event: BusEvent, mainBranch: () => string)
             meta: { event: "owner_on_main", branch: event.branch },
           }
         : null;
+    case "branch.updated": {
+      const { rebase } = event.branch;
+      const endedAt = rebase?.endedAt ?? null;
+      if (rebase === null || endedAt === null || endedAt === state.branchRebaseEnded) return null;
+      state.branchRebaseEnded = endedAt;
+      return {
+        content: rebase.outcome ?? `${rebase.branch} rebase ${rebase.status}`,
+        meta: {
+          event: rebase.status === "succeeded" ? "branch_rebased" : "branch_failed",
+          branch: rebase.branch,
+        },
+      };
+    }
     case "scheduler.updated": {
       const { resumeAt } = event;
       const limited = resumeAt !== null && resumeAt !== state.resumeAt;
@@ -85,6 +99,7 @@ export function postEventLines({ db, bus, mainBranch }: EventLineOptions): () =>
     taskStatuses: new Map(db.tasks.list().map((task) => [task.id, task.status])),
     authRequired: flags.authRequired,
     resumeAt: flags.backoffResumeAt,
+    branchRebaseEnded: null,
   };
   return bus.subscribe((event) => {
     const line = lineFor(state, event, mainBranch);

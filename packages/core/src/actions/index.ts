@@ -63,6 +63,7 @@ const builtins = {
     | "rerunChecks"
     | "approve"
     | "discard"
+    | "rebaseOwnerBranch"
     | "addComment"
     | "updateComment"
     | "deleteComment"

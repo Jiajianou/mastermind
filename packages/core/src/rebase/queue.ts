@@ -194,7 +194,7 @@ export function createRebaseQueue(options: RebaseQueueOptions): RebaseQueue {
     const forward = await fastForwardMain(git, {
       repoRoot,
       mainBranch,
-      taskId: task.id,
+      subject: task.id,
       from: upstream,
       to: fetched,
     });

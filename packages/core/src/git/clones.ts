@@ -9,6 +9,13 @@ export interface TaskClone {
   baseCommit: string;
 }
 
+export interface BranchCopyRequest {
+  repoRoot: string;
+  branch: string;
+  commit: string;
+  path: string;
+}
+
 export interface CloneRequest {
   repoRoot: string;
   mainBranch: string;
@@ -71,6 +78,28 @@ export async function createTaskClone(git: Git, request: CloneRequest): Promise<
   return { path, branch, baseCommit: await headCommit(git, path) };
 }
 
+// A detached copy of the owner's branch, so that nothing done in it can move the branch itself.
+export async function createBranchCopy(git: Git, request: BranchCopyRequest): Promise<void> {
+  const { repoRoot, branch, commit, path } = request;
+  await mkdir(dirname(path), { recursive: true });
+  await git.run(repoRoot, [
+    "clone",
+    "--quiet",
+    "--local",
+    "--no-checkout",
+    "--single-branch",
+    "--branch",
+    branch,
+    "--",
+    repoRoot,
+    path,
+  ]);
+  await git.run(path, ["checkout", "--quiet", "--detach", commit]);
+  await git.run(path, ["remote", "remove", "origin"]);
+  await copyIdentity(git, repoRoot, path);
+  await appendFile(join(path, ".git", "info", "exclude"), `/${resultFileName}\n`);
+}
+
 export async function fetchMainIntoClone(
   git: Git,
   { repoRoot, mainBranch, clonePath }: { repoRoot: string; mainBranch: string; clonePath: string },
@@ -98,6 +127,14 @@ export async function fetchTaskIntoRepo(
     clonePath,
     `+refs/heads/${taskBranch(taskId)}:${ref}`,
   ]);
+  return (await git.run(repoRoot, ["rev-parse", ref])).trim();
+}
+
+export async function fetchHeadIntoRepo(
+  git: Git,
+  { repoRoot, clonePath, ref }: { repoRoot: string; clonePath: string; ref: string },
+): Promise<string> {
+  await git.run(repoRoot, ["fetch", "--quiet", "--no-write-fetch-head", clonePath, `+HEAD:${ref}`]);
   return (await git.run(repoRoot, ["rev-parse", ref])).trim();
 }
 

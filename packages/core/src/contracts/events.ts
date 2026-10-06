@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownerBranchSchema } from "./branch.js";
 import { chatMessageSchema, proposalSchema } from "./chat.js";
 import { checkSchema, rebaseSchema } from "./checks.js";
 import { isoTimestampSchema } from "./common.js";
@@ -48,6 +49,7 @@ export const busEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("finding.updated"), taskId: z.string(), finding: findingSchema }),
   z.object({ type: z.literal("main.moved"), branch: z.string(), commit: z.string() }),
   z.object({ type: z.literal("checkout.updated"), branch: z.string(), onMain: z.boolean() }),
+  z.object({ type: z.literal("branch.updated"), branch: ownerBranchSchema }),
   z.object({
     type: z.literal("terminal.output"),
     taskId: z.string(),

@@ -12,6 +12,8 @@ import {
   taskRefInputSchema,
   updateTaskInputSchema,
 } from "./actions.js";
+import { branchRebaseSchema, ownerBranchSchema, rebaseOwnerBranchInputSchema } from "./branch.js";
+import type { BranchRebase } from "./branch.js";
 import { fileContentSchema, taskChangesSchema, taskTreeSchema } from "./changes.js";
 import { checkLogSchema, checkSchema } from "./checks.js";
 import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } from "./chat.js";
@@ -76,6 +78,7 @@ export interface ActionResults {
   rerunChecks: Task;
   approve: Task;
   discard: Task;
+  rebaseOwnerBranch: BranchRebase;
   addComment: Comment;
   updateComment: Comment;
   deleteComment: Comment;
@@ -116,6 +119,7 @@ export const actionRoutes = {
   rerunChecks: { method: "POST", path: "/api/tasks/:taskId/checks/rerun" },
   approve: { method: "POST", path: "/api/tasks/:taskId/approve" },
   discard: { method: "POST", path: "/api/tasks/:taskId/discard" },
+  rebaseOwnerBranch: { method: "POST", path: "/api/branch/rebase" },
   addComment: { method: "POST", path: "/api/tasks/:taskId/comments" },
   updateComment: {
     method: "PATCH",
@@ -176,6 +180,7 @@ export const actionInputSchemas = {
   rerunChecks: taskRefInputSchema,
   approve: taskRefInputSchema,
   discard: taskRefInputSchema,
+  rebaseOwnerBranch: rebaseOwnerBranchInputSchema,
   addComment: addCommentInputSchema,
   updateComment: updateCommentInputSchema,
   deleteComment: commentRefInputSchema,
@@ -211,6 +216,7 @@ export const actionResultSchemas = {
   rerunChecks: taskSchema,
   approve: taskSchema,
   discard: taskSchema,
+  rebaseOwnerBranch: branchRebaseSchema,
   addComment: commentSchema,
   updateComment: commentSchema,
   deleteComment: commentSchema,
@@ -268,6 +274,7 @@ export const apiResponseSchemas = {
   sessionEvents: z.array(sessionEventSchema),
   chat: chatViewSchema,
   config: configSchema,
+  branch: ownerBranchSchema,
   checks: z.array(checkSchema),
   checkLog: checkLogSchema,
   comments: z.array(commentSchema),

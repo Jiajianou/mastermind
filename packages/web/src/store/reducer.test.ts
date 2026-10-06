@@ -1,5 +1,5 @@
 import { busEventSchema, terminalScrollbackLimit } from "@mastermind/core/contracts";
-import type { Rebase, Terminal } from "@mastermind/core/contracts";
+import type { OwnerBranch, Rebase, Terminal } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
 import {
   at,
@@ -18,6 +18,16 @@ import {
 } from "../testing/fixtures.js";
 import { reduce } from "./reducer.js";
 import type { LiveState, StoreAction, TerminalState } from "./state.js";
+
+const ownerBranch: OwnerBranch = {
+  branch: "dev",
+  mainBranch: "main",
+  onMain: false,
+  ahead: 2,
+  behind: 1,
+  upstream: null,
+  rebase: null,
+};
 
 interface Case {
   name: string;
@@ -276,6 +286,14 @@ const cases: Case[] = [
     action: { type: "main.moved", branch: "main", commit: "a".repeat(40) },
     after: (next, before) => {
       expect(next).toBe(before);
+    },
+  },
+  {
+    name: "branch.updated keeps the owner's branch as the service last read it",
+    before: stateWith({}),
+    action: { type: "branch.updated", branch: ownerBranch },
+    after: (next) => {
+      expect(next.ownerBranch).toEqual(ownerBranch);
     },
   },
   {

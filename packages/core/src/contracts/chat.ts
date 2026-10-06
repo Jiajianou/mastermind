@@ -68,6 +68,10 @@ export const eventLineMetaSchema = z.discriminatedUnion("event", [
   }),
   z.object({ event: z.literal("sign_in") }),
   z.object({ event: z.literal("owner_on_main"), branch: z.string() }),
+  z.object({
+    event: eventLineKindSchema.extract(["branch_rebased", "branch_failed"]),
+    branch: z.string(),
+  }),
   z.object({ event: z.literal("usage_limit"), resumeAt: isoTimestampSchema }),
 ]);
 export type EventLineMeta = z.infer<typeof eventLineMetaSchema>;

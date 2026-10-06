@@ -20,7 +20,7 @@ export type RebaseResult =
 
 const rebaseStateDirs = ["rebase-merge", "rebase-apply"];
 
-const quietGit = ["-c", "core.hooksPath=/dev/null", "-c", "core.editor=true"];
+export const quietGit = ["-c", "core.hooksPath=/dev/null", "-c", "core.editor=true"];
 
 export async function rebaseInProgress(git: Git, worktree: string): Promise<boolean> {
   for (const name of rebaseStateDirs) {
@@ -36,7 +36,7 @@ export async function abortRebase(git: Git, worktree: string): Promise<boolean> 
   return true;
 }
 
-async function isAncestor(git: Git, worktree: string, commit: string): Promise<boolean> {
+export async function isAncestor(git: Git, worktree: string, commit: string): Promise<boolean> {
   try {
     await git.run(worktree, ["merge-base", "--is-ancestor", commit, "HEAD"]);
     return true;
@@ -47,7 +47,7 @@ async function isAncestor(git: Git, worktree: string, commit: string): Promise<b
   }
 }
 
-async function conflictedFiles(git: Git, worktree: string): Promise<string[]> {
+export async function conflictedFiles(git: Git, worktree: string): Promise<string[]> {
   const output = await git.run(worktree, ["diff", "--name-only", "--diff-filter=U"]);
   return output.split("\n").filter((line) => line !== "");
 }

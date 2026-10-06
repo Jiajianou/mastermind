@@ -3,6 +3,7 @@ import { parseInput } from "../actions/index.js";
 import type { ActionRegistry } from "../actions/index.js";
 import type { ConductorChatSink } from "../chat.js";
 import {
+  branchRebaseSchema,
   changesInputSchema,
   checkLogInputSchema,
   configLayerSchema,
@@ -11,6 +12,7 @@ import {
   messageSessionResultSchema,
   noInputSchema,
   proposePlanInputSchema,
+  rebaseOwnerBranchInputSchema,
   requestChangesInputSchema,
   requestChangesResultSchema,
   sessionEventsInputSchema,
@@ -221,6 +223,18 @@ export const actionTools: readonly ActionTool[] = [
       "Rebase a task that is waiting in review onto main: it is squashed into one commit, built and tested, and main is fast-forwarded to it. Never a merge commit.",
     describe: ({ taskId }) => `Rebase ${taskId} onto main`,
     done: ({ taskId }) => `Queued ${taskId} to rebase onto main`,
+  }),
+  actionTool({
+    name: "rebase_my_branch",
+    action: "rebaseOwnerBranch",
+    input: rebaseOwnerBranchInputSchema,
+    description:
+      "Rebase the owner's own branch (the one checked out in their checkout, given as branch if you know it) onto main and fast-forward main to it, when the owner asks, for example \"rebase my branch\". Their commits keep their own messages and authors and are not squashed; the project's build and tests run on the result first, and conflicts go to a fixer whose changes become part of the owner's commits. Fails at once if the checkout has uncommitted changes (ask the owner to commit first), is on main or isn't on a branch. It runs in the background; its outcome arrives as an update.",
+    describe: ({ branch }) => `Rebase ${branch ?? "your branch"} onto main`,
+    done: (_input, result) => {
+      const started = branchRebaseSchema.safeParse(result);
+      return `Started rebasing ${started.success ? started.data.branch : "your branch"} onto main`;
+    },
   }),
   actionTool({
     name: "discard_task",

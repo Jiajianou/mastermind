@@ -1787,3 +1787,59 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   fails, and a verdict that arrives after the monitor stopped is dropped. A stuck restart that can't begin still
   emits the requeued task. Violation lines only yield plain host names (no wildcard or bracketed address), so a
   crafted line can't propose `*.example.com`.
+
+## m8-owner-branch
+
+- **Where it lives.** `rebase/owner-rebase.ts` (`createOwnerRebaser`: the run), `rebase/owner-checkout.ts` (reads of
+  the owner's checkout: current branch, clean, ahead and behind main, main's upstream), `rebase/owner-actions.ts`
+  (action `rebaseOwnerBranch` and `offerOwnerRebase`), `rebase/owner-prompts.ts`, `sessions/branch-fixer.ts`
+  (`createBranchFixer`), `sessions/editing-print.ts` (the worker and fixer print options, moved out of the session
+  manager so both share them), `contracts/branch.ts` and the system prompt `prompts/branch-fixer.md`. Git gained
+  `createBranchCopy` and `fetchHeadIntoRepo`. `FastForwardRequest.taskId` is now `subject`.
+- **Triggers.** The Conductor tool `rebase_my_branch` (optional `branch`), gated by default: it is added to the default
+  `conductor.confirm`, like `approve_rebase`, because it moves main. The **Rebase button lives on Overview**, in a new
+  "Your branch" side panel above the rebase queue: the branch name, how many commits it has that main lacks, how far
+  main moved, how far main is ahead of its upstream, and the last outcome. HTTP: `GET /api/branch` (`OwnerBranch`) and
+  `POST /api/branch/rebase`. A new bus event `branch.updated` carries the view after `main.moved`,
+  `checkout.updated`, every change of the run and every refusal (the owner commits and switches branches outside
+  mastermind, so a refused caller may hold a stale view); the web keeps it in `state.ownerBranch`, and the panel
+  reads it on connect and whenever the window regains focus. The button is enabled whenever no run is in flight;
+  the service, not the possibly stale view, decides whether there is anything to rebase.
+- **Refusals are synchronous** `conflict` errors, so the decision line, the button and the tool all show them: not on
+  a branch, a `branch` argument that isn't the one checked out, on main, main checked out in another worktree, a
+  dirty checkout (untracked files count, since one in the way would make the final `reset --keep` fail after main had
+  moved: "Commit them first, then ask again."), or a branch equal to main. One run at a time. Otherwise the action
+  returns the `running` `BranchRebase` at once and the run continues in the background.
+- **The run.** A local clone of the branch, checked out detached, at `<worktreeDir>/.owner-branch` (a task id can't
+  start with a dot), with the owner's identity copied and no remote. Setup, fetch main as `upstream/<main>`, `git
+  rebase` with hooks off. Then, only if the owner has commits beyond main: build and test (the rebase queue's checks;
+  no acceptance command exists and the reviewer is for AI work), fetch HEAD into `refs/mastermind-branches/<branch>`,
+  the attribution guard over upstream..that ref (a match refuses; the owner's messages are never rewritten). Right
+  before `update-ref`, the checkout must still be on the branch at the same tip and clean; a branch that moved, or a
+  main that moved under `update-ref`, starts the run again (5 tries). Finally `git reset --keep <new main>` in the
+  owner's checkout and `main.moved`. A branch with no commits of its own is just moved to main. The copy and the ref
+  are deleted in every case. Log: `.mastermind/logs/branches/<branch>-<time>.log`.
+- **Conflicts.** Unlike tasks, the rebase is not aborted: it stays stopped and a fixer session (role `fixer`, no task,
+  `branch-fixer.md`) resolves the conflicted files and stages them, told never to commit or continue. Mastermind then
+  checks the rebase is still stopped at the same commit with the same HEAD, stages tracked changes, refuses leftover
+  unmerged paths or `<<<<<<<`/`>>>>>>>` markers in the conflicted files, and runs `git rebase --continue` itself, so the
+  resolution is committed with the owner's message and author and no AI-written commit appears. One fixer per
+  conflicting commit. A fixer is not started while Claude calls are on hold (paused, signed out, backing off); the run
+  fails instead of waiting. Its usage-limit and sign-in failures have the usual global effects.
+- **A failed build or test is reported, not fixed**: a fixer would have to rewrite the owner's commits, which the
+  decisions only allow for conflicts. Failures leave main and the branch alone and say where the log is.
+- **Outcome in the chat.** The run's outcome sentence is posted by `postEventLines` as a system line with new event
+  line kinds `branch_rebased` and `branch_failed` (also valid in `wakeOnEvents`), e.g. "Rebased dev onto main: 2
+  commits of yours are on main now. main is 3 commits ahead of origin/main." The upstream count compares with
+  whatever the owner last fetched; nothing is fetched or pushed. The terminal shows rebasing, rebased and failed lines.
+- **Keeping current.** On `main.moved` (not during the owner's own run), if the owner is on a branch that main is
+  ahead of and no `rebaseOwnerBranch` proposal is pending, mastermind offers "main moved N commits; rebase dev onto
+  it?" with **Rebase** and **Not now** (`ProposalGate.offer`, args `{branch}`), so a confirm after switching branches
+  is refused rather than rebasing another branch. Confirming runs the same action, including the clean check.
+- **State is in memory**: only the latest run is kept (the chat line and the log are the history), so no migration.
+  A copy left by a killed run is deleted when the next run starts.
+- **Tests.** `test/integration/rebase/owner-branch.test.ts`: two commits (one by another author, one with a body)
+  land unchanged on a moved main with linear history, dev and main equal, origin/main untouched and the upstream
+  count in the outcome; a dirty checkout is refused with nothing moved and no Claude call; a fake fixer's resolution
+  ends up inside the owner's commit, with no extra commit and no attribution; and the main-moved offer, confirmed,
+  rebases the branch. Web: `overview/owner-branch.test.tsx` and a reducer case.

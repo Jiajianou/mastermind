@@ -24,6 +24,7 @@ import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
 import { createGit } from "@mastermind/core/git";
+import { readOwnerBranch } from "@mastermind/core/rebase";
 import type { EventBus } from "@mastermind/core/events";
 import { createProcessRegistry } from "@mastermind/core/procs";
 import type { ProcessRegistry } from "@mastermind/core/procs";
@@ -104,6 +105,7 @@ export async function conductorHarness(
   const onError = (error: unknown) => errors.push(error);
   bus.subscribe((event) => events.push(event));
   const registry = createProcessRegistry();
+  const git = createGit({ registry, env: env.env });
 
   const actions = createActionRegistry(
     {
@@ -186,7 +188,7 @@ export async function conductorHarness(
 
   const api = await serveApi({
     db,
-    git: createGit({ registry, env: env.env }),
+    git,
     bus,
     actions,
     gate,
@@ -195,6 +197,10 @@ export async function conductorHarness(
     instance: testInstance,
     summary: () => scheduler.summary(),
     config: () => config,
+    ownerBranch: async () => ({
+      ...(await readOwnerBranch(git, repo.path, config.mainBranch)),
+      rebase: null,
+    }),
     webRoot: join(env.root, "no-web"),
     onError,
     stateDir,

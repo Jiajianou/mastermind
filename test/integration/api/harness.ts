@@ -193,6 +193,16 @@ export async function serveTestApi({
     instance: testInstance,
     summary: () => scheduler.summary(),
     config: () => config,
+    ownerBranch: () =>
+      Promise.resolve({
+        branch: "dev",
+        mainBranch: config.mainBranch,
+        onMain: false,
+        ahead: 0,
+        behind: 0,
+        upstream: null,
+        rebase: null,
+      }),
     webRoot,
     onError: (error) => errors.push(error),
     stateDir,

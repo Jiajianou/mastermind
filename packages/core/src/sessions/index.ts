@@ -1,4 +1,18 @@
 export { messageSessionAction, stopSessionAction } from "./actions.js";
+export { createBranchFixer } from "./branch-fixer.js";
+export type {
+  BranchFixer,
+  BranchFixerOptions,
+  BranchFixOutcome,
+  BranchFixRequest,
+} from "./branch-fixer.js";
+export { editingPrintOptions } from "./editing-print.js";
+export type {
+  EditingPrintContext,
+  EditingPrintRequest,
+  EditingRole,
+  SystemPrompt,
+} from "./editing-print.js";
 export { classifyExit } from "./exit.js";
 export { createSessionManager, stuckWipMessage, wipMessage } from "./manager.js";
 export type {

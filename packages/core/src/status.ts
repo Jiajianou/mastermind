@@ -1,5 +1,6 @@
 import type { Clock } from "./clock.js";
 import type {
+  BranchRebase,
   BusEvent,
   BusEventOf,
   RuntimeFlags,
@@ -130,6 +131,15 @@ function rebaseLine(
   return null;
 }
 
+function branchRebaseLine(rebase: BranchRebase, mainBranch: string): Line {
+  const text: Record<BranchRebase["status"], string> = {
+    running: `Rebasing ${rebase.branch} onto ${mainBranch}`,
+    succeeded: `${rebase.branch} rebased onto ${mainBranch}`,
+    failed: `${rebase.branch} rebase failed`,
+  };
+  return { label: "rebase", text: text[rebase.status] };
+}
+
 function schedulerLines(
   previous: Pick<RuntimeFlags, "paused" | "backoffResumeAt">,
   { paused, resumeAt }: BusEventOf<"scheduler.updated">,
@@ -175,6 +185,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
   let flags = db.flags.get();
   let header = options.header;
   let ownerOnMain = false;
+  let branchRebase: BranchRebase | null = null;
   let events: EventLine[] = [];
   let nextLineId = 1;
 
@@ -252,6 +263,14 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "checkout.updated":
         ownerOnMain = event.onMain;
         return [checkoutLine(event)];
+      case "branch.updated": {
+        const { rebase } = event.branch;
+        const changed =
+          rebase !== null &&
+          (rebase.status !== branchRebase?.status || rebase.startedAt !== branchRebase.startedAt);
+        branchRebase = rebase;
+        return changed ? [branchRebaseLine(rebase, header.mainBranch)] : null;
+      }
       case "scheduler.updated": {
         const lines = schedulerLines(flags, event);
         flags = { ...flags, paused: event.paused, backoffResumeAt: event.resumeAt };

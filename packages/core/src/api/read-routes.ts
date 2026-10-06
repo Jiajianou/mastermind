@@ -19,6 +19,7 @@ import type {
   FileContent,
   Finding,
   InstanceInfo,
+  OwnerBranch,
   ReviewNotes,
   Round,
   Session,
@@ -39,6 +40,8 @@ export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): voi
   app.get("/api/summary", (): ApiSummary => reads.summary());
 
   app.get("/api/tasks", (): TaskView[] => reads.tasks());
+
+  app.get("/api/branch", (): Promise<OwnerBranch> => reads.ownerBranch());
 
   app.get("/api/tasks/:taskId", (request): TaskView => {
     const { taskId } = parseInput(taskParamsSchema, request.params);

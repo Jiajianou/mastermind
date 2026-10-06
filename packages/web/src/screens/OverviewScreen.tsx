@@ -3,6 +3,7 @@ import { buildTranscript, pendingDecisions } from "../chat/entries.js";
 import { countTiles, needsYou, rebaseQueue } from "../overview/board.js";
 import { CountTiles } from "../overview/CountTiles.js";
 import { NeedsYouPanel } from "../overview/NeedsYouPanel.js";
+import { OwnerBranchPanel } from "../overview/OwnerBranchPanel.js";
 import { RebaseQueue } from "../overview/RebaseQueue.js";
 import { SessionCard } from "../overview/SessionCard.js";
 import { schedulerHold, upNext } from "../overview/up-next.js";
@@ -38,6 +39,7 @@ export function OverviewScreen() {
           )}
         </section>
         <aside className="overview-side">
+          <OwnerBranchPanel />
           <RebaseQueue tasks={rebaseQueue(tasks)} />
           <UpNextPanel upNext={upNext(tasks)} hold={schedulerHold(scheduler)} />
           <NeedsYouPanel items={needsYou(tasks, decisions)} />

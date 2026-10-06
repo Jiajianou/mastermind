@@ -8,7 +8,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionRegistry } from "../actions/index.js";
 import type { ChatState } from "../chat.js";
 import { registerMcpRoutes } from "../conductor/mcp.js";
-import type { Config, InstanceInfo, Summary } from "../contracts/index.js";
+import type { Config, InstanceInfo, OwnerBranch, Summary } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import type { Git } from "../git/index.js";
@@ -34,6 +34,7 @@ export interface ApiServerOptions {
   instance: InstanceInfo;
   summary: () => Summary;
   config: () => Config;
+  ownerBranch: () => Promise<OwnerBranch>;
   token: string;
   webRoot: string;
   onError: (error: unknown) => void;

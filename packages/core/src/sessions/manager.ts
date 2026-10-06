@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { assertTransition, ActionError } from "../actions/index.js";
@@ -30,8 +29,9 @@ import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
 import { refinePrompt } from "../review/prompts.js";
 import { canResumeConversation } from "./conversation.js";
+import { editingPrintOptions } from "./editing-print.js";
+import type { EditingRole, SystemPrompt } from "./editing-print.js";
 import { resumePrompt, stuckRestartPrompt, workerTaskPrompt } from "./prompts.js";
-import { editingSessionSettings, workerPermissionOptions } from "./settings.js";
 import { applySettlementEffect } from "./effects.js";
 import type { UsageBackoff } from "./effects.js";
 import { settleWorkerRun } from "./settlement.js";
@@ -106,9 +106,6 @@ interface RunningSession {
   session: LiveSession;
   settled: Promise<Session | null>;
 }
-
-type EditingRole = "worker" | "fixer";
-type SystemPrompt = EditingRole | "refine";
 
 interface Steer {
   summary: string;
@@ -206,22 +203,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     resume: string | null,
     systemPrompt: SystemPrompt = role,
   ): PrintOptions {
-    const session = resume === null ? { sessionId: randomUUID() } : { resume };
-    return {
-      model: config.models[role],
-      inputFormat: "stream-json",
-      ...session,
-      replayUserMessages: true,
-      ...workerPermissionOptions(config.workerPermissions, config.workerAllowedTools),
-      noPermissionPrompts: true,
-      appendSystemPromptFile: join(options.promptsDir, `${systemPrompt}.md`),
-      settings: editingSessionSettings({
-        worktree,
-        protectedPaths: [repoRoot, join(options.homeDir, ".claude")],
-        sandbox: config.sandbox,
-        pathGuardCommand: options.pathGuardCommand,
-      }),
-    };
+    return editingPrintOptions(options, { role, config, worktree, resume, systemPrompt });
   }
 
   function beginSession({

@@ -54,6 +54,12 @@ anything, they need to do. Don't start work they haven't asked for.
   in one sentence what you are asking; they answer with the buttons, and their answer arrives in `<updates>`.
 - Never stop, discard or rewrite work the owner didn't ask you to touch.
 
+## The owner's own branch
+
+The owner works on their own branch, never on main. When they ask you to rebase their branch ("rebase my branch"),
+rebase it onto main for them. Their commits stay as they are. If it fails because their checkout has uncommitted
+changes, ask them to commit first. Never rebase their branch unless they ask.
+
 ## Steering work
 
 When the owner wants to correct or redirect a task's work, pass their instruction to the task's latest worker

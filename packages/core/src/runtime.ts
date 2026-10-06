@@ -34,11 +34,19 @@ import type { NativeNotifier } from "./notify.js";
 import type { KillReport, ProcessRegistry } from "./procs.js";
 import { createProposalGate, proposalActions } from "./proposals.js";
 import { allowSandboxHostAction, allowSandboxHostDescriber, offerBlockedHosts } from "./sandbox.js";
-import { approve, createRebaseQueue, discardAction } from "./rebase/index.js";
+import {
+  approve,
+  createOwnerRebaser,
+  createRebaseQueue,
+  discardAction,
+  offerOwnerRebase,
+  rebaseOwnerBranchAction,
+} from "./rebase/index.js";
 import { requestChangesAction, reviewNoteActions } from "./review/index.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
 import {
+  createBranchFixer,
   createOneShotRunner,
   createSessionManager,
   createSessionSpawner,
@@ -195,6 +203,30 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const rebaseQueue = createRebaseQueue(gitWork);
   actions.register(approve);
   actions.register(discardAction({ git: startup.git, repoRoot, config: () => config, clock }));
+  const spawner = createSessionSpawner({
+    db,
+    bus,
+    cli: startup.cli,
+    logsDir: join(stateDir, "logs"),
+    onError,
+  });
+  const ownerRebaser = createOwnerRebaser({
+    ...gitWork,
+    fixer: createBranchFixer({
+      db,
+      bus,
+      spawner,
+      backoff: scheduler,
+      config: () => config,
+      repoRoot,
+      homeDir,
+      promptsDir: options.promptsDir,
+      pathGuardCommand: options.pathGuardCommand,
+    }),
+    claudeAllowed: () => launcher.claudeAllowed(),
+    signedIn: () => signIn.ensureSignedIn(),
+  });
+  actions.register(rebaseOwnerBranchAction(ownerRebaser));
   const gate = createProposalGate({
     db,
     bus,
@@ -210,18 +242,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const mcpConfigPath = conductorMcpConfigPath(stateDir);
   const systemPromptFile = conductorSystemPromptPath(stateDir);
   await writeConductorSystemPrompt(options.promptsDir, systemPromptFile);
-  const oneShot = createOneShotRunner({
-    db,
-    bus,
-    backoff: scheduler,
-    spawner: createSessionSpawner({
-      db,
-      bus,
-      cli: startup.cli,
-      logsDir: join(stateDir, "logs"),
-      onError,
-    }),
-  });
+  const oneShot = createOneShotRunner({ db, bus, backoff: scheduler, spawner });
   const stuckMonitor = createStuckMonitor({
     db,
     bus,
@@ -268,6 +289,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     },
     summary: () => scheduler.summary(),
     config: () => projectConfig,
+    ownerBranch: () => ownerRebaser.branch(),
     webRoot: options.webRoot,
     onError,
     stateDir,
@@ -310,6 +332,13 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     gate,
     sandbox: () => config.sandbox,
   });
+  const stopOwnerRebaseOffers = offerOwnerRebase({
+    db,
+    bus,
+    gate,
+    rebaser: ownerRebaser,
+    onError,
+  });
   const stopNotifications = notifyOwner({
     bus,
     project: basename(repoRoot),
@@ -339,6 +368,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       scheduler.start();
       pipeline.start();
       rebaseQueue.start();
+      ownerRebaser.start();
       stuckMonitor.start();
       expireProposals();
       proposalSweep = setInterval(expireProposals, proposalSweepMs);
@@ -364,11 +394,13 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       stopEventLines();
       stopWaking();
       stopBlockedAccessOffers();
+      stopOwnerRebaseOffers();
       stopNotifications();
       stuckMonitor.stop();
       terminals.dispose();
       runner.dispose();
       api.closeSync();
+      ownerRebaser.stop();
       rebaseQueue.stop();
       pipeline.stop();
       scheduler.stop();
