@@ -13,7 +13,8 @@
     "./env": "./src/env.ts",
     "./events": "./src/events.ts",
     "./procs": "./src/procs.ts",
-    "./scheduler": "./src/scheduler.ts"
+    "./scheduler": "./src/scheduler.ts",
+    "./sessions": "./src/sessions/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

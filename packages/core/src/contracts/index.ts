@@ -9,4 +9,5 @@ export * from "./events.js";
 export * from "./review.js";
 export * from "./runtime.js";
 export * from "./sessions.js";
+export * from "./stream-json.js";
 export * from "./tasks.js";

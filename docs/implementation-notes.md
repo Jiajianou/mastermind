@@ -336,3 +336,46 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   while a back-off is still running returns the current time unchanged, so two sessions that hit the limit together
   don't double it twice. `reportSuccess()` resets the sequence. The sequence count is in memory, so a restart
   starts again at 5 minutes, but a stored future `resumeAt` is honoured on `start()`.
+
+## m1-events-parser
+
+- **Pulled forward from milestone 2**, because the session manager (m1) needs it.
+- **Where it lives.** The stream-json line schemas are browser-safe and sit in `@mastermind/core/contracts`
+  (`stream-json.ts`), so the web terminal view can re-read stored payloads. `ExitOutcome` is in `sessions.ts`. The
+  parser, exit classifier and structured-output reader are `@mastermind/core/sessions` (`src/sessions/`, a new
+  package export).
+- **The parser is per process and stateful**: `createStreamParser().parseLine(line)` returns `{type, summary,
+  payload, stored, details}`. State is needed to pair a `tool_result` with its `tool_use` (tool name, path and
+  command), to show paths relative to the latest `init.cwd`, and to tell a turn's own prompt from a steer. It never
+  throws. `details` is a union on `details.line` (`init`, `tool_use`, `assistant`, `api_error`, `tool_result`,
+  `user`, `result`, `rate_limit`, `partial`, `permission_denied`, `api_retry`, `vcs`, `other`).
+- **`stored: false`** marks the lines the CLI notes' mapping says get no `events` row: later `init`s, the first
+  replayed user message of a turn, thinking, successful tool results, rate-limit events, stream events, noise
+  system subtypes, `control_response`, unknown types and unreadable lines (all `note`). A tool_result error that
+  follows a `permission_denied` for the same tool use is also not stored, so a denial shows once.
+- **The turn ends on `details.line === "result"`**, not on the event type (a failed result is `error`). Every
+  result field is lenient (`.catch(null)`), so a result line is always recognised and a session can't hang on a
+  changed field.
+- **Commits** come from the Bash `tool_result`: the CLI's `tool_use_result.gitOperation.commit` (sha, branch), or a
+  `git commit` command whose output has git's `[branch sha] subject` line. The subject comes from that line, else
+  from the command's `-m`. `system/vcs_state_changed` with `kind: "commit"` is kept as an unstored `commit` event so
+  each commit shows once, and it marks the next successful tool_result as a commit even when neither of the above
+  is present (a quiet commit, or one made by a script); other kinds are notes.
+- **A turn's own prompt** is the first replayed user line after the process starts or after a `result`. `init` does
+  not reset this, so the order of `init` and the replayed prompt doesn't matter.
+- **Summaries:** `Run <first line of command>` (not `input.description`), `Edit|Write <relative path>`,
+  `Read <path>`, `Grep "<pattern>"`, MCP tools by full name, `<Tool> failed: <reason>` where the reason prefers a
+  `<sandbox_violations>` entry and joins `Exit code N` with the next line. Summaries are one line of at most 160
+  characters.
+- **`classifyExit(resultEvent, exitCode, stderr, events)`** takes the run's parsed events as a required fourth
+  argument (required so a caller can't silently skip the rejected rate-limit and synthetic error rules), because the auth and usage-limit rules also read synthetic assistant errors and rejected rate-limit
+  events. A run with exit 0 and a non-error result is `succeeded` before any other rule, so text in a good run
+  can't trigger a back-off. Text rules apply to an error result's text and to stderr. `resetAt` is the latest
+  **rejected** `rate_limit_event`'s `resetsAt` (an `allowed` event's window may not be the limit that was hit);
+  without one the scheduler's default back-off applies.
+- **`readStructuredOutput(resultEvent, schema)`** returns `result.structured_output` validated by the caller's zod
+  schema, or throws `StructuredOutputError` with reason `no-result`, `error-result`, `missing` or `invalid`. It
+  never falls back to `result.result`.
+- **Tests** live in one file, `sessions/parser.test.ts`, so the acceptance filter `parser` runs all of them. Every
+  `.jsonl` sample must have an expected table, and every line in the samples must be recognised or a listed noise
+  type, so a new recorded sample or a changed CLI shape fails loudly.

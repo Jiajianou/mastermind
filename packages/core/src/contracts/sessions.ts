@@ -56,3 +56,11 @@ export const sessionEventSchema = z.object({
   payload: z.string(),
 });
 export type SessionEvent = z.infer<typeof sessionEventSchema>;
+
+export const exitOutcomeSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("succeeded") }),
+  z.object({ status: z.literal("failed"), reason: z.string() }),
+  z.object({ status: z.literal("rate_limited"), resetAt: isoTimestampSchema.optional() }),
+  z.object({ status: z.literal("auth_failed"), reason: z.string() }),
+]);
+export type ExitOutcome = z.infer<typeof exitOutcomeSchema>;
