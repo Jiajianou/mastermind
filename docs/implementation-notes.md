@@ -179,3 +179,39 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   `{ firstRun: true, detection }` so the Conductor can ask the owner to confirm the commands.
 - **Unit test helper.** `packages/core/src/testing/temp-dir.ts` (`makeTempDir`, `writeFiles`) cleans up through
   vitest's `onTestFinished`, since the unit project has no setup file.
+
+## m1-db
+
+- **Where it lives.** `@mastermind/core/db` (`src/db/`, a new package export) is the only place with SQL.
+  `openDb(path, { clock })` opens `node:sqlite` with foreign keys on, WAL and a 5 s busy timeout, runs the
+  migrations and returns a `Db` with one repository per table group (`tasks`, `sessions`, `events`, `checks`,
+  `rebases`, `findings`, `comments`, `chat`, `proposals`, `flags`), plus `transaction`, `killRunning` and `close`.
+  The injectable `Clock` (`src/clock.ts`, `now(): Date`) supplies every ISO timestamp.
+- **Schema.** Migration 1 is section 12 verbatim (the plan's inline comments are dropped). Additions: indexes on
+  the foreign-key-like and status columns, and `runtime_flags (key TEXT PRIMARY KEY, value TEXT NOT NULL)` holding
+  JSON values for `paused`, `authRequired` and `backoffResumeAt`, read through `RuntimeFlags` with defaults
+  `false`, `false`, `null`. No `REFERENCES` clauses were added, so `task_deps` may name a task that does not exist;
+  the import path (7.1) rejects unknown deps.
+- **Migrations.** `schema_version` holds one row. All pending migrations and the new version are applied in one
+  transaction. An up-to-date database is left untouched. A database newer than the build fails with `SchemaVersionError` instead of being touched. Add a
+  migration by appending SQL to `migrations` in `schema.ts`; never edit an applied one.
+- **Rows are validated.** Every read goes through a zod row schema that parses JSON columns and enum columns and
+  maps snake_case to the camelCase DTO. A bad row throws `InvalidRowError` naming the table and column. Updates of a
+  missing id throw `RecordNotFoundError`.
+- **Contracts.** The enums and DTOs are in `@mastermind/core/contracts` (`tasks.ts`, `sessions.ts`, `checks.ts`,
+  `review.ts`, `chat.ts`, `runtime.ts`, `common.ts`). The event DTO is `SessionEvent`, not `Event`, so it does not
+  shadow the DOM `Event` type in the web package. `Task.deps` is sorted. The plan gives no rebase statuses, so
+  `RebaseStatus` is `running | succeeded | failed | killed`. `ChatMessage.meta`, `Proposal.args` and
+  `Proposal.result` are `JsonValue`; SQL `NULL` reads as `null`.
+- **Transactions.** `db.transaction(work)` is synchronous: `BEGIN IMMEDIATE` at the outermost level, savepoints
+  when nested, rollback and rethrow on error, and a `TypeError` if the work returns a promise. Repository methods
+  that write several rows (task plus deps) use it internally, so they compose inside a caller's transaction.
+  A depth counter is used instead of `DatabaseSync.isTransaction`, which Node 22.13 lacks.
+- **Proposals are decided once.** `proposals.decide` only moves a `pending` proposal, in one conditional `UPDATE`;
+  deciding it again (for example a confirm that arrives after it expired) throws `ProposalAlreadyDecidedError`.
+- **Kill path.** `db.killRunning()` is the single synchronous transaction of 3.3 step 2: it sets every `running`
+  session, check and rebase to `killed` (sessions also get `ended_at`) and returns the counts for the exit summary.
+- **Not yet stored.** m0-spikes asks for descendant pgids of a running session to be recorded for the startup
+  reaper. Section 12 has no place for them, so the task that builds the process tracker should add a migration
+  (for example a `session_processes` table) rather than reuse `runtime_flags`.
+- **Node 22 prints an `ExperimentalWarning` for `node:sqlite`.** The CLI may want to filter that one warning.
