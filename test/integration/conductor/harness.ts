@@ -19,6 +19,7 @@ import type { BusEvent, ChatMessage, Config } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
+import { createGit } from "@mastermind/core/git";
 import type { EventBus } from "@mastermind/core/events";
 import { createProcessRegistry } from "@mastermind/core/procs";
 import type { ProcessRegistry } from "@mastermind/core/procs";
@@ -138,6 +139,7 @@ export async function conductorHarness(
 
   const api = await serveApi({
     db,
+    git: createGit({ registry, env: env.env }),
     bus,
     actions,
     gate,

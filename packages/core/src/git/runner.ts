@@ -21,6 +21,7 @@ export class GitError extends Error {
 
 export interface Git {
   run(cwd: string, args: readonly string[]): Promise<string>;
+  readBytes(cwd: string, args: readonly string[]): Promise<Buffer>;
 }
 
 export interface GitOptions {
@@ -42,6 +43,27 @@ export function createGit({ registry, env }: GitOptions): Git {
       });
       if (exit.kind !== "exited" || exit.code !== 0) throw new GitError(args, exit, stderr.trim());
       return stdout;
+    },
+
+    async readBytes(cwd, args) {
+      const chunks: Buffer[] = [];
+      const stderr: string[] = [];
+      const child = await registry.spawn({
+        kind: "utility",
+        command: "git",
+        args,
+        env: childEnv,
+        cwd,
+        io: {
+          stdin: "ignore",
+          onStdoutBytes: (chunk) => chunks.push(chunk),
+          onStderrLine: (line) => stderr.push(line),
+        },
+      });
+      const exit = await child.exited;
+      if (exit.kind !== "exited" || exit.code !== 0)
+        throw new GitError(args, exit, stderr.join("\n").trim());
+      return Buffer.concat(chunks);
     },
   };
 }

@@ -1,7 +1,3 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   awaitingConfirmationSchema,
   mcpPath,
@@ -9,29 +5,8 @@ import {
   taskViewSchema,
 } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
-import { onCleanup } from "../../support/cleanup.js";
 import { serveTestApi } from "./harness.js";
-import type { TestApi } from "./harness.js";
-
-async function connect(test: TestApi, authorization = test.authorization): Promise<Client> {
-  const client = new Client({ name: "mcp-test", version: "0.0.0" });
-  const transport = new StreamableHTTPClientTransport(new URL(test.url(mcpPath)), {
-    requestInit: { headers: { authorization } },
-  });
-  await client.connect(transport);
-  onCleanup(() => client.close());
-  return client;
-}
-
-async function callTool(client: Client, name: string, args: Record<string, unknown> = {}) {
-  return CallToolResultSchema.parse(await client.callTool({ name, arguments: args }));
-}
-
-function text(result: CallToolResult): string {
-  const [block] = result.content;
-  if (block?.type !== "text") throw new Error("expected a text block");
-  return block.text;
-}
+import { callTool, connect, text } from "./mcp-client.js";
 
 const task = (id: string, deps: string[] = []) => ({
   id,
@@ -56,6 +31,7 @@ describe("MCP server", () => {
         "get_task",
         "list_sessions",
         "get_session_events",
+        "get_changes",
         "create_tasks",
         "update_task",
         "set_priority",

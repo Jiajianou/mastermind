@@ -11,6 +11,7 @@ import { registerMcpRoutes } from "../conductor/mcp.js";
 import type { Config, InstanceInfo, Summary } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
+import type { Git } from "../git/index.js";
 import type { ProposalGate } from "../proposals.js";
 import { createReadModels } from "../reads.js";
 import { registerActionRoutes } from "./action-routes.js";
@@ -22,6 +23,7 @@ import { createEventStream } from "./stream.js";
 
 export interface ApiServerOptions {
   db: Db;
+  git: Git;
   bus: EventBus;
   actions: ActionRegistry;
   gate: ProposalGate;

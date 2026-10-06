@@ -3,6 +3,7 @@ import { parseInput } from "../actions/index.js";
 import type { ActionRegistry } from "../actions/index.js";
 import type { ConductorChatSink } from "../chat.js";
 import {
+  changesInputSchema,
   configLayerSchema,
   createTasksInputSchema,
   noInputSchema,
@@ -211,6 +212,13 @@ const readTools: readonly ReadTool[] = [
       "A session's timeline: reads, edits, commands, commits, notes, steering and the result. Returns the latest `limit` events (default 50) whose id is above `after`; pass the last id you saw as `after` to get only newer ones.",
     read: (reads, { sessionId, after, limit }) =>
       reads.sessionEvents(sessionId, after).slice(-limit),
+  }),
+  readTool({
+    name: "get_changes",
+    input: changesInputSchema,
+    description:
+      "The files a task has changed in its workspace, committed or not, including new untracked files: path, status (added, modified, deleted, or renamed with oldPath), added and deleted line counts (null for binary files), and whether the change is still uncommitted. since is base (the default: everything since the task branched off main) or round:N (only what changed after review round N ended).",
+    read: (reads, input) => reads.changes(input),
   }),
 ];
 

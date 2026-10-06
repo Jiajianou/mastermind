@@ -31,11 +31,15 @@ export interface LiveProcess extends ProcessGroup {
 
 export type LineHandler = (line: string) => void;
 
-export interface PipedIo {
+export type BytesHandler = (chunk: Buffer) => void;
+
+export type PipedIo = {
   stdin: "pipe" | "ignore";
-  onStdoutLine?: LineHandler;
   onStderrLine?: LineHandler;
-}
+} & (
+  | { onStdoutLine?: LineHandler; onStdoutBytes?: never }
+  | { onStdoutBytes: BytesHandler; onStdoutLine?: never }
+);
 
 export interface SpawnRequest {
   kind: ProcessKind;
@@ -120,7 +124,9 @@ export function createProcessRegistry(): ProcessRegistry {
             ? "inherit"
             : [
                 piped.stdin,
-                piped.onStdoutLine === undefined ? "ignore" : "pipe",
+                piped.onStdoutLine === undefined && piped.onStdoutBytes === undefined
+                  ? "ignore"
+                  : "pipe",
                 piped.onStderrLine === undefined ? "ignore" : "pipe",
               ],
       });
@@ -134,6 +140,11 @@ export function createProcessRegistry(): ProcessRegistry {
       const untrack = pid === undefined ? null : track({ kind: request.kind, pid, pgid: pid });
       if (piped?.onStdoutLine !== undefined && child.stdout !== null)
         readLines(child.stdout, piped.onStdoutLine);
+      const onStdoutBytes = piped?.onStdoutBytes;
+      if (onStdoutBytes !== undefined && child.stdout !== null)
+        child.stdout.on("data", (chunk: Buffer) => {
+          onStdoutBytes(chunk);
+        });
       if (piped?.onStderrLine !== undefined && child.stderr !== null)
         readLines(child.stderr, piped.onStderrLine);
       const exited = new Promise<ExitResult>((resolve) => {

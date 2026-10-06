@@ -122,6 +122,8 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
       return withSession(state, action.session);
     case "session.event":
       return appendEvent(state, action.event);
+    case "file.changed":
+      return state;
     case "check.updated": {
       const checks = { ...state.checks[action.taskId], [action.check.id]: action.check };
       return { ...state, checks: { ...state.checks, [action.taskId]: checks } };

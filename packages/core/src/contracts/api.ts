@@ -10,6 +10,7 @@ import {
   taskRefInputSchema,
   updateTaskInputSchema,
 } from "./actions.js";
+import { fileContentSchema, taskChangesSchema, taskTreeSchema } from "./changes.js";
 import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } from "./chat.js";
 import type { ChatTurn, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
@@ -190,6 +191,9 @@ export const apiResponseSchemas = {
   sessionEvents: z.array(sessionEventSchema),
   chat: chatViewSchema,
   config: configSchema,
+  changes: taskChangesSchema,
+  file: fileContentSchema,
+  tree: taskTreeSchema,
 };
 
 export const accessTokenSchema = z.string().regex(/^[0-9a-f]{64}$/);

@@ -1063,3 +1063,50 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   the DOM lib; the root tsconfig excludes it, `pnpm typecheck` checks it and ESLint uses it. Node tests keep no DOM
   types.
 - No defects were found in earlier work.
+
+## m4-git-service
+
+- **Where it lives.** `src/git/path-safety.ts` (`normalizeRelativePath`, `resolveInsideWorktree`, `pathInside`,
+  `UnsafePathError` with a `reason`), `src/git/changes.ts` (`listChanges`, `readCommittedFile`, `readWorktreeFile`,
+  `listTree`, `NotAFileError`), both exported from `@mastermind/core/git`. `src/task-files.ts` (`createTaskFiles`)
+  maps a task to its clone and base or round commit and turns path errors into `ActionError`s; the read models
+  include it, so `ReadSources` and `ApiServerOptions` gained `git`. Contracts are `contracts/changes.ts`.
+- **Changes.** `git diff --name-status` and `--numstat` are two calls (given together, git prints only the
+  name-status), both `-z --find-renames --no-ext-diff --no-textconv` against the from-commit, plus `git status
+  --porcelain=v1 -z --untracked-files=all`. Each file is `{ path, oldPath, status: added | modified | deleted |
+  renamed, additions, deletions, binary, uncommitted }`; counts are `null` for binary files. A path in `status`
+  (either side of a rename) is `uncommitted`. Untracked files are `added`, with lines counted the way git does, a
+  symlink as one line, and `null` counts above the size cap. Copies count as added, type changes and unmerged
+  entries as modified. A delete plus an untracked file that the worker did not `git mv` shows as a delete and an
+  add: rename detection only sees tracked files, and mastermind never writes the worker's index.
+- **No index locks.** Every read runs `git --no-optional-locks`, because `status` and `diff` otherwise refresh the
+  index opportunistically and could make a worker's own `git add` or `commit` fail on `index.lock`.
+- **since.** `base` (default) or `round:N`, validated as a string so the MCP schema stays plain. `round:N` uses the
+  `end_commit` of the latest session of round N that has one; none is a 404. The file route takes `since` too, so
+  the base side of a file can be shown as of that round.
+- **Files.** `GET /api/tasks/:taskId/file?path=&side=base|current&since=` returns `{ path, side, kind }` with kind
+  `text` (content, size), `binary` (size), `too_large` (size) or `missing`. The cap is 1 MiB (`maxFileBytes`), and a
+  file is binary by git's own rule (a NUL in the first 8000 bytes). The base side reads `ls-tree --long` (type and
+  size first, so nothing over the cap is read) then `cat-file blob` as bytes: `Git` gained `readBytes`, backed by a
+  new `onStdoutBytes` handler in the process registry, because the line reader can't round-trip binary or a final
+  newline. A symlink's base version is its target text, as git stores it.
+- **Path safety.** A requested path is rejected (400, issue path `path`) if it is empty, contains NUL, is absolute,
+  has a `..` segment (even one that climbs back in) or a `.git` segment in any case. The current side then
+  realpaths the worktree and the file, and rejects a target outside the worktree or inside its `.git`. A path that
+  doesn't exist, including a dangling symlink, is `missing` and nothing is read. The file is opened with
+  `O_NOFOLLOW | O_NONBLOCK` and `fstat`ed, so a FIFO or directory is "not a file" (400) instead of hanging, and a last
+  component swapped for a symlink after the check fails. An intermediate directory swapped between realpath and
+  open is not caught; workers are sandboxed to the worktree, so this is accepted. The base side never touches the
+  filesystem, so only the lexical checks apply there.
+- **Tree.** `ls-files --cached --others --exclude-standard` minus `ls-files --deleted`, sorted, so deleted files
+  drop out and ignored or excluded files (`.mastermind-result.md`) never appear.
+- **Workspace errors.** No worktree or base commit yet, or the clone directory gone: 409. Unknown task: 404.
+- **MCP.** `get_changes` (`{ taskId, since? }`) is a read tool returning the same JSON as the changes route.
+- **Edit events carry the file path.** `session.event` has an optional `path` (worktree-relative) on edit events
+  (Edit, MultiEdit, Write, NotebookEdit) inside the task's clone, matched against the spawn cwd and the `init` cwd.
+  Because Claude Code prints the tool_use line *before* it applies the edit, a new bus event
+  **`file.changed { sessionId, taskId, path }`** is emitted on the edit's successful tool_result, when the file on
+  disk has really changed. The review screens should show "editing" from the first and refetch the file and
+  changes on the second. The web reducer ignores `file.changed` for now; the terminal view does too.
+- **Review.** Untracked files are line-counted in batches of 32 so build output can't exhaust file descriptors, and a
+  file deleted between `git status` (or the path check) and the open is dropped from changes or reported `missing`.

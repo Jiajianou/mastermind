@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { parseInput } from "../actions/index.js";
 import {
+  changesQuerySchema,
   chatQuerySchema,
+  fileQuerySchema,
   sessionEventsQuerySchema,
   sessionsQuerySchema,
   taskIdSchema,
@@ -11,9 +13,12 @@ import type {
   ApiSummary,
   ChatView,
   Config,
+  FileContent,
   InstanceInfo,
   Session,
   SessionEvent,
+  TaskChanges,
+  TaskTree,
   TaskView,
 } from "../contracts/index.js";
 import type { ReadModels } from "../reads.js";
@@ -31,6 +36,22 @@ export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): voi
   app.get("/api/tasks/:taskId", (request): TaskView => {
     const { taskId } = parseInput(taskParamsSchema, request.params);
     return reads.task(taskId);
+  });
+
+  app.get("/api/tasks/:taskId/changes", (request): Promise<TaskChanges> => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    const { since } = parseInput(changesQuerySchema, request.query);
+    return reads.changes({ taskId, since });
+  });
+
+  app.get("/api/tasks/:taskId/file", (request): Promise<FileContent> => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.file(taskId, parseInput(fileQuerySchema, request.query));
+  });
+
+  app.get("/api/tasks/:taskId/tree", (request): Promise<TaskTree> => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.tree(taskId);
   });
 
   app.get("/api/sessions", (request): Session[] =>

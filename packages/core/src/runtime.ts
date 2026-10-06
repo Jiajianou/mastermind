@@ -156,6 +156,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const mainCommit = await shortCommit(startup, config.mainBranch);
   const api = await serveApi({
     db,
+    git: startup.git,
     bus,
     actions,
     gate,

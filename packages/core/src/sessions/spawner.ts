@@ -9,6 +9,7 @@ import type { EventBus } from "../events.js";
 import { stopGroup } from "../procs.js";
 import type { ChildHandle, ExitResult } from "../procs.js";
 import { classifyExit } from "./exit.js";
+import { fileEdit } from "./file-edits.js";
 import { createStreamParser } from "./parser.js";
 import type { ParsedEvent, TokenUsage } from "./parser.js";
 
@@ -76,6 +77,7 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
     let child: ChildHandle | null = null;
     let resultEvent: ParsedEvent | null = null;
     let initSeen = false;
+    let editRoots = [cwd];
     let conversationStarted = false;
     let endedByMastermind: SessionEnd | null = null;
     let stoppedAfterResult = false;
@@ -107,6 +109,7 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
 
     const follow = (event: ParsedEvent): void => {
       const { details } = event;
+      if (details.line === "init") editRoots = [...new Set([cwd, details.cwd])];
       if (details.line === "init" && !initSeen) {
         initSeen = true;
         const requested = print.permissionMode;
@@ -124,6 +127,7 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
       rawLog.write(`${line}\n`);
       try {
         const event = parser.parseLine(line);
+        const edit = session.taskId === null ? null : fileEdit(event.details, editRoots);
         if (event.stored) {
           const stored = db.events.append({
             sessionId: session.id,
@@ -136,8 +140,16 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
             sessionId: session.id,
             taskId: session.taskId,
             event: stored,
+            ...(edit?.stage === "editing" ? { path: edit.path } : {}),
           });
         }
+        if (edit?.stage === "written" && session.taskId !== null)
+          bus.emit({
+            type: "file.changed",
+            sessionId: session.id,
+            taskId: session.taskId,
+            path: edit.path,
+          });
         follow(event);
       } catch (error) {
         onError(error);

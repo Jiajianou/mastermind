@@ -13,6 +13,8 @@ const editTools = new Set(["Edit", "MultiEdit", "Write", "NotebookEdit"]);
 const pathReadTools = new Set(["Read", "LS", "NotebookRead"]);
 const patternReadTools = new Set(["Grep", "Glob"]);
 
+export const isEditTool = (name: string): boolean => editTools.has(name);
+
 function stringField(input: Record<string, unknown>, key: string): string | null {
   const value = input[key];
   return typeof value === "string" ? value : null;

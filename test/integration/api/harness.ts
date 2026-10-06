@@ -11,7 +11,10 @@ import type { InstanceInfo } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
+import { createGit } from "@mastermind/core/git";
+import type { Git } from "@mastermind/core/git";
 import { acquireLock, tokenPath } from "@mastermind/core/lock";
+import { createProcessRegistry } from "@mastermind/core/procs";
 import { createProposalGate, proposalActions } from "@mastermind/core/proposals";
 import { createScheduler } from "@mastermind/core/scheduler";
 import { stopSessionAction } from "@mastermind/core/sessions";
@@ -20,6 +23,7 @@ import { makeTempDir, onCleanup } from "../../support/cleanup.js";
 export interface TestApi {
   api: ServedApi;
   db: Db;
+  git: Git;
   stateDir: string;
   webRoot: string;
   errors: unknown[];
@@ -97,6 +101,14 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     db.close();
   });
   const bus = createEventBus();
+  const registry = createProcessRegistry();
+  onCleanup(() => {
+    registry.killAllSync();
+  });
+  const git = createGit({
+    registry,
+    env: { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1" },
+  });
   const configContext = { repoRoot: root, homeDir: root };
   let config = await loadConfig(configContext);
   const actions = createActionRegistry(
@@ -146,6 +158,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
   const webRoot = await writeWebApp(root);
   const api = await serveApi({
     db,
+    git,
     bus,
     actions,
     gate,
@@ -168,6 +181,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
   return {
     api,
     db,
+    git,
     stateDir,
     webRoot,
     errors,

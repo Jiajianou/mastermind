@@ -13,16 +13,20 @@ import type {
   TaskView,
 } from "./contracts/index.js";
 import type { Db } from "./db/index.js";
+import type { Git } from "./git/index.js";
+import { createTaskFiles } from "./task-files.js";
+import type { TaskFiles } from "./task-files.js";
 
 export interface ReadSources {
   db: Db;
+  git: Git;
   instance: InstanceInfo;
   summary: () => Summary;
   chat: Pick<ChatState, "status">;
   config: () => Config;
 }
 
-export interface ReadModels {
+export interface ReadModels extends TaskFiles {
   instance(): InstanceInfo;
   summary(): ApiSummary;
   tasks(): TaskView[];
@@ -41,8 +45,17 @@ function taskViews(tasks: readonly Task[]): TaskView[] {
   return tasks.map((task) => ({ ...task, unblocks: unblocks.get(task.id) ?? [] }));
 }
 
-export function createReadModels({ db, instance, summary, chat, config }: ReadSources): ReadModels {
+export function createReadModels({
+  db,
+  git,
+  instance,
+  summary,
+  chat,
+  config,
+}: ReadSources): ReadModels {
   return {
+    ...createTaskFiles({ db, git }),
+
     instance: () => instance,
 
     summary() {

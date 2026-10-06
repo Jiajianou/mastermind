@@ -19,6 +19,13 @@ export const busEventSchema = z.discriminatedUnion("type", [
     sessionId: z.int(),
     taskId: z.string().nullable(),
     event: sessionEventSchema,
+    path: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("file.changed"),
+    sessionId: z.int(),
+    taskId: z.string(),
+    path: z.string(),
   }),
   z.object({
     type: z.literal("session.ended"),

@@ -99,6 +99,14 @@ const cases: Case[] = [
     },
   },
   {
+    name: "file.changed leaves the store as it is, since file contents are fetched on demand",
+    before: stateWith({ sessionEvents: { 1: [sessionEvent(1)] } }),
+    action: { type: "file.changed", sessionId: 1, taskId: "alpha", path: "src/app.ts" },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
     name: "session.history.loaded merges the stored timeline with live events, without doubles",
     before: stateWith({ sessionEvents: { 1: [sessionEvent(4), sessionEvent(5)] } }),
     action: {

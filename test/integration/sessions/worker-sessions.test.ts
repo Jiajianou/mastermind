@@ -72,6 +72,13 @@ describe("worker sessions", () => {
     );
     const broadcast = harness.events.filter((event) => event.type === "session.event");
     expect(broadcast.map((event) => event.event.id)).toEqual(stored.map((event) => event.id));
+    const editedFiles = ["src/app.ts", ".mastermind-result.md"];
+    expect(
+      broadcast.filter((event) => event.event.type === "edit").map((event) => event.path),
+    ).toEqual(editedFiles);
+    expect(
+      harness.events.flatMap((event) => (event.type === "file.changed" ? [event.path] : [])),
+    ).toEqual(editedFiles);
 
     const [setup] = harness.db.checks.listForTask("answer");
     expect(setup).toMatchObject({ kind: "setup", status: "passed" });

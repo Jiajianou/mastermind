@@ -242,6 +242,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
         return [authLine(event)];
       case "config.updated":
         return [];
+      case "file.changed":
       case "terminal.output":
       case "chat.message":
       case "chat.delta":

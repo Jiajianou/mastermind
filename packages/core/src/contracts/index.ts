@@ -2,6 +2,7 @@ export const productName = "Mastermind";
 
 export * from "./actions.js";
 export * from "./api.js";
+export * from "./changes.js";
 export * from "./chat.js";
 export * from "./checks.js";
 export * from "./conductor.js";
