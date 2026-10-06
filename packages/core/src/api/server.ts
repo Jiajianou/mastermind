@@ -6,6 +6,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionRegistry } from "../actions/index.js";
+import type { ChatState } from "../chat.js";
 import { registerMcpRoutes } from "../conductor/mcp.js";
 import type { Summary } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
@@ -24,6 +25,7 @@ export interface ApiServerOptions {
   bus: EventBus;
   actions: ActionRegistry;
   gate: ProposalGate;
+  chat: ChatState;
   summary: () => Summary;
   token: string;
   webRoot: string;
@@ -91,11 +93,17 @@ export async function createApiServer(options: ApiServerOptions): Promise<ApiSer
     api.addHook("onRequest", async (request, reply) =>
       sendRejection(reply, bearerRejection(request.headers.authorization, token)),
     );
-    const { db, bus, actions, gate } = options;
+    const { db, bus, actions, gate, chat } = options;
     const reads = createReadModels(options);
     registerReadRoutes(api, reads);
     registerActionRoutes(api, actions);
-    registerMcpRoutes(api, { actions, gate, reads, chat: { db, bus }, onError });
+    registerMcpRoutes(api, {
+      actions,
+      gate,
+      reads,
+      chat: { db, bus, activeTurn: () => chat.activeTurn() },
+      onError,
+    });
     done();
   });
   await app.ready();

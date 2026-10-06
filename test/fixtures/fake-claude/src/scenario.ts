@@ -17,7 +17,7 @@ export interface MessageBranch {
 }
 
 export type Step =
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; streamMs?: number | undefined }
   | { kind: "read"; path: string }
   | { kind: "write"; path: string; content: string }
   | {
@@ -51,7 +51,11 @@ export type Step =
 
 export const stepSchema: z.ZodType<Step> = z.lazy(() =>
   z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("text"), text: z.string() }),
+    z.strictObject({
+      kind: z.literal("text"),
+      text: z.string(),
+      streamMs: z.number().int().positive().optional(),
+    }),
     z.strictObject({ kind: z.literal("read"), path: z.string() }),
     z.strictObject({ kind: z.literal("write"), path: z.string(), content: z.string() }),
     z.strictObject({

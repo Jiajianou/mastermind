@@ -53,11 +53,24 @@ export function receiveMessage(runtime: TurnRuntime, text: string): void {
   runtime.log.append({ kind: "message", text });
 }
 
-function emitAssistant(runtime: TurnRuntime, progress: TurnProgress, block: AssistantBlock): void {
+// With streamMs, each partial delta waits that long first, so a reply streams visibly and can be interrupted midway.
+async function emitAssistant(
+  runtime: TurnRuntime,
+  progress: TurnProgress,
+  block: AssistantBlock,
+  streamMs?: number,
+): Promise<void> {
   const { context, output } = runtime;
   const messageId = newMessageId();
   const partial = runtime.args.includePartialMessages;
-  if (partial) for (const line of partialOpeningLines(context, messageId, block)) output.line(line);
+  if (partial) {
+    const [messageStart, blockStart, ...deltas] = partialOpeningLines(context, messageId, block);
+    for (const line of [messageStart, blockStart]) if (line !== undefined) output.line(line);
+    for (const delta of deltas) {
+      if (streamMs !== undefined) await waitUnlessInterrupted(streamMs, runtime.signal);
+      output.line(delta);
+    }
+  }
   output.line(assistantLine(context, messageId, block));
   if (partial) {
     const stopReason = block.type === "text" ? "end_turn" : "tool_use";
@@ -79,7 +92,7 @@ async function useTool(
   { wireInput = input, meta }: { wireInput?: Record<string, unknown>; meta?: ToolUseMeta } = {},
 ): Promise<void> {
   const id = newToolUseId();
-  emitAssistant(runtime, progress, { type: "tool_use", id, name, input, wireInput, meta });
+  await emitAssistant(runtime, progress, { type: "tool_use", id, name, input, wireInput, meta });
   const result = await perform();
   runtime.output.line(toolResultLine(runtime.context, id, result));
   progress.numTurns += 1;
@@ -210,7 +223,7 @@ async function runStep(runtime: TurnRuntime, step: Step, progress: TurnProgress)
 
   switch (step.kind) {
     case "text":
-      emitAssistant(runtime, progress, { type: "text", text: step.text });
+      await emitAssistant(runtime, progress, { type: "text", text: step.text }, step.streamMs);
       progress.lastText = step.text;
       return;
     case "read":

@@ -1,4 +1,5 @@
 export type { NewChatMessage, NewProposal, ChatRepository, ProposalRepository } from "./chat.js";
+export type { ConductorSessionRepository } from "./conductor-sessions.js";
 export type { CheckOutcome, CheckRepository, NewCheck } from "./checks.js";
 export {
   InvalidRowError,

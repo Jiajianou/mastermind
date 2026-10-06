@@ -19,7 +19,7 @@ const everyOption: PrintOptions = {
   permissionMode: "bypassPermissions",
   noPermissionPrompts: true,
   appendSystemPromptFile: "prompts/worker.md",
-  mcpConfig: { mcpServers: {} },
+  mcpConfigFile: ".mastermind/run/conductor-mcp.json",
   settings: { attribution: { commit: "", pr: "" } },
   fallbackModel: "sonnet",
   effort: "high",

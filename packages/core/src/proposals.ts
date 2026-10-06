@@ -1,10 +1,11 @@
 import { ActionError, defineAction, parseInput } from "./actions/index.js";
 import type { ActionRegistry, ContractedActions } from "./actions/index.js";
-import { postChatMessage } from "./chat.js";
+import { postChatMessage, postConductorMessage } from "./chat.js";
 import type { Clock } from "./clock.js";
 import { ConfigError } from "./config/index.js";
 import { jsonValueSchema, proposalRefInputSchema } from "./contracts/index.js";
 import type {
+  ChatTurnRef,
   JsonValue,
   Proposal,
   ProposalMeta,
@@ -41,6 +42,7 @@ export interface ProposalGateOptions {
   clock: Clock;
   tools: readonly GateableTool[];
   confirmList: () => readonly string[];
+  activeTurn: () => ChatTurnRef | null;
   lifetimeMs?: number;
 }
 
@@ -134,7 +136,7 @@ export function createProposalGate(options: ProposalGateOptions): ProposalGate {
       const question = `${tool.describe(args)}?`;
       const proposal = db.proposals.create({ action: tool.action, args });
       options.bus.emit({ type: "proposal.updated", proposal });
-      postChatMessage(options, {
+      postConductorMessage(options, {
         kind: "proposal",
         content: question,
         meta: { proposalId: proposal.id } satisfies ProposalMeta,

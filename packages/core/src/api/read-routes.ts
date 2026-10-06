@@ -1,8 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { parseInput } from "../actions/index.js";
-import { sessionEventsQuerySchema, sessionsQuerySchema, taskIdSchema } from "../contracts/index.js";
-import type { ApiSummary, Session, SessionEvent, TaskView } from "../contracts/index.js";
+import {
+  chatQuerySchema,
+  sessionEventsQuerySchema,
+  sessionsQuerySchema,
+  taskIdSchema,
+} from "../contracts/index.js";
+import type { ApiSummary, ChatView, Session, SessionEvent, TaskView } from "../contracts/index.js";
 import type { ReadModels } from "../reads.js";
 
 const taskParamsSchema = z.strictObject({ taskId: taskIdSchema });
@@ -26,5 +31,10 @@ export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): voi
     const { sessionId } = parseInput(sessionParamsSchema, request.params);
     const { after } = parseInput(sessionEventsQuerySchema, request.query);
     return reads.sessionEvents(sessionId, after);
+  });
+
+  app.get("/api/chat", (request): ChatView => {
+    const { after } = parseInput(chatQuerySchema, request.query);
+    return reads.chat(after);
   });
 }

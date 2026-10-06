@@ -45,7 +45,7 @@ export interface PrintOptions {
   permissionMode?: PermissionMode;
   noPermissionPrompts?: boolean;
   appendSystemPromptFile?: string;
-  mcpConfig?: JsonValue;
+  mcpConfigFile?: string;
   settings?: JsonValue;
   fallbackModel?: string;
   effort?: string;
@@ -116,7 +116,7 @@ function printArgs(options: PrintOptions): string[] {
     ...valued("--permission-mode", options.permissionMode),
     ...(options.noPermissionPrompts === true ? ["--permission-prompts", "none"] : []),
     ...valued("--append-system-prompt-file", options.appendSystemPromptFile),
-    ...json("--mcp-config", options.mcpConfig),
+    ...valued("--mcp-config", options.mcpConfigFile),
     ...json("--settings", options.settings),
     ...valued("--fallback-model", options.fallbackModel),
     ...valued("--effort", options.effort),

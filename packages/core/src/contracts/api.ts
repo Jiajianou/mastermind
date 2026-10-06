@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { actionErrorCodeSchema, actionIssueSchema } from "./actions.js";
-import type { Proposal } from "./chat.js";
+import { chatViewSchema } from "./chat.js";
+import type { ChatTurn, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
 import type { Config } from "./config.js";
 import { busEventSchema } from "./events.js";
@@ -42,6 +43,8 @@ export interface ActionResults {
   setConfig: Config;
   confirmProposal: Proposal;
   rejectProposal: Proposal;
+  sendChat: ChatTurn;
+  stopChat: { stopped: boolean };
 }
 export type ActionName = keyof ActionResults;
 
@@ -80,6 +83,8 @@ export const actionRoutes = {
     path: "/api/proposals/:proposalId/reject",
     intParams: ["proposalId"],
   },
+  sendChat: { method: "POST", path: "/api/chat" },
+  stopChat: { method: "POST", path: "/api/chat/stop" },
 } as const satisfies Record<ActionName, ActionRoute>;
 
 export function isActionName(name: string): name is ActionName {
@@ -112,6 +117,7 @@ export const apiResponseSchemas = {
   task: taskViewSchema,
   sessions: z.array(sessionSchema),
   sessionEvents: z.array(sessionEventSchema),
+  chat: chatViewSchema,
 };
 
 export const streamPath = "/api/stream";

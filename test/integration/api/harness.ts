@@ -122,6 +122,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     clock: systemClock,
     tools: actionTools,
     confirmList: () => config.conductor.confirm,
+    activeTurn: () => null,
   });
   for (const action of proposalActions(gate)) actions.register(action);
   const errors: unknown[] = [];
@@ -142,6 +143,10 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     bus,
     actions,
     gate,
+    chat: {
+      status: () => ({ model: config.models.conductor, replying: false }),
+      activeTurn: () => null,
+    },
     summary: () => scheduler.summary(),
     webRoot,
     onError: (error) => errors.push(error),

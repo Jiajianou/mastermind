@@ -39,7 +39,7 @@ export interface NewProposal {
 
 export interface ChatRepository {
   append(message: NewChatMessage): ChatMessage;
-  list(): ChatMessage[];
+  list(afterId?: number): ChatMessage[];
 }
 
 export interface ProposalRepository {
@@ -93,7 +93,7 @@ const proposalRowSchema = z
 
 export function createChatRepository({ database, clock }: DbContext): ChatRepository {
   const selectMessage = database.prepare("SELECT * FROM chat_messages WHERE id = ?");
-  const selectMessages = database.prepare("SELECT * FROM chat_messages ORDER BY id");
+  const selectMessages = database.prepare("SELECT * FROM chat_messages WHERE id > ? ORDER BY id");
 
   return {
     append(message) {
@@ -108,8 +108,8 @@ export function createChatRepository({ database, clock }: DbContext): ChatReposi
       return readRow("chat_messages", chatMessageRowSchema, selectMessage.get(id));
     },
 
-    list() {
-      return readRows("chat_messages", chatMessageRowSchema, selectMessages.all());
+    list(afterId = 0) {
+      return readRows("chat_messages", chatMessageRowSchema, selectMessages.all(afterId));
     },
   };
 }

@@ -40,6 +40,7 @@ export type EventDetails =
       sessionId: string | null;
       toolUseId: string;
       toolName: string;
+      input: Record<string, unknown>;
       filePath: string | null;
       command: string | null;
       usage: TokenUsage | null;
@@ -190,6 +191,7 @@ export function createStreamParser(): StreamParser {
         sessionId,
         toolUseId: toolUse.id,
         toolName: call.name,
+        input: toolUse.input,
         filePath: call.filePath,
         command: call.command,
         usage,

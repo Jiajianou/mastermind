@@ -1,11 +1,20 @@
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { serveApi } from "./api/index.js";
 import type { ServedApi } from "./api/index.js";
 import { builtinActions, createActionRegistry, pause, resume } from "./actions/index.js";
 import type { ActionRegistry } from "./actions/index.js";
 import { systemClock } from "./clock.js";
 import type { Clock } from "./clock.js";
-import { actionTools } from "./conductor/index.js";
+import {
+  actionTools,
+  buildDigest,
+  chatActions,
+  conductorMcpConfigPath,
+  createChatRunner,
+  postEventLines,
+  readDigestInput,
+  writeConductorMcpConfig,
+} from "./conductor/index.js";
 import { projectPaths, resolveConfig, setConfig } from "./config/index.js";
 import type { ResolvedConfig } from "./config/index.js";
 import type { Config, RuntimeFlags } from "./contracts/index.js";
@@ -59,9 +68,9 @@ async function shortCommit(startup: Startup, ref: string): Promise<string | null
 }
 
 // A listening server keeps the process alive, so a runtime that fails to finish must not leave it open.
-function closeOnFailure<T>(api: ServedApi, build: () => T): T {
+async function closeOnFailure<T>(api: ServedApi, build: () => T | Promise<T>): Promise<T> {
   try {
-    return build();
+    return await build();
   } catch (error) {
     api.closeSync();
     throw error;
@@ -71,6 +80,7 @@ function closeOnFailure<T>(api: ServedApi, build: () => T): T {
 export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   const { startup, registry, env, homeDir, onError, clock = systemClock } = options;
   const { repoRoot, db } = startup;
+  const { stateDir } = projectPaths(repoRoot);
   const context = { repoRoot, homeDir };
   const resolve = (merged: Config): ResolvedConfig =>
     resolveConfig(merged, { ...context, plan: startup.auth.plan });
@@ -123,8 +133,24 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     clock,
     tools: actionTools,
     confirmList: () => config.conductor.confirm,
+    activeTurn: () => runner.activeTurn(),
   });
   for (const action of proposalActions(gate)) actions.register(action);
+  const mcpConfigPath = conductorMcpConfigPath(stateDir);
+  const runner = createChatRunner({
+    db,
+    bus,
+    cli: startup.cli,
+    repoRoot,
+    promptsDir: options.promptsDir,
+    logsDir: join(stateDir, "logs"),
+    mcpConfigPath,
+    model: () => config.models.conductor,
+    digest: () => buildDigest(readDigestInput({ db, clock, summary: () => scheduler.summary() })),
+    backoff: scheduler,
+    onError,
+  });
+  for (const action of chatActions(runner)) actions.register(action);
 
   const mainCommit = await shortCommit(startup, config.mainBranch);
   const api = await serveApi({
@@ -132,15 +158,19 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     bus,
     actions,
     gate,
+    chat: runner,
     summary: () => scheduler.summary(),
     webRoot: options.webRoot,
     onError,
-    stateDir: projectPaths(repoRoot).stateDir,
+    stateDir,
     lock: startup.lock,
     port: startup.port,
   });
 
-  const store = closeOnFailure(api, () =>
+  await closeOnFailure(api, () =>
+    writeConductorMcpConfig(mcpConfigPath, { port: api.port, token: api.token }),
+  );
+  const store = await closeOnFailure(api, () =>
     createStatusStore({
       db,
       bus,
@@ -157,6 +187,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       maxAttempts: () => config.maxAttempts,
     }),
   );
+
+  const stopEventLines = postEventLines({ db, bus, mainBranch: () => config.mainBranch });
 
   let proposalSweep: ReturnType<typeof setInterval> | null = null;
   const expireProposals = () => {
@@ -189,6 +221,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     closeSync() {
       if (proposalSweep !== null) clearInterval(proposalSweep);
+      stopEventLines();
+      runner.dispose();
       api.closeSync();
       scheduler.stop();
       store.dispose();

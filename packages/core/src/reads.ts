@@ -1,6 +1,8 @@
 import { ActionError } from "./actions/index.js";
+import type { ChatState } from "./chat.js";
 import type {
   ApiSummary,
+  ChatView,
   Session,
   SessionEvent,
   SessionsQuery,
@@ -13,6 +15,7 @@ import type { Db } from "./db/index.js";
 export interface ReadSources {
   db: Db;
   summary: () => Summary;
+  chat: Pick<ChatState, "status">;
 }
 
 export interface ReadModels {
@@ -21,6 +24,7 @@ export interface ReadModels {
   task(taskId: string): TaskView;
   sessions(query: SessionsQuery): Session[];
   sessionEvents(sessionId: number, afterId?: number): SessionEvent[];
+  chat(afterId?: number): ChatView;
 }
 
 function taskViews(tasks: readonly Task[]): TaskView[] {
@@ -31,7 +35,7 @@ function taskViews(tasks: readonly Task[]): TaskView[] {
   return tasks.map((task) => ({ ...task, unblocks: unblocks.get(task.id) ?? [] }));
 }
 
-export function createReadModels({ db, summary }: ReadSources): ReadModels {
+export function createReadModels({ db, summary, chat }: ReadSources): ReadModels {
   return {
     summary() {
       const rebaseQueue = db.tasks
@@ -60,5 +64,7 @@ export function createReadModels({ db, summary }: ReadSources): ReadModels {
         throw ActionError.fromMessage("not_found", `no session ${String(sessionId)}`);
       return db.events.listForSession(sessionId, { afterId });
     },
+
+    chat: (afterId) => ({ ...chat.status(), messages: db.chat.list(afterId) }),
   };
 }

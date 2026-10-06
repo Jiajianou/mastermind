@@ -56,6 +56,7 @@ async function setup(): Promise<Harness> {
     clock,
     tools: actionTools,
     confirmList: () => config.conductor.confirm,
+    activeTurn: () => null,
   });
   return {
     db,

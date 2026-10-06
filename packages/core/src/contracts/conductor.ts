@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { proposalStatusSchema } from "./chat.js";
+import { isoTimestampSchema } from "./common.js";
 import { newTaskSchema } from "./tasks.js";
 
 export const mcpPath = "/mcp";
@@ -41,3 +42,12 @@ export const sessionEventsInputSchema = z.strictObject({
   after: z.int().min(0).optional(),
   limit: z.int().min(1).max(200).default(50),
 });
+
+export const conductorSessionSchema = z.object({
+  id: z.string(),
+  startedAt: isoTimestampSchema,
+  endedAt: isoTimestampSchema.nullable(),
+  summary: z.string().nullable(),
+  tokens: z.int().nullable(),
+});
+export type ConductorSession = z.infer<typeof conductorSessionSchema>;

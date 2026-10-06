@@ -4,6 +4,8 @@ import type { Clock } from "../clock.js";
 import { createChatRepository, createProposalRepository } from "./chat.js";
 import type { ChatRepository, ProposalRepository } from "./chat.js";
 import { createCheckRepository } from "./checks.js";
+import { createConductorSessionRepository } from "./conductor-sessions.js";
+import type { ConductorSessionRepository } from "./conductor-sessions.js";
 import type { CheckRepository } from "./checks.js";
 import { createEventRepository } from "./events.js";
 import type { EventRepository } from "./events.js";
@@ -34,6 +36,7 @@ export interface Db {
   comments: CommentRepository;
   chat: ChatRepository;
   proposals: ProposalRepository;
+  conductorSessions: ConductorSessionRepository;
   flags: FlagRepository;
   transaction: Transaction;
   killRunning(): KilledCounts;
@@ -61,6 +64,7 @@ export function openDb(path: string, options: OpenDbOptions = {}): Db {
       comments: createCommentRepository(context),
       chat: createChatRepository(context),
       proposals: createProposalRepository(context),
+      conductorSessions: createConductorSessionRepository(context),
       flags: createFlagRepository(context),
       transaction,
       killRunning: createKillRunning(context),

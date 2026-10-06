@@ -1,6 +1,17 @@
+export { summariseActions } from "./action-line.js";
+export type { ToolCallRecord } from "./action-line.js";
+export { chatActions } from "./chat-actions.js";
+export { buildDigest, readDigestInput } from "./digest.js";
+export type { DigestInput, DigestSources } from "./digest.js";
+export { postEventLines } from "./event-lines.js";
+export type { EventLineOptions } from "./event-lines.js";
 export { createMcpServer, registerMcpRoutes } from "./mcp.js";
 export type { McpOptions } from "./mcp.js";
+export { conductorMcpConfigPath, writeConductorMcpConfig } from "./mcp-config.js";
+export type { McpEndpoint } from "./mcp-config.js";
 export { proposePlan } from "./plan.js";
 export type { PlanInput } from "./plan.js";
+export { conductorIdleMs, ConductorToolsUnavailableError, createChatRunner } from "./runner.js";
+export type { ChatRunner, ChatRunnerOptions } from "./runner.js";
 export { actionTools, conductorTools } from "./tools.js";
-export type { ConductorTool, ToolSources } from "./tools.js";
+export type { ActionTool, ConductorTool, ToolSources } from "./tools.js";

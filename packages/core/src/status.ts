@@ -169,6 +169,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
   function readRunning(): RunningSession[] {
     return db.sessions
       .listRunning()
+      .filter((session) => session.role !== "conductor")
       .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id - b.id)
       .map((session) => ({
         sessionId: session.id,
@@ -209,12 +210,14 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
   function linesFor(event: BusEvent): (Line | null)[] | null {
     switch (event.type) {
       case "session.started":
+        if (event.session.role === "conductor") return null;
         return [startLine(event.session, options.maxAttempts())];
       case "session.event":
         activity.set(event.sessionId, event.event.summary);
         return [sessionEventLine(event)];
       case "session.ended":
         activity.delete(event.sessionId);
+        if (event.session.role === "conductor") return null;
         return [endLine(event.session)];
       case "task.updated": {
         const previous = taskStatuses.get(event.taskId);
@@ -242,6 +245,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "terminal.output":
       case "chat.message":
       case "chat.delta":
+      case "chat.turn":
       case "proposal.updated":
       case "service.stopping":
         return null;

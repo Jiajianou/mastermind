@@ -36,6 +36,7 @@ export const busEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("chat.message"), message: chatMessageSchema }),
   z.object({ type: z.literal("chat.delta"), turnId: z.string(), text: z.string() }),
+  z.object({ type: z.literal("chat.turn"), turnId: z.string(), replying: z.boolean() }),
   z.object({ type: z.literal("proposal.updated"), proposal: proposalSchema }),
   z.object({ type: z.literal("auth.updated"), authRequired: z.boolean() }),
   z.object({

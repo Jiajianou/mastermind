@@ -735,3 +735,67 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Review.** `proposalMetaSchema` (`{ proposalId, status? }`) types the meta of `proposal` and `system` decision
   messages, for the web decision box. A failure while recording a confirmed action's success no longer records it a
   second time as a failure, and a rejected `McpServer.close()` goes to `onError` instead of being left unhandled.
+
+## m2-conductor
+
+- **Where it lives.** `src/conductor/`: `runner.ts` (the ChatRunner), `turn.ts` (per-turn recorder: deltas, reply,
+  tool calls, context tokens), `action-line.ts`, `digest.ts`, `prompt.ts` (turn framing), `event-lines.ts` (6.4),
+  `mcp-config.ts` and `chat-actions.ts` (`sendChat`, `stopChat`). `db.conductorSessions` is the repository for the
+  `conductor_sessions` table; `db.chat.list(afterId?)` pages. `createRuntime` wires it all: the runner is created
+  before the API is served (its actions need routes), and `.mastermind/run/conductor-mcp.json` is written once the
+  port and token are known.
+- **Runner: one persistent process**, as the CLI notes decided. Spawn flags are 6.2 exactly (`--tools
+  "Read,Grep,Glob"` and `--allowedTools "mcp__mastermind__* Read Grep Glob"` as single arguments) plus the notes'
+  `--strict-mcp-config` and `--replay-user-messages`. cwd is the repo root, the env is cleaned by `ClaudeCli`, the
+  process is registered as kind `conductor`, and each process gets a `sessions` row (role `conductor`, taskId null)
+  with its stream events, so recovery reaps an orphan by its claude session id and the kill path marks it killed.
+  The terminal view leaves conductor sessions out of its worker rows and start/end lines.
+- **`--mcp-config` takes a file path now.** `PrintOptions.mcpConfig` (inline JSON) became `mcpConfigFile`, because
+  inline JSON would put the bearer token in argv, visible to `ps`. The file is written with mode 600 (temp file plus
+  rename).
+- **Conversations.** The claude session id is stored in `conductor_sessions` on the first `init` line of a fresh
+  conversation; later processes (after the 10-minute idle stop, a model switch, or a mastermind restart) use
+  `--resume <id>`. A process that exits before any `init` without mastermind ending it was refused by the CLI (id in
+  use, conversation not found), so that conversation is ended and the next turn starts a fresh one rather than
+  failing forever. Context tokens (last assistant line's input plus cache tokens) are stored per turn for M8's
+  rollover. If the `mastermind` MCP server isn't `connected` in `init`, the turn fails with
+  `ConductorToolsUnavailableError` and the process is stopped.
+- **Turns.** `sendChat` stores the user message and returns `{ turnId, message }` at once; the reply arrives on
+  the bus. A message sent while a turn runs joins it (same turnId, written raw to stdin). Replays are counted, and a
+  message the CLI didn't fold in before the `result` gets a follow-up turn. A message sent after Stop, while the
+  stopped turn is still ending, is held and starts the next turn, because an interrupted CLI may drop queued input.
+  Stop is a `control_request` interrupt; if no result follows within 10 s the process is stopped. A stopped turn
+  keeps its streamed text, including a block cut short, as a `conductor` message with `meta: { stopped: true }`.
+- **Messages per turn.** Each turn stores the `user` message, a `conductor` message (text blocks joined as
+  paragraphs, and the streamed deltas carry the same `\n\n`), then one `action` line, then a `system` line if the
+  turn failed. Proposal and plan messages made by tools during a turn carry its turn id and conductor session
+  (`postConductorMessage` with the runner's `activeTurn`); the owner's decisions don't. Error results are classified
+  like worker runs: a usage limit also reports the global back-off; auth expiry only posts a line (the auth flow is
+  M8).
+- **Action line.** Each action tool in `tools.ts` gained `done(input)`, a past-tense phrase next to `describe`. The
+  line joins the distinct phrases of the turn's successful, ungated mastermind tool calls: `✓ Added 2 tasks, held a
+  and paused all work`. Read tools, failed calls and `awaiting_confirmation` results are left out (the proposal box
+  shows those). The plan's example "and started 2" isn't produced: tasks start asynchronously after the turn, so the
+  count would be a guess.
+- **Turn prompt.** `<state>` (the digest), then `<updates>` (system messages since the previous turn's prompt, at
+  most 20: event lines, proposal decisions, failures), a blank line, then the owner's text. The prompt tells the
+  model these blocks come from mastermind and must never be mentioned.
+- **Digest.** Five short lines: time, counts by status, workers and running sessions (id, role, attempt,
+  minutes), what needs the owner (review, blocked, pending decisions as their questions), and the scheduler state
+  (sign-in, paused, usage limit with time) plus up next. Lists are cut by character budget with "and N more", ids
+  are never truncated (a truncated id is ambiguous), and the worst case measured is about 255 tokens.
+- **Event lines** come from bus transitions: a task entering `review`, `blocked` or `done` (done is only reached by
+  rebasing), `authRequired` turning true, and a new `resumeAt`. Content has no time (the message's `ts` carries it);
+  the usage limit line names the local resume time. `meta` is `EventLineMeta` (`{ event, taskId | resumeAt }`).
+- **HTTP and bus.** `GET /api/chat?after=` returns `{ model, replying, messages }`; `POST /api/chat` is `sendChat`
+  (`{ text, model? }`; a different model is saved to `models.conductor` in `.mastermind/config.yaml` and the live
+  process is restarted with `--resume` on the next turn); `POST /api/chat/stop` is `stopChat`. A new bus event
+  `chat.turn { turnId, replying }` marks a turn's start and end, so the UI and `mastermind chat` know when to switch
+  Stop back to Send even when a turn produced no text.
+- **fake-claude.** The `text` step takes `streamMs`, which paces its partial deltas and can be interrupted midway.
+  It already read `--mcp-config` and called MCP tools over HTTP, so the conductor tests use `mcp` steps against the
+  real server.
+- **Review.** The action line counts only tool calls that got a result, so a call cut short by Stop isn't
+  reported as done. A conversation is forgotten only when the CLI refused it outright (no `init`, no `result`, a
+  plain failure); a sign-in or usage-limit exit keeps it for `--resume`. When the tools are unreachable, the
+  process is ended before the turn fails, so a held message never goes to the dying process.

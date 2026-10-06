@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { parseInput } from "../actions/index.js";
 import type { ActionRegistry } from "../actions/index.js";
-import type { ChatSink } from "../chat.js";
+import type { ConductorChatSink } from "../chat.js";
 import {
   configLayerSchema,
   createTasksInputSchema,
@@ -23,7 +23,7 @@ export interface ToolSources {
   actions: ActionRegistry;
   gate: ProposalGate;
   reads: ReadModels;
-  chat: ChatSink;
+  chat: ConductorChatSink;
 }
 
 export interface ConductorTool {
@@ -33,9 +33,10 @@ export interface ConductorTool {
   call(input: unknown): Promise<unknown>;
 }
 
-interface ActionTool extends GateableTool {
+export interface ActionTool extends GateableTool {
   action: ActionName;
   description: string;
+  done(input: unknown): string;
 }
 
 interface ReadTool {
@@ -51,6 +52,7 @@ function actionTool<Schema extends z.ZodType>(tool: {
   input: Schema;
   description: string;
   describe: (input: z.output<Schema>) => string;
+  done: (input: z.output<Schema>) => string;
 }): ActionTool {
   const { name, action, description } = tool;
   return {
@@ -58,6 +60,7 @@ function actionTool<Schema extends z.ZodType>(tool: {
     action,
     description,
     describe: (input) => tool.describe(parseInput(tool.input, input)),
+    done: (input) => tool.done(parseInput(tool.input, input)),
   };
 }
 
@@ -78,6 +81,9 @@ function readTool<Schema extends z.ZodType>(tool: {
 
 const fieldList = (input: object): string => Object.keys(input).join(", ");
 
+const count = (amount: number, noun: string): string =>
+  `${String(amount)} ${noun}${amount === 1 ? "" : "s"}`;
+
 export const actionTools: readonly ActionTool[] = [
   actionTool({
     name: "create_tasks",
@@ -86,6 +92,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Add tasks to the graph in one batch. Each task needs a unique slug id, a title, a goal written for the worker, an acceptance shell command that exits 0 when the task is done, and touches: the repo paths it will change (tasks with overlapping touches never run at the same time). deps may name tasks in the batch or existing ones. The whole batch is rejected on a duplicate id, an unknown dep or a cycle. A task starts once its deps are done and a worker is free.",
     describe: ({ tasks }) => `Add ${tasks.map((task) => task.id).join(", ")}`,
+    done: ({ tasks }) => `Added ${count(tasks.length, "task")}`,
   }),
   actionTool({
     name: "update_task",
@@ -94,6 +101,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Change a task's title, goal, acceptance, touches, deps or priority; only the fields given change. New deps must exist and must not create a cycle. Work already running is not affected.",
     describe: ({ taskId, ...changes }) => `Change ${fieldList(changes)} of ${taskId}`,
+    done: ({ taskId }) => `Updated ${taskId}`,
   }),
   actionTool({
     name: "set_priority",
@@ -102,6 +110,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Set a task's priority. Among ready tasks, higher numbers start first; the default is 0.",
     describe: ({ taskId, priority }) => `Set the priority of ${taskId} to ${String(priority)}`,
+    done: ({ taskId, priority }) => `Set the priority of ${taskId} to ${String(priority)}`,
   }),
   actionTool({
     name: "hold",
@@ -110,6 +119,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Hold a task so it does not start. Work already running continues; use stop_session to stop it.",
     describe: ({ taskId }) => `Hold ${taskId}`,
+    done: ({ taskId }) => `Held ${taskId}`,
   }),
   actionTool({
     name: "release",
@@ -118,6 +128,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Release a held task so it can start again, including one held by stop_session, which then resumes its session.",
     describe: ({ taskId }) => `Release ${taskId}`,
+    done: ({ taskId }) => `Released ${taskId}`,
   }),
   actionTool({
     name: "retry",
@@ -126,6 +137,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Put a blocked task back in the queue with its attempts reset. Fails for a task that is not blocked.",
     describe: ({ taskId }) => `Retry ${taskId}`,
+    done: ({ taskId }) => `Retried ${taskId}`,
   }),
   actionTool({
     name: "pause_all",
@@ -133,6 +145,7 @@ export const actionTools: readonly ActionTool[] = [
     input: noInputSchema,
     description: "Stop starting new sessions. Sessions already running carry on.",
     describe: () => "Pause all work",
+    done: () => "Paused all work",
   }),
   actionTool({
     name: "resume_all",
@@ -140,6 +153,7 @@ export const actionTools: readonly ActionTool[] = [
     input: noInputSchema,
     description: "Start sessions again after pause_all.",
     describe: () => "Resume work",
+    done: () => "Resumed work",
   }),
   actionTool({
     name: "stop_session",
@@ -148,6 +162,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Stop a running session (SIGTERM, then SIGKILL after 10 seconds). Its task is held and keeps the session for resuming; release the task to continue.",
     describe: ({ sessionId }) => `Stop session ${String(sessionId)}`,
+    done: ({ sessionId }) => `Stopped session ${String(sessionId)}`,
   }),
   actionTool({
     name: "set_config",
@@ -156,6 +171,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Change project settings in .mastermind/config.yaml. Only the keys given change, and nested objects such as models merge key by key.",
     describe: (change) => `Change ${fieldList(change)} in settings`,
+    done: (change) => `Changed ${fieldList(change)} in settings`,
   }),
 ];
 

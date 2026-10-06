@@ -53,7 +53,10 @@ const builtins = {
   importTasks,
   exportTasks,
 } satisfies ContractedActions<
-  Exclude<ActionName, "stopSession" | "confirmProposal" | "rejectProposal">
+  Exclude<
+    ActionName,
+    "stopSession" | "confirmProposal" | "rejectProposal" | "sendChat" | "stopChat"
+  >
 >;
 
 export const builtinActions: readonly AnyActionDefinition[] = Object.values(builtins);
