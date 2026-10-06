@@ -1041,3 +1041,25 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   `stopped`, task held), so the `stopSession` action really returns the stopped session, as its description says;
   before, it returned the row while it was still `running`. `useSessionEvents` drops a history read that began
   before a disconnect, so it can't mark a session's history loaded with events missing from the gap.
+
+## m3-verify
+
+- **What it proves.** `test/e2e/web/m3.spec.ts` runs the built binary with a fake Conductor and fake workers. One
+  test adds alpha, then beta, by chat; asks "what's running?" (the fake Conductor only answers when its digest lists
+  both workers); watches them through the status pill, Overview cards and the Sessions timeline; then stops alpha by
+  chat (`stop_session`) and sees the pill, Overview (alpha held in Up next) and Sessions (alpha Stopped, beta Running)
+  follow. A random marker set on `window` at the start must still be there at the end, so nothing reloaded the page.
+- **Session id in the scenario.** A fake Conductor can't read tool results, so the stop turn names session 2: the
+  Conductor's process is the first session and alpha's worker the second, because beta is only added once alpha is
+  running. The test asserts alpha's Activity link points at session 2 before relying on it.
+- **Accessibility test.** Chat, Overview and Sessions (running and stopped) are driven by keyboard only: Tab to the
+  Message box and Enter, Tab to the Overview tab, a card's Activity link and Stop session (Space), each with a visible
+  focus outline (the Message box's ring is on its composer box, via `:focus-within`, so the check accepts an
+  outlined ancestor). On every screen: every button role is a `<button>`, every link role an `<a href>`, the aria
+  snapshot has no unnamed control, and every visible element painted (background, border or box-shadow) in frost or
+  peach has text itself or beside it in its parent; the check also requires at least one painted element, so a
+  theme change can't make it pass with nothing to inspect.
+- **Typing browser code.** The Playwright specs run code in the page, so `test/e2e/web/` has its own tsconfig with
+  the DOM lib; the root tsconfig excludes it, `pnpm typecheck` checks it and ESLint uses it. Node tests keep no DOM
+  types.
+- No defects were found in earlier work.
