@@ -1,4 +1,6 @@
-import type { Check, Task } from "../contracts/index.js";
+import { fenced } from "../contracts/index.js";
+import type { Check, FileChange, Task } from "../contracts/index.js";
+import { withoutFinalStop } from "./summary.js";
 
 export const resumePrompt = "You were interrupted. Check the worktree state and continue.";
 
@@ -31,4 +33,46 @@ export function taskBrief(task: Task): string[] {
 
 export function workerTaskPrompt(task: Task, setup: Check | null): string {
   return [`# Task ${task.id}: ${task.title}`, ...taskBrief(task), ...setupNote(setup)].join("\n\n");
+}
+
+function changeLine({ status, path, oldPath, additions, deletions }: FileChange): string {
+  const where = status === "renamed" && oldPath !== null ? `${oldPath} → ${path}` : path;
+  const counts =
+    additions === null || deletions === null
+      ? "binary"
+      : `+${String(additions)} −${String(deletions)}`;
+  return `- ${status} ${where} (${counts})`;
+}
+
+export function changeList(changes: readonly FileChange[]): string {
+  return changes.length === 0 ? "(no files changed yet)" : changes.map(changeLine).join("\n");
+}
+
+export interface StuckRestartMaterial {
+  mainBranch: string;
+  baseCommit: string;
+  changes: readonly FileChange[];
+  diff: string;
+  diffTruncated: boolean;
+  reason: string;
+  suggestion: string;
+}
+
+export function stuckRestartPrompt(task: Task, material: StuckRestartMaterial): string {
+  const base = material.baseCommit.slice(0, 7);
+  return [
+    `# Task ${task.id}: ${task.title}`,
+    ...taskBrief(task),
+    "## Where the work stands",
+    `An earlier session worked on this task in this clone and its work is committed. Compared with ${material.mainBranch} at ${base}, it changes:`,
+    changeList(material.changes),
+    material.diff.trim() === ""
+      ? "The diff is empty."
+      : fenced(material.diff.trimEnd(), "diff") +
+        (material.diffTruncated
+          ? `\n\nThe diff was cut short; run \`git diff ${base}\` to read all of it.`
+          : ""),
+    "## The previous attempt got stuck",
+    `The previous attempt got stuck: ${withoutFinalStop(material.reason)}. Try a different approach: ${withoutFinalStop(material.suggestion)}.`,
+  ].join("\n\n");
 }

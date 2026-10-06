@@ -40,3 +40,11 @@ export const messageSessionInputSchema = z.strictObject({
   sessionId: z.int().min(1),
   text: z.string().trim().min(1).max(steeringMessageMaxLength),
 });
+
+export const sandboxHostSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/, "expected a host name such as github.com");
+
+export const allowSandboxHostInputSchema = z.strictObject({ host: sandboxHostSchema });

@@ -31,6 +31,7 @@ export type ChatEntry =
       key: string;
       proposalId: number;
       question: string;
+      confirmLabel: string | null;
       status: ProposalStatus;
       taskId: string | null;
     }
@@ -96,12 +97,13 @@ function decisionEntry(
   const meta = proposalMetaSchema.safeParse(message.meta);
   if (!meta.success)
     return { kind: "event", key: key(message), ts: message.ts, text: message.content };
-  const { proposalId, taskId } = meta.data;
+  const { proposalId, taskId, confirmLabel } = meta.data;
   return {
     kind: "decision",
     key: key(message),
     proposalId,
     question: message.content,
+    confirmLabel: confirmLabel ?? null,
     status: proposals[proposalId]?.status ?? decided.get(proposalId) ?? "pending",
     taskId: taskId ?? null,
   };

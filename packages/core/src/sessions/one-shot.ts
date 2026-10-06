@@ -52,6 +52,8 @@ function endReason(end: SessionEnd): string {
       return "it was stopped";
     case "aborted":
       return end.reason;
+    case "stuck":
+      return `it was stuck: ${end.reason}`;
     case "exited":
       switch (end.outcome.status) {
         case "succeeded":

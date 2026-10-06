@@ -79,6 +79,7 @@ export const eventLineKindSchema = z.enum([
   "sign_in",
   "usage_limit",
   "owner_on_main",
+  "stuck",
 ]);
 export type EventLineKind = z.infer<typeof eventLineKindSchema>;
 

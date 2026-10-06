@@ -68,11 +68,11 @@ export function settleWorkerRun({
       effect: { kind: "none" },
     };
   }
-  if (end.kind === "aborted") {
+  if (end.kind === "aborted" || end.kind === "stuck") {
     return {
       sessionStatus: "failed",
       task: countAttempt(),
-      failure: end.reason,
+      failure: end.kind === "stuck" ? `stuck: ${end.reason}` : end.reason,
       effect: { kind: "none" },
     };
   }

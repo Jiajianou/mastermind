@@ -5,13 +5,18 @@ import { defaultConfig, resolveConfig } from "@mastermind/core/config";
 import type { ResolvedConfig } from "@mastermind/core/config";
 import type { BusEvent, Config, Task } from "@mastermind/core/contracts";
 import { openDb, systemClock } from "@mastermind/core/db";
-import type { Db } from "@mastermind/core/db";
+import type { Clock, Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
+import type { EventBus } from "@mastermind/core/events";
 import { createGit } from "@mastermind/core/git";
 import { createProcessRegistry } from "@mastermind/core/procs";
 import { createScheduler } from "@mastermind/core/scheduler";
-import { createSessionManager } from "@mastermind/core/sessions";
-import type { SessionManager } from "@mastermind/core/sessions";
+import {
+  createOneShotRunner,
+  createSessionManager,
+  createSessionSpawner,
+} from "@mastermind/core/sessions";
+import type { OneShotRunner, SessionManager } from "@mastermind/core/sessions";
 import { onCleanup } from "../../support/cleanup.js";
 import type { Scenario } from "../../support/fake-claude.js";
 import { isolatedEnv } from "../../support/isolated-env.js";
@@ -27,8 +32,10 @@ export interface SessionHarness {
   env: IsolatedEnv;
   repo: TempRepo;
   db: Db;
+  bus: EventBus;
   config: ResolvedConfig;
   manager: SessionManager;
+  oneShot: OneShotRunner;
   events: BusEvent[];
   errors: unknown[];
   addTask(id: string): Task;
@@ -39,6 +46,7 @@ export interface SessionHarness {
 export interface HarnessOptions {
   scenario: Scenario;
   config?: Partial<Config>;
+  clock?: Clock;
 }
 
 const leakedEnv = {
@@ -61,7 +69,8 @@ export async function sessionHarness(options: HarnessOptions): Promise<SessionHa
     { ...defaultConfig(context), worktreeDir: join(env.worktreeRoot, "demo"), ...options.config },
     { ...context, plan: "max" },
   );
-  const db = openDb(join(env.root, "db.sqlite"));
+  const clock = options.clock ?? systemClock;
+  const db = openDb(join(env.root, "db.sqlite"), { clock });
   const bus = createEventBus();
   const events: BusEvent[] = [];
   const errors: unknown[] = [];
@@ -74,15 +83,17 @@ export async function sessionHarness(options: HarnessOptions): Promise<SessionHa
   const scheduler = createScheduler({
     db,
     bus,
-    clock: systemClock,
+    clock,
     maxWorkers: () => config.maxWorkers,
     startTask: () => Promise.resolve(),
     onError: (error) => errors.push(error),
   });
+  const cli = createClaudeCli({ registry, env: env.env });
+  const onError = (error: unknown) => errors.push(error);
   const manager = createSessionManager({
     db,
     bus,
-    cli: createClaudeCli({ registry, env: env.env }),
+    cli,
     git: createGit({ registry, env: env.env }),
     registry,
     env: env.env,
@@ -92,7 +103,14 @@ export async function sessionHarness(options: HarnessOptions): Promise<SessionHa
     config: () => config,
     backoff: scheduler,
     pathGuardCommand,
-    onError: (error) => errors.push(error),
+    onError,
+    clock,
+  });
+  const oneShot = createOneShotRunner({
+    db,
+    bus,
+    backoff: scheduler,
+    spawner: createSessionSpawner({ db, bus, cli, logsDir: join(env.root, "logs"), onError }),
   });
   const clonePath = (id: string) => join(config.worktreeDir, id);
 
@@ -100,8 +118,10 @@ export async function sessionHarness(options: HarnessOptions): Promise<SessionHa
     env,
     repo,
     db,
+    bus,
     config,
     manager,
+    oneShot,
     events,
     errors,
     addTask: (id) =>

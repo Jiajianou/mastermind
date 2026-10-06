@@ -26,6 +26,7 @@
     "./recovery": "./src/recovery.ts",
     "./review": "./src/review/index.ts",
     "./runtime": "./src/runtime.ts",
+    "./sandbox": "./src/sandbox.ts",
     "./scheduler": "./src/scheduler.ts",
     "./sign-in": "./src/sign-in.ts",
     "./sessions": "./src/sessions/index.ts",

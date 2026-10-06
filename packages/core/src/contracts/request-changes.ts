@@ -28,10 +28,10 @@ const checkTitles: Record<CheckKind, string> = {
 };
 
 // The fence is longer than any backtick run inside, so an excerpt that itself contains a fence can't end the block.
-function fenced(text: string): string {
+export function fenced(text: string, language = "text"): string {
   const longestRun = Math.max(0, ...[...text.matchAll(/`+/g)].map(([run]) => run.length));
   const fence = "`".repeat(Math.max(3, longestRun + 1));
-  return `${fence}text\n${text}\n${fence}`;
+  return `${fence}${language}\n${text}\n${fence}`;
 }
 
 const lines = ({ lineStart, lineEnd }: CommentNote): string =>

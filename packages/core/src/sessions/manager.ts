@@ -30,16 +30,20 @@ import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
 import { refinePrompt } from "../review/prompts.js";
 import { canResumeConversation } from "./conversation.js";
-import { resumePrompt, workerTaskPrompt } from "./prompts.js";
+import { resumePrompt, stuckRestartPrompt, workerTaskPrompt } from "./prompts.js";
 import { editingSessionSettings, workerPermissionOptions } from "./settings.js";
 import { applySettlementEffect } from "./effects.js";
 import type { UsageBackoff } from "./effects.js";
 import { settleWorkerRun } from "./settlement.js";
+import type { WorkerSettlement } from "./settlement.js";
 import { runSetupCheck } from "./setup.js";
 import { createSessionSpawner, userMessageLine } from "./spawner.js";
-import type { LiveSession, SessionReport } from "./spawner.js";
+import type { LiveSession, SessionReport, StuckVerdict } from "./spawner.js";
 
 export const wipMessage = "WIP: uncommitted at session end";
+export const stuckWipMessage = "WIP: uncommitted when the session got stuck";
+
+const maxStuckDiffCharacters = 60_000;
 
 export interface SessionManagerOptions {
   db: Db;
@@ -88,6 +92,7 @@ export interface SessionManager {
   startFixer(request: FixerRequest): Promise<Session>;
   startRound(request: RoundRequest): Promise<StartedRound>;
   stopSession(sessionId: number): Promise<void>;
+  restartStuck(sessionId: number, verdict: StuckVerdict): Promise<Session | null>;
   messageSession(sessionId: number, text: string): Promise<MessageSessionResult>;
 }
 
@@ -99,7 +104,7 @@ interface Workspace {
 
 interface RunningSession {
   session: LiveSession;
-  settled: Promise<void>;
+  settled: Promise<Session | null>;
 }
 
 type EditingRole = "worker" | "fixer";
@@ -299,10 +304,58 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     emitTask(task);
   }
 
-  async function recordWork(worktree: string, succeeded: boolean): Promise<string | null> {
+  async function recordWork(worktree: string, wip: string | null): Promise<string | null> {
     try {
-      if (succeeded) await commitLeftovers(git, worktree, wipMessage);
+      if (wip !== null) await commitLeftovers(git, worktree, wip);
       return await headCommit(git, worktree);
+    } catch (error) {
+      onError(error);
+      return null;
+    }
+  }
+
+  function wipFor(end: SessionReport["end"]): string | null {
+    if (end.kind === "stuck") return stuckWipMessage;
+    return end.kind === "exited" && end.outcome.status === "succeeded" ? wipMessage : null;
+  }
+
+  async function stuckPrompt(
+    task: Task,
+    worktree: string,
+    verdict: StuckVerdict,
+  ): Promise<(running: Task) => string> {
+    const baseCommit = task.baseCommit ?? (await headCommit(git, worktree));
+    const changes = await listChanges(git, worktree, baseCommit);
+    const diff = await git.run(worktree, [
+      "--no-optional-locks",
+      "diff",
+      "--no-ext-diff",
+      "--no-textconv",
+      baseCommit,
+    ]);
+    const material = {
+      mainBranch: options.config().mainBranch,
+      baseCommit,
+      changes,
+      diff: diff.slice(0, maxStuckDiffCharacters),
+      diffTruncated: diff.length > maxStuckDiffCharacters,
+      reason: verdict.reason,
+      suggestion: verdict.suggestion,
+    };
+    return (running) => stuckRestartPrompt(running, material);
+  }
+
+  // A stuck session is replaced by a fresh one, so its context doesn't carry over (decision 17).
+  async function preparedStuckRestart(
+    task: Task,
+    worktree: string,
+    end: SessionReport["end"],
+    settlement: WorkerSettlement,
+  ): Promise<((running: Task) => string) | null> {
+    if (end.kind !== "stuck" || settlement.task.status !== "pending" || settlement.task.held)
+      return null;
+    try {
+      return await stuckPrompt(task, worktree, end);
     } catch (error) {
       onError(error);
       return null;
@@ -314,16 +367,17 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     session: Session,
     worktree: string,
     report: SessionReport,
-  ): Promise<void> {
+  ): Promise<Session | null> {
     const { end } = report;
-    const succeeded = end.kind === "exited" && end.outcome.status === "succeeded";
-    const endCommit = await recordWork(worktree, succeeded);
+    const endCommit = await recordWork(worktree, wipFor(end));
+    const task = requireTask(taskId);
     const settlement = settleWorkerRun({
       report,
-      task: requireTask(taskId),
+      task,
       claudeSessionId: session.claudeSessionId,
       maxAttempts: options.config().maxAttempts,
     });
+    const restartPrompt = await preparedStuckRestart(task, worktree, end, settlement);
     const settled = db.transaction(() => {
       assertTransition(taskId, requireTask(taskId).status, settlement.task.status);
       const failure =
@@ -345,9 +399,34 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       bus.emit({ type: "session.event", sessionId: session.id, taskId, event: settled.failure });
     applySettlementEffect(settlement.effect, { db, bus, backoff: options.backoff });
     bus.emit({ type: "session.ended", sessionId: session.id, taskId, session: settled.session });
+    if (restartPrompt !== null) return restartStuckTask(settled.task, worktree, restartPrompt);
     emitTask(settled.task);
     if (end.kind === "exited" && report.undeliveredMessages.length > 0)
       redeliver(session, report.undeliveredMessages.join("\n\n"));
+    return null;
+  }
+
+  // Runs in the same tick as the settlement, so the scheduler never sees the task pending in between.
+  async function restartStuckTask(
+    task: Task,
+    worktree: string,
+    prompt: (running: Task) => string,
+  ): Promise<Session | null> {
+    try {
+      const started = await launchWorker({
+        role: "worker",
+        task,
+        worktree,
+        print: editingPrint("worker", options.config(), worktree, null),
+        prompt,
+        attempt: task.attempts + 1,
+      });
+      return started.live.session;
+    } catch (error) {
+      onError(error);
+      emitTask(requireTask(task.id));
+      return null;
+    }
   }
 
   async function launchWorker(launch: WorkerLaunch): Promise<Launched> {
@@ -367,7 +446,10 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     const settled = started.finished
       .finally(() => live.delete(session.id))
       .then((report) => settle(running.id, started.session, launch.worktree, report))
-      .catch(onError);
+      .catch((error: unknown) => {
+        onError(error);
+        return null;
+      });
     live.set(session.id, { session: started, settled });
     return { live: started, task: running, round };
   }
@@ -587,6 +669,12 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       const { round } = started;
       if (round === null) throw new Error(`round ${next} of ${taskId} was not recorded`);
       return { task: started.task, session: started.live.session, round };
+    },
+
+    async restartStuck(sessionId, verdict) {
+      const running = live.get(sessionId);
+      if (running?.session.stopAsStuck(verdict) !== true) return null;
+      return running.settled;
     },
 
     async stopSession(sessionId) {

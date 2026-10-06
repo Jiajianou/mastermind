@@ -18,10 +18,20 @@ import type { EventBus } from "./events.js";
 
 export const proposalLifetimeMs = 60 * 60_000;
 
-export interface GateableTool {
-  name: string;
+export interface ActionDescriber {
   action: string;
   describe(input: unknown): string;
+}
+
+export interface GateableTool extends ActionDescriber {
+  name: string;
+}
+
+export interface Offer {
+  action: string;
+  args: JsonValue;
+  question: string;
+  confirmLabel: string;
 }
 
 export type GateOutcome =
@@ -31,6 +41,7 @@ export type GateOutcome =
 export interface ProposalGate {
   isGated(toolName: string): boolean;
   run(tool: GateableTool, input: unknown): Promise<GateOutcome>;
+  offer(offer: Offer): Proposal;
   confirm(proposalId: number): Promise<Proposal>;
   reject(proposalId: number): Proposal;
   expireStale(): Proposal[];
@@ -42,6 +53,7 @@ export interface ProposalGateOptions {
   actions: ActionRegistry;
   clock: Clock;
   tools: readonly GateableTool[];
+  describers?: readonly ActionDescriber[];
   confirmList: () => readonly string[];
   activeTurn: () => ChatTurnRef | null;
   lifetimeMs?: number;
@@ -81,13 +93,14 @@ function decisionText(what: string, status: Decision, outcome: ProposalOutcome |
 // One decision per proposal: a confirm that arrives while the action is still running joins it instead of
 // running the action again.
 export function createProposalGate(options: ProposalGateOptions): ProposalGate {
-  const { db, actions, clock, tools, confirmList, lifetimeMs = proposalLifetimeMs } = options;
+  const { db, actions, clock, confirmList, lifetimeMs = proposalLifetimeMs } = options;
+  const describers = [...options.tools, ...(options.describers ?? [])];
   const running = new Map<number, Promise<Proposal>>();
   const isGated = (toolName: string): boolean => confirmList().includes(toolName);
 
   function describe(action: string, args: unknown): string {
-    const tool = tools.find((candidate) => candidate.action === action);
-    return tool === undefined ? action : tool.describe(args);
+    const describer = describers.find((candidate) => candidate.action === action);
+    return describer === undefined ? action : describer.describe(args);
   }
 
   function requireProposal(proposalId: number): Proposal {
@@ -152,6 +165,18 @@ export function createProposalGate(options: ProposalGateOptions): ProposalGate {
         meta: proposalMeta(proposal),
       });
       return { kind: "awaiting_confirmation", proposal, question };
+    },
+
+    // Mastermind's own offers are not part of a Conductor turn.
+    offer({ action, args, question, confirmLabel }) {
+      const proposal = db.proposals.create({ action, args: toJsonValue(validate(action, args)) });
+      options.bus.emit({ type: "proposal.updated", proposal });
+      postChatMessage(options, {
+        kind: "proposal",
+        content: question,
+        meta: { ...proposalMeta(proposal), confirmLabel } satisfies ProposalMeta,
+      });
+      return proposal;
     },
 
     async confirm(proposalId) {

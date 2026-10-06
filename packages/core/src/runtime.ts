@@ -33,6 +33,7 @@ import { notifyOwner } from "./notify.js";
 import type { NativeNotifier } from "./notify.js";
 import type { KillReport, ProcessRegistry } from "./procs.js";
 import { createProposalGate, proposalActions } from "./proposals.js";
+import { allowSandboxHostAction, allowSandboxHostDescriber, offerBlockedHosts } from "./sandbox.js";
 import { approve, createRebaseQueue, discardAction } from "./rebase/index.js";
 import { requestChangesAction, reviewNoteActions } from "./review/index.js";
 import { createScheduler } from "./scheduler.js";
@@ -41,6 +42,7 @@ import {
   createOneShotRunner,
   createSessionManager,
   createSessionSpawner,
+  createStuckMonitor,
   messageSessionAction,
   stopSessionAction,
 } from "./sessions/index.js";
@@ -199,13 +201,36 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     actions,
     clock,
     tools: actionTools,
+    describers: [allowSandboxHostDescriber],
     confirmList: () => config.conductor.confirm,
     activeTurn: () => runner.activeTurn(),
   });
   for (const action of proposalActions(gate)) actions.register(action);
+  actions.register(allowSandboxHostAction(() => projectConfig));
   const mcpConfigPath = conductorMcpConfigPath(stateDir);
   const systemPromptFile = conductorSystemPromptPath(stateDir);
   await writeConductorSystemPrompt(options.promptsDir, systemPromptFile);
+  const oneShot = createOneShotRunner({
+    db,
+    bus,
+    backoff: scheduler,
+    spawner: createSessionSpawner({
+      db,
+      bus,
+      cli: startup.cli,
+      logsDir: join(stateDir, "logs"),
+      onError,
+    }),
+  });
+  const stuckMonitor = createStuckMonitor({
+    db,
+    bus,
+    clock,
+    oneShot,
+    sessions: manager,
+    config: () => config,
+    onError,
+  });
   const runner = createChatRunner({
     db,
     bus,
@@ -221,18 +246,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       db,
       repoRoot,
       model: () => config.models.judge,
-      oneShot: createOneShotRunner({
-        db,
-        bus,
-        backoff: scheduler,
-        spawner: createSessionSpawner({
-          db,
-          bus,
-          cli: startup.cli,
-          logsDir: join(stateDir, "logs"),
-          onError,
-        }),
-      }),
+      oneShot,
     }),
     onError,
   });
@@ -290,6 +304,12 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       runner.wake();
     },
   });
+  const stopBlockedAccessOffers = offerBlockedHosts({
+    db,
+    bus,
+    gate,
+    sandbox: () => config.sandbox,
+  });
   const stopNotifications = notifyOwner({
     bus,
     project: basename(repoRoot),
@@ -319,6 +339,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       scheduler.start();
       pipeline.start();
       rebaseQueue.start();
+      stuckMonitor.start();
       expireProposals();
       proposalSweep = setInterval(expireProposals, proposalSweepMs);
     },
@@ -342,7 +363,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       signIn.stop();
       stopEventLines();
       stopWaking();
+      stopBlockedAccessOffers();
       stopNotifications();
+      stuckMonitor.stop();
       terminals.dispose();
       runner.dispose();
       api.closeSync();

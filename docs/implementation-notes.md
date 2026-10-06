@@ -1726,3 +1726,64 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Review.** A wake that arrives during a turn survives that turn's continuation (an owner message written as it
   ended) and runs after it. `TerminalView.restore` does nothing once Ink is unmounted, so the kill path during the
   login hand-off leaves the login's output alone.
+
+## m8-stuck-sandbox
+
+- **Where it lives.** `sessions/stuck.ts` (pure `stuckSignals`, `stuckJudgePrompt`, `stuckVerdictSchema`),
+  `sessions/stuck-monitor.ts` (`createStuckMonitor`), `SessionManager.restartStuck`, `stuckRestartPrompt` in
+  `sessions/prompts.ts`, and `src/sandbox.ts` (a new `@mastermind/core/sandbox` export: `deniedHosts`,
+  `hostAllowed`, `allowSandboxHostAction`, `allowSandboxHostDescriber`, `offerBlockedHosts`). The runtime now
+  shares one one-shot runner between the Conductor summariser and the stuck judge.
+- **When a check runs.** The monitor polls every 30 s with the injected clock and checks a running worker or fixer
+  session once `now ≥ startedAt + stuckCheck.after`, then `stuckCheck.every` after each check started. Checks wait
+  while Claude calls aren't allowed (paused, signed out, backing off). A judge that gives no answer just schedules
+  the next check.
+- **Signals.** Stored events are replayed through a fresh stream parser to pair tool uses with their results.
+  Minutes since the last `edit`, `commit` and stored event (or the session start). Commands whose Bash result
+  failed at least 3 times. Files with an Edit or MultiEdit that turns an earlier edit's new text back into its old
+  text ("back and forth"). Successful tool results are not stored, so "a command running long with no output"
+  means the latest stored event is a Bash tool use started at least 5 minutes ago.
+- **Judge model is fixed to `sonnet`** (`stuckJudgeModel`), as decision 17 says, rather than `models.judge`
+  (haiku by default, used for the cheaper flaky and summary calls). No config key was added for it.
+- **Not stuck** appends a `note` event `Checked at 61 min: still making progress` (payload `{type:
+  "stuck_check", minutes, stuck, reason, suggestion}`) to the session, which the timeline shows.
+- **Stuck.** `LiveSession.stopAsStuck` stops the process group (SIGTERM, then SIGKILL after 10 s) with a new
+  `SessionEnd` kind `stuck`; it refuses once the turn's `result` has arrived, since that session is finishing on its
+  own. The settlement counts an attempt like an aborted run (session `failed`, error event `Session failed: stuck:
+  <reason>`, `blocked` at `maxAttempts`). Leftovers are committed as `WIP: uncommitted when the session got stuck`.
+  With attempts left and the task not held, a fresh **worker** (new session id, `worker.md`, even if the stuck one
+  was a fixer) starts in the same tick as the settlement, so the scheduler never sees the task `pending` in
+  between. Its prompt is the task brief, the changed files and the diff against the base commit (first 60 000
+  characters), and "The previous attempt got stuck: <reason>. Try a different approach: <suggestion>.". The chat
+  gets one `system` line `<task> was stuck: <reason>; restarted with a different approach`, with a new event-line
+  kind `stuck` (so `conductor.wakeOnEvents` can name it; it doesn't notify). A held or blocked task gets no restart
+  and no stuck line (blocked already has its own line).
+- **Not handled.** A conflict fixer that gets stuck mid-rebase is committed as is; the next checks run aborts the
+  leftover rebase as before. Checks are in memory, so a restart of mastermind starts the timing over (running
+  sessions are killed on restart anyway).
+- **Blocked access.** `offerBlockedHosts` watches `task.updated`: when a task's attempts go up or it becomes
+  `blocked`, it reads `deny network-outbound <host>:<port>` lines from `<sandbox_violations>` blocks in the failed
+  tool results of all the task's worker and fixer sessions. Each host not already allowed (exact or `*.` wildcard
+  entries) and never offered before (any proposal of action `allowSandboxHost` with that host, so it survives
+  restarts) gets one proposal: `<task> couldn't reach <host>. Allow it for this project?`. Nothing is offered while
+  the sandbox is off. Denials in a run that then succeeds are never offered.
+- **Offers are proposals not tied to a Conductor turn.** `ProposalGate.offer` creates the proposal and posts the
+  `proposal` chat message without the turn ref. `ProposalMeta` gained an optional `confirmLabel`, which the web's
+  decision box uses instead of the question's first word (so the button reads **Allow**, beside **Not now**).
+  The gate takes `describers` for the decision line (`Allow github.com for this project: confirmed by the owner
+  and done.`).
+- **New action `allowSandboxHost {host}`** (`POST /api/sandbox/allowed-domains`) appends the host to
+  `sandbox.allowedDomains` in `.mastermind/config.yaml` and emits `config.updated`. A dedicated append action
+  rather than a `setConfig` proposal, because a list in `setConfig` replaces the whole list, so two pending offers
+  would overwrite each other. Appends are serialised. It is not a Conductor tool (the chat can use `set_config`).
+- **Tests.** `sessions/stuck.test.ts` (the signals); `test/integration/sessions/stuck.test.ts` (with an offset
+  clock: a stuck verdict replaces the session with a fresh one whose prompt has the reason, suggestion and diff,
+  with the WIP commit and the chat line; a not-stuck verdict notes progress at 61 and 81 minutes);
+  `test/integration/sandbox.test.ts` (github.com is offered once across a worker and a fixer failure, pypi.org
+  once, and Allow writes it to config.yaml). The session harness gained `clock`, `bus` and `oneShot`.
+- **Review.** The signals ignore Mastermind's own `stuck_check` notes and the owner's steering, so a "still making
+  progress" note no longer resets "minutes since output" or hides a silent command at the next check. The next
+  check is scheduled when a check starts, so a judge call that throws waits `stuckCheck.every` like one that
+  fails, and a verdict that arrives after the monitor stopped is dropped. A stuck restart that can't begin still
+  emits the requeued task. Violation lines only yield plain host names (no wildcard or bracketed address), so a
+  crafted line can't propose `*.example.com`.

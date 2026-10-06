@@ -63,7 +63,7 @@ export type ChatTurn = z.infer<typeof chatTurnSchema>;
 
 export const eventLineMetaSchema = z.discriminatedUnion("event", [
   z.object({
-    event: eventLineKindSchema.extract(["review", "blocked", "rebased"]),
+    event: eventLineKindSchema.extract(["review", "blocked", "rebased", "stuck"]),
     taskId: z.string(),
   }),
   z.object({ event: z.literal("sign_in") }),

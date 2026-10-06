@@ -48,6 +48,7 @@ export interface ProposalRepository {
   create(proposal: NewProposal): Proposal;
   get(id: number): Proposal | null;
   listPending(): Proposal[];
+  listForAction(action: string): Proposal[];
   decide(id: number, status: Exclude<ProposalStatus, "pending">, result?: JsonValue): Proposal;
 }
 
@@ -141,6 +142,7 @@ export function createProposalRepository({ database, clock }: DbContext): Propos
   const selectPending = database.prepare(
     "SELECT * FROM proposals WHERE status = 'pending' ORDER BY id",
   );
+  const selectForAction = database.prepare("SELECT * FROM proposals WHERE action = ? ORDER BY id");
   const decidePending = database.prepare(
     "UPDATE proposals SET status = ?, decided_at = ?, result = ? WHERE id = ? AND status = 'pending'",
   );
@@ -165,6 +167,10 @@ export function createProposalRepository({ database, clock }: DbContext): Propos
 
     listPending() {
       return readRows("proposals", proposalRowSchema, selectPending.all());
+    },
+
+    listForAction(action) {
+      return readRows("proposals", proposalRowSchema, selectForAction.all(action));
     },
 
     decide(id, status, result = null) {

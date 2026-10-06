@@ -13,10 +13,16 @@ import { fileEdit, ranShellCommand } from "./file-edits.js";
 import { createStreamParser } from "./parser.js";
 import type { ParsedEvent, TokenUsage } from "./parser.js";
 
+export interface StuckVerdict {
+  reason: string;
+  suggestion: string;
+}
+
 export type SessionEnd =
   | { kind: "exited"; outcome: ExitOutcome }
   | { kind: "stopped" }
-  | { kind: "aborted"; reason: string };
+  | { kind: "aborted"; reason: string }
+  | ({ kind: "stuck" } & StuckVerdict);
 
 export interface SessionReport {
   end: SessionEnd;
@@ -30,6 +36,7 @@ export interface LiveSession {
   finished: Promise<SessionReport>;
   steer(text: string): boolean;
   stop(): Promise<void>;
+  stopAsStuck(verdict: StuckVerdict): boolean;
 }
 
 export interface SessionSpawnerOptions {
@@ -219,6 +226,12 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
       finished,
       steer,
       stop: () => stopChild({ kind: "stopped" }),
+      // A session whose turn has already ended is finishing on its own, so it is no longer stuck.
+      stopAsStuck: (verdict) => {
+        if (resultEvent !== null || endedByMastermind !== null) return false;
+        stopChild({ kind: "stuck", ...verdict }).catch(onError);
+        return true;
+      },
     };
   }
 

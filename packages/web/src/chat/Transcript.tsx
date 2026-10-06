@@ -20,6 +20,7 @@ function Entry({ entry }: { entry: ChatEntry }) {
         <DecisionBox
           proposalId={entry.proposalId}
           question={entry.question}
+          confirmLabel={entry.confirmLabel}
           status={entry.status}
           taskId={entry.taskId}
         />

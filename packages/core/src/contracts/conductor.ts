@@ -17,6 +17,7 @@ export const proposalMetaSchema = z.object({
   proposalId: z.int(),
   taskId: z.string().optional(),
   status: proposalStatusSchema.optional(),
+  confirmLabel: z.string().optional(),
 });
 export type ProposalMeta = z.infer<typeof proposalMetaSchema>;
 

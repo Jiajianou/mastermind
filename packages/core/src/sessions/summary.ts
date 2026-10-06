@@ -14,6 +14,8 @@ export function oneLine(text: string): string {
   return line.length > maxSummaryLength ? `${line.slice(0, maxSummaryLength - 1)}…` : line;
 }
 
+export const withoutFinalStop = (text: string): string => text.trim().replace(/[.!\s]+$/u, "");
+
 export function displayPath(path: string, cwd: string | null): string {
   return cwd !== null && path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path;
 }

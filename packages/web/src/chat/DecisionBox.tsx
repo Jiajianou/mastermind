@@ -10,17 +10,24 @@ const outcomeWords: Record<Exclude<ProposalStatus, "pending">, string> = {
   expired: "Expired without an answer",
 };
 
-// Each question is an imperative phrase ("Rebase sched-prio onto main?"), so its verb labels the button.
-const confirmLabel = (question: string): string => /^\p{L}+/u.exec(question)?.[0] ?? "Confirm";
+// A Conductor question is an imperative phrase ("Rebase sched-prio onto main?"), so its verb labels the button.
+const leadingVerb = (question: string): string => /^\p{L}+/u.exec(question)?.[0] ?? "Confirm";
 
 export interface DecisionBoxProps {
   proposalId: number;
   question: string;
+  confirmLabel: string | null;
   status: ProposalStatus;
   taskId: string | null;
 }
 
-export function DecisionBox({ proposalId, question, status, taskId }: DecisionBoxProps) {
+export function DecisionBox({
+  proposalId,
+  question,
+  confirmLabel,
+  status,
+  taskId,
+}: DecisionBoxProps) {
   const api = useApi();
   const dispatch = useDispatch();
   const { busy, failure, run } = useRequest();
@@ -44,7 +51,7 @@ export function DecisionBox({ proposalId, question, status, taskId }: DecisionBo
             disabled={busy}
             onClick={() => void decide("confirmProposal")}
           >
-            {confirmLabel(question)}
+            {confirmLabel ?? leadingVerb(question)}
           </button>
           <button type="button" disabled={busy} onClick={() => void decide("rejectProposal")}>
             Not now

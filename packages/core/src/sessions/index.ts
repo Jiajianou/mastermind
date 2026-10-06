@@ -1,6 +1,6 @@
 export { messageSessionAction, stopSessionAction } from "./actions.js";
 export { classifyExit } from "./exit.js";
-export { createSessionManager, wipMessage } from "./manager.js";
+export { createSessionManager, stuckWipMessage, wipMessage } from "./manager.js";
 export type {
   FixerRequest,
   RoundRecord,
@@ -23,7 +23,14 @@ export { createStreamParser } from "./parser.js";
 export type { EventDetails, ParsedEvent, RateLimit, StreamParser, TokenUsage } from "./parser.js";
 export type { CommitInfo } from "./commits.js";
 export { isInside, pathGuardResponse } from "./path-guard.js";
-export { resumePrompt, taskBrief, workerTaskPrompt } from "./prompts.js";
+export {
+  changeList,
+  resumePrompt,
+  stuckRestartPrompt,
+  taskBrief,
+  workerTaskPrompt,
+} from "./prompts.js";
+export type { StuckRestartMaterial } from "./prompts.js";
 export {
   attributionOff,
   editingSessionSettings,
@@ -36,6 +43,18 @@ export type { SettlementEffect, SettlementInput, WorkerSettlement } from "./sett
 export { runSetupCheck } from "./setup.js";
 export type { SetupCheckRequest } from "./setup.js";
 export { createSessionSpawner } from "./spawner.js";
+export { createStuckMonitor, stuckJudgeModel } from "./stuck-monitor.js";
+export type { StuckMonitor, StuckMonitorOptions } from "./stuck-monitor.js";
+export { stuckJudgePrompt, stuckSignals, stuckVerdictSchema } from "./stuck.js";
+export type {
+  BackAndForthEdit,
+  RepeatedFailure,
+  SilentCommand,
+  StuckJudgeMaterial,
+  StuckJudgement,
+  StuckSignalInput,
+  StuckSignals,
+} from "./stuck.js";
 export type {
   LaunchRequest,
   LiveSession,
@@ -43,6 +62,7 @@ export type {
   SessionReport,
   SessionSpawner,
   SessionSpawnerOptions,
+  StuckVerdict,
 } from "./spawner.js";
 export { jsonSchemaFor, readStructuredOutput, StructuredOutputError } from "./structured-output.js";
 export type { StructuredOutputFailure } from "./structured-output.js";

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   actionErrorCodeSchema,
   actionIssueSchema,
+  allowSandboxHostInputSchema,
   createTasksInputSchema,
   importTasksInputSchema,
   messageSessionInputSchema,
@@ -86,6 +87,7 @@ export interface ActionResults {
   resume: RuntimeFlags;
   setConfig: Config;
   confirmSetup: Config;
+  allowSandboxHost: Config;
   confirmProposal: Proposal;
   rejectProposal: Proposal;
   sendChat: ChatTurn;
@@ -145,6 +147,7 @@ export const actionRoutes = {
   resume: { method: "POST", path: "/api/resume" },
   setConfig: { method: "PATCH", path: "/api/config" },
   confirmSetup: { method: "POST", path: "/api/setup/confirm" },
+  allowSandboxHost: { method: "POST", path: "/api/sandbox/allowed-domains" },
   confirmProposal: {
     method: "POST",
     path: "/api/proposals/:proposalId/confirm",
@@ -184,6 +187,7 @@ export const actionInputSchemas = {
   resume: noInputSchema,
   setConfig: configLayerSchema,
   confirmSetup: confirmSetupInputSchema,
+  allowSandboxHost: allowSandboxHostInputSchema,
   confirmProposal: proposalRefInputSchema,
   rejectProposal: proposalRefInputSchema,
   sendChat: sendChatInputSchema,
@@ -218,6 +222,7 @@ export const actionResultSchemas = {
   resume: runtimeFlagsSchema,
   setConfig: configSchema,
   confirmSetup: configSchema,
+  allowSandboxHost: configSchema,
   confirmProposal: proposalSchema,
   rejectProposal: proposalSchema,
   sendChat: chatTurnSchema,
