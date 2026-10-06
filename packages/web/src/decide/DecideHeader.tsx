@@ -1,7 +1,7 @@
 import type { Task } from "@mastermind/core/contracts";
 import { Link } from "react-router";
 import { count } from "../notes/notes.js";
-import { DecisionButton } from "./DecisionButton.js";
+import { TaskActionButton } from "../components/TaskActionButton.js";
 import { availableDecisions, decideHeadline, requestChangesPath } from "./task-state.js";
 
 function RequestChanges({ task, comments }: { task: Task; comments: number }) {
@@ -28,18 +28,18 @@ export function DecideHeader({ task, comments }: { task: Task; comments: number 
         </p>
       </div>
       <div className="decide-controls">
-        <DecisionButton
+        <TaskActionButton
           taskId={task.id}
-          decision="discard"
+          action="discard"
           label="Discard branch"
           busyLabel="Discarding…"
           failurePrefix="Couldn't discard"
           enabled={decisions.discard}
         />
         <RequestChanges task={task} comments={comments} />
-        <DecisionButton
+        <TaskActionButton
           taskId={task.id}
-          decision="approve"
+          action="approve"
           label="Approve and rebase"
           busyLabel="Approving…"
           failurePrefix="Couldn't approve"

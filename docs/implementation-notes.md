@@ -1539,3 +1539,37 @@ points change or sharpen PLAN.md, and later tasks must follow them:
 - **Shared web app link and API helpers.** `startMastermind` now returns the parsed `webApp` link (origin and
   token), and the Playwright `mastermind` fixture offers `readApi(path, schema)` and `postApi(path, data)`, so specs
   stop copying the link regex and bearer-header helpers.
+
+## m7-tasks-board
+
+- **Where it lives.** `screens/TasksScreen.tsx` composes `src/tasks/`: `board.ts` (pure: columns, status words and
+  tones, unmet deps, Unblocks), `form.ts` (pure: form values to `createTasks`/`updateTask` input), `graph-layout.ts`
+  (pure dagre layout), `location.ts`, and the components `TaskBoard`, `TaskCard`, `DepPills`, `DepList`,
+  `TaskDetails`, `TaskSidePanel` (details, edit and create), `TaskForm`, `TaskGraph` and `StatusWord`. Styles are in
+  `theme/tasks.css`.
+- **Columns.** Remaining is `pending` (held tasks included, tagged Held) in the scheduler's start order (`byPriority`);
+  Running is `running` and `checking`; Rebasing is `review` and `rebasing`, because a task in review is waiting to be
+  approved and rebased; Blocked sits under Rebasing in the same grid column; Done is newest first. Every card and
+  graph node shows a status word (Waiting, Running, Checking, In review, Rebasing, Blocked, Done) with colour only
+  repeating it. Unmet deps (any dep not `done`, or `missing`) show as pills under the card.
+- **Address.** `/tasks?task=<id>` selects a task (Overview already links there), `view=graph` picks the Graph tab and
+  `new` opens the create form, so a reload keeps the screen. The tabs are an ARIA tablist.
+- **Forms.** Both forms validate with the shared `newTaskSchema` and `taskEditSchema` before sending, and show each
+  field's issue under it (list items name the offending entry). Deps and touches accept one entry per line or comma.
+  An edit sends only the fields that changed and makes no request when nothing did. Graph issues (unknown deps,
+  cycles) come back from the action and show as the form's error. The priority schema now says "expected a whole
+  number" instead of zod's default.
+- **Actions.** `decide/DecisionButton` became `components/TaskActionButton`, shared by Test and decide and the side
+  panel's Move to top and Hold/Release; each applies the returned task to the store at once. Done tasks show no
+  actions. The panel links to Review when the task has work to show.
+- **Graph.** `@xyflow/react` 12 with `@dagrejs/dagre` (left to right, dependency before dependent). Nodes are
+  read-only links that select the task; React Flow disables pointer events on nodes that can't be selected or
+  dragged, so each node sets `pointerEvents: "all"` in its style. Edges are drawn only for deps that exist.
+- **Tests.** `tasks/tasks.test.ts` (columns for every status, ordering, unmet deps and Unblocks, the layout's nodes
+  and edges, form validation and changed-only edits). `test/e2e/web/tasks.spec.ts` pauses the scheduler, creates
+  three tasks over the API, then edits one through the form (including a refused save), moves it to the top, holds
+  it, and checks the graph has a node with a status word for every task and opens a task from a node.
+- **Review changes.** An edit diffs the form against the task as it was when Edit was pressed, so a concurrent
+  change to a field the owner didn't touch is no longer overwritten with the stale value. A blocked task's panel
+  also offers **Retry** (the existing `retry` action), since Overview's "is blocked" link lands on this panel and
+  would otherwise be a dead end. Needs you builds that link with `tasksPath`.

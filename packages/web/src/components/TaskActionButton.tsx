@@ -1,11 +1,12 @@
-import { useRequest } from "../components/use-request.js";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
+import { useRequest } from "./use-request.js";
 
-export type TaskDecision = "approve" | "discard" | "rerunChecks";
+export type TaskAction =
+  "approve" | "discard" | "rerunChecks" | "retry" | "moveToTop" | "hold" | "release";
 
-export interface DecisionButtonProps {
+export interface TaskActionButtonProps {
   taskId: string;
-  decision: TaskDecision;
+  action: TaskAction;
   label: string;
   busyLabel: string;
   failurePrefix: string;
@@ -13,23 +14,23 @@ export interface DecisionButtonProps {
   primary?: boolean;
 }
 
-export function DecisionButton({
+export function TaskActionButton({
   taskId,
-  decision,
+  action,
   label,
   busyLabel,
   failurePrefix,
   enabled,
   primary = false,
-}: DecisionButtonProps) {
+}: TaskActionButtonProps) {
   const api = useApi();
   const dispatch = useDispatch();
   const live = useLive((state) => state.connection === "live");
   const { busy, failure, run } = useRequest();
 
-  const decide = () =>
+  const perform = () =>
     run(async () => {
-      const task = await api.act(decision, { taskId });
+      const task = await api.act(action, { taskId });
       dispatch({ type: "task.updated", taskId, task });
     });
 
@@ -39,7 +40,7 @@ export function DecisionButton({
         type="button"
         className={primary ? "primary" : undefined}
         disabled={!live || busy || !enabled}
-        onClick={() => void decide()}
+        onClick={() => void perform()}
       >
         {busy ? busyLabel : label}
       </button>

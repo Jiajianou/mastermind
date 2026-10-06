@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { decidePath } from "../decide/task-state.js";
+import { tasksPath } from "../tasks/location.js";
 import type { NeedsYouItem } from "./board.js";
 import { SidePanel } from "./SidePanel.js";
 
@@ -17,7 +18,7 @@ function NeedsYouEntry({ item }: { item: NeedsYouItem }) {
       );
     case "blocked":
       return (
-        <Link to={`/tasks?task=${encodeURIComponent(item.task.id)}`}>
+        <Link to={tasksPath({ task: item.task.id })}>
           <code>{item.task.id}</code> is blocked
         </Link>
       );

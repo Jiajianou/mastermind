@@ -1,7 +1,7 @@
 import type { Check } from "@mastermind/core/contracts";
 import { durationText } from "../sessions/duration.js";
 import { checkNames, checkStatusWords } from "./checks.js";
-import { DecisionButton } from "./DecisionButton.js";
+import { TaskActionButton } from "../components/TaskActionButton.js";
 
 function CheckRow({ check }: { check: Check }) {
   return (
@@ -31,9 +31,9 @@ export function CheckList({
     <section className="check-list panel" aria-label="Checks">
       <header className="check-list-header">
         <h2>Checks</h2>
-        <DecisionButton
+        <TaskActionButton
           taskId={taskId}
-          decision="rerunChecks"
+          action="rerunChecks"
           label="Re-run all"
           busyLabel="Starting…"
           failurePrefix="Couldn't re-run the checks"

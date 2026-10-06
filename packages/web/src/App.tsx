@@ -9,6 +9,7 @@ import { RequestChangesScreen } from "./screens/RequestChangesScreen.js";
 import { ReviewScreen } from "./screens/ReviewScreen.js";
 import { Screen } from "./screens/Screen.js";
 import { SessionsScreen } from "./screens/SessionsScreen.js";
+import { TasksScreen } from "./screens/TasksScreen.js";
 import { LiveProvider } from "./store/hooks.js";
 import type { Store } from "./store/store.js";
 
@@ -22,7 +23,7 @@ export function App({ store, api }: { store: Store; api: ApiClient }) {
           <Routes>
             <Route index element={<ChatScreen />} />
             <Route path="overview" element={<OverviewScreen />} />
-            <Route path="tasks" element={<Screen title="Tasks" />} />
+            <Route path="tasks" element={<TasksScreen />} />
             <Route path="sessions" element={<SessionsScreen />} />
             <Route path="review" element={<ReviewScreen />} />
             <Route path="review/decide/:taskId" element={<DecideScreen />} />

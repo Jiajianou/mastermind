@@ -56,7 +56,7 @@ const editableTaskFields = {
   acceptance: requiredText,
   touches: z.array(touchPathSchema),
   deps: z.array(taskIdSchema),
-  priority: z.int(),
+  priority: z.int("expected a whole number"),
 };
 
 export const newTaskSchema = z.strictObject({
