@@ -16,8 +16,12 @@ import type { KilledCounts } from "./kill.js";
 import { migrate } from "./migrate.js";
 import { createRebaseRepository } from "./rebases.js";
 import type { RebaseRepository } from "./rebases.js";
-import { createCommentRepository, createFindingRepository } from "./review.js";
-import type { CommentRepository, FindingRepository } from "./review.js";
+import {
+  createCommentRepository,
+  createFindingRepository,
+  createRoundRepository,
+} from "./review.js";
+import type { CommentRepository, FindingRepository, RoundRepository } from "./review.js";
 import { migrations } from "./schema.js";
 import { createSessionRepository } from "./sessions.js";
 import type { SessionRepository } from "./sessions.js";
@@ -34,6 +38,7 @@ export interface Db {
   rebases: RebaseRepository;
   findings: FindingRepository;
   comments: CommentRepository;
+  rounds: RoundRepository;
   chat: ChatRepository;
   proposals: ProposalRepository;
   conductorSessions: ConductorSessionRepository;
@@ -62,6 +67,7 @@ export function openDb(path: string, options: OpenDbOptions = {}): Db {
       rebases: createRebaseRepository(context),
       findings: createFindingRepository(context),
       comments: createCommentRepository(context),
+      rounds: createRoundRepository(context),
       chat: createChatRepository(context),
       proposals: createProposalRepository(context),
       conductorSessions: createConductorSessionRepository(context),

@@ -1413,3 +1413,66 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   until `retitle`'s squashed subject is on main, so the conflict is certain rather than timing-dependent.
 - **No defects found.** The milestone 5 flows behaved as the integration tests describe; nothing in earlier work
   needed changing.
+
+## m6-request-changes
+
+- **Where it lives.** Core: `src/review/` (`notes.ts`: the `addComment`, `updateComment`, `deleteComment` and
+  `dismissFinding` actions; `request-changes.ts`: the `requestChanges` action; `prompts.ts`: the fresh-mode prompt),
+  a new package export `@mastermind/core/review`, and `SessionManager.startRound` in `sessions/manager.ts`. The
+  message builder is `buildChangeRequest` in `contracts/request-changes.ts`, browser-safe, so the server and the
+  web preview run the same function and the preview is the sent text byte for byte. `@mastermind/core/task-files` is
+  a new export so tests can read changes without the whole read model. Web: `notes/` (pure helpers, the notes hook,
+  the zone cards), `request/` (the Request changes screen parts), `decide/NotedFileView.tsx`,
+  `review/view-zones.tsx`, `review/SinceToggle.tsx` and `screens/RequestChangesScreen.tsx`.
+- **A `rounds` table (migration 2).** Section 12 has nowhere to keep what a round sent, which the Rounds history
+  and a restarted round need, so each request-changes round stores `{task_id, round, mode, instruction, message,
+  comment_ids, finding_ids, failing_check_id, start_commit, session_id, created_at}`, unique per task and round.
+  Round 1 (the original run) has no row. The row, the session row, the task's new round and its move to `running`
+  are one transaction; a spawn that fails removes the row and restores the round.
+- **Changes since the previous round.** `round:N` now resolves to the `start_commit` of round N+1 when that round
+  exists: the HEAD the owner reviewed when they asked for changes, which is after the checks rebased the branch.
+  The old rule (the round's latest session `end_commit`) remains for a round with no later one. If main moves
+  during a later round and the checks rebase onto it, the since-round diff includes main's changes too; accepted.
+- **Rounds.** Only a task in `review` can start one (the action and, inside the start transaction, the manager both
+  check, so a stay-current move to `checking` in between can't be overtaken). The round goes up by one, `attempts`
+  resets to 0 so the round gets its full fixer budget, and the session is attempt 1. Like a steering resume, it is
+  an explicit owner instruction, so it starts at once even while work is paused, but it is refused while sign-in is
+  needed or a usage-limit back-off runs. The request is stored as a `steer` event (`Changes requested for round N`)
+  on the new session, since the CLI's replay of a turn's own prompt isn't stored. When the session succeeds the
+  usual settlement moves the task to `checking`, and the checks pipeline runs in full for the new round, ending in
+  `review` or `rebasing` by the usual rules.
+- **Modes.** `resume` continues the task's latest worker or fixer conversation (`--resume <claude_session_id>`, same
+  clone, keeping that session's role and system prompt), and is refused with a 409 when no conversation got going.
+  `fresh` starts a worker with a new session id and `--append-system-prompt-file prompts/refine.md`; its prompt is
+  the task brief, a summary of the branch's changed files against the base commit, and the request. A round whose
+  session later fails without a resumable conversation is restarted by the scheduler with that same fresh prompt
+  (from the stored message), so the request isn't lost. That applies only when the task's clone is reused: after a
+  discard the task starts again from main with the ordinary worker prompt, since the new clone holds none of the
+  earlier rounds' work. Dismissed findings can't be sent.
+- **Message.** The instruction, then the comments sorted by file and line (file, line or range, the excerpt in a
+  fence longer than any backtick run in it, the text), the findings (`- severity · file:line: text`), and the
+  failing check: the round's latest failed check, its last 60 lines of log (read with the same 1 MiB tail the check
+  log route gives the browser). Comments are included by default, findings and the failing check only when ticked.
+- **Comments and findings.** Comments carry the task's current round; they can be added while the task has a
+  workspace and isn't done, and only the current round's can be edited or deleted (earlier ones were sent).
+  Excerpts are cut to 40 lines in the browser. New bus events `comment.updated`, `comment.deleted` and
+  `finding.updated` keep other tabs current; the terminal view ignores them. Routes: `GET/POST
+  /api/tasks/:taskId/comments`, `PATCH/DELETE /api/tasks/:taskId/comments/:commentId` (`ActionRoute.method` gained
+  `DELETE`), `POST /api/findings/:findingId/dismiss`, `POST /api/tasks/:taskId/request-changes`, plus `GET
+  /api/tasks/:taskId/{findings,rounds,notes}`; `notes` returns comments, findings and rounds in one read.
+- **Conductor.** `request_changes` is an ungated action tool (6.3); its action line is `✓ Requested changes on <id>
+  (round N)`. A read tool `get_review_notes` gives the Conductor the comment and finding ids it needs, and the
+  Conductor prompt gained a short paragraph on review rounds.
+- **Monaco view zones.** Each zone's React content is portalled into a node Monaco places under the line, and a
+  `ResizeObserver` keeps the zone's height equal to the content's. Three Monaco details shaped this: a zone of
+  height 0 is `display: none` (so its content could never be measured), so zones start at 48 px; Monaco marks the
+  view-zone layer `aria-hidden`, which would hide real controls from assistive technology, so the attribute is
+  removed from that layer; and the view-lines layer paints above zones and takes their clicks, so our zones get
+  `z-index: 1`. Keydown inside a zone stops at the zone, so typing a comment never reaches editor shortcuts.
+  Selecting lines in the modified side (mouse or keyboard) enables "Comment on lines N–M" in the file header,
+  which opens a draft zone under the selection.
+- **Screens.** Test and decide gained "Request changes · N comments" (a link, enabled only in review), note counts
+  in the file list, comment and finding zones (Delete, Dismiss), and a Changes toggle (All changes / Since round
+  N−1, `?since=round:N`) from round 2 on; the session Review screen has the same toggle for a later-round session.
+  The store's `changes` are keyed by task and `since`, and notes are a new store slice (`notes.loaded`). The Request
+  changes screen is `/review/decide/:taskId/request-changes`; after sending it returns to Test and decide.

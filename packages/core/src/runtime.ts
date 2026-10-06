@@ -27,6 +27,7 @@ import { GitError } from "./git/index.js";
 import type { KillReport, ProcessRegistry } from "./procs.js";
 import { createProposalGate, proposalActions } from "./proposals.js";
 import { approve, createRebaseQueue, discardAction } from "./rebase/index.js";
+import { requestChangesAction, reviewNoteActions } from "./review/index.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
 import { createSessionManager, messageSessionAction, stopSessionAction } from "./sessions/index.js";
@@ -130,6 +131,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   actions.register(stopSessionAction(manager));
   actions.register(messageSessionAction(manager));
+  actions.register(requestChangesAction(manager));
+  for (const action of reviewNoteActions) actions.register(action);
   const launcher = createFixerLauncher({
     db,
     bus,

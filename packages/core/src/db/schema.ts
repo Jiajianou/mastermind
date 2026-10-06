@@ -59,4 +59,14 @@ CREATE INDEX rebases_status ON rebases (status);
 CREATE INDEX proposals_status ON proposals (status);
 `;
 
-export const migrations: readonly string[] = [initialSchema];
+const reviewRounds = `
+CREATE TABLE rounds (
+  id INTEGER PRIMARY KEY, task_id TEXT NOT NULL, round INTEGER NOT NULL,
+  mode TEXT NOT NULL, instruction TEXT NOT NULL, message TEXT NOT NULL,
+  comment_ids TEXT NOT NULL, finding_ids TEXT NOT NULL, failing_check_id INTEGER,
+  start_commit TEXT, session_id INTEGER, created_at TEXT NOT NULL,
+  UNIQUE (task_id, round)
+);
+`;
+
+export const migrations: readonly string[] = [initialSchema, reviewRounds];

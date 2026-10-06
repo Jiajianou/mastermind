@@ -17,9 +17,11 @@ import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
 import type { EventBus } from "@mastermind/core/events";
 import { createGit } from "@mastermind/core/git";
+import type { Git } from "@mastermind/core/git";
 import { createProcessRegistry } from "@mastermind/core/procs";
 import { approve, createRebaseQueue, discardAction } from "@mastermind/core/rebase";
 import type { RebaseQueue } from "@mastermind/core/rebase";
+import { requestChangesAction, reviewNoteActions } from "@mastermind/core/review";
 import { createScheduler } from "@mastermind/core/scheduler";
 import { createSessionManager } from "@mastermind/core/sessions";
 import type { SessionManager } from "@mastermind/core/sessions";
@@ -48,6 +50,7 @@ export interface ChecksHarness {
   repo: TempRepo;
   db: Db;
   bus: EventBus;
+  git: Git;
   config: ResolvedConfig;
   manager: SessionManager;
   pipeline: CheckPipeline;
@@ -144,6 +147,8 @@ export async function checksHarness(options: ChecksHarnessOptions): Promise<Chec
       rerunChecksAction(pipeline),
       approve,
       discardAction({ git, repoRoot: repo.path, config: () => config, clock: systemClock }),
+      requestChangesAction(manager),
+      ...reviewNoteActions,
     ],
   );
   onCleanup(() => {
@@ -163,6 +168,7 @@ export async function checksHarness(options: ChecksHarnessOptions): Promise<Chec
     repo,
     db,
     bus,
+    git,
     config,
     manager,
     pipeline,

@@ -8,13 +8,27 @@ import type { Clock } from "../clock.js";
 import { projectPaths } from "../config/index.js";
 import type { ResolvedConfig } from "../config/index.js";
 import { isEditingRole } from "../contracts/index.js";
-import type { Check, MessageSessionResult, Session, Task } from "../contracts/index.js";
-import type { Db } from "../db/index.js";
+import type {
+  Check,
+  MessageSessionResult,
+  Round,
+  RoundMode,
+  Session,
+  Task,
+} from "../contracts/index.js";
+import type { Db, NewRound } from "../db/index.js";
 import type { Environment } from "../env.js";
 import type { EventBus } from "../events.js";
-import { commitLeftovers, createTaskClone, deleteClone, headCommit } from "../git/index.js";
+import {
+  commitLeftovers,
+  createTaskClone,
+  deleteClone,
+  headCommit,
+  listChanges,
+} from "../git/index.js";
 import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
+import { refinePrompt } from "../review/prompts.js";
 import { canResumeConversation } from "./conversation.js";
 import { resumePrompt, workerTaskPrompt } from "./prompts.js";
 import { editingSessionSettings, workerPermissionOptions } from "./settings.js";
@@ -51,9 +65,28 @@ export interface FixerRequest {
   attempts: number;
 }
 
+export type RoundRecord = Pick<
+  NewRound,
+  "instruction" | "commentIds" | "findingIds" | "failingCheckId"
+>;
+
+export interface RoundRequest {
+  taskId: string;
+  mode: RoundMode;
+  message: string;
+  sent: RoundRecord;
+}
+
+export interface StartedRound {
+  task: Task;
+  session: Session;
+  round: Round;
+}
+
 export interface SessionManager {
   startTask(task: Task): Promise<void>;
   startFixer(request: FixerRequest): Promise<Session>;
+  startRound(request: RoundRequest): Promise<StartedRound>;
   stopSession(sessionId: number): Promise<void>;
   messageSession(sessionId: number, text: string): Promise<MessageSessionResult>;
 }
@@ -61,6 +94,7 @@ export interface SessionManager {
 interface Workspace {
   path: string;
   setup: Check | null;
+  reused: boolean;
 }
 
 interface RunningSession {
@@ -69,6 +103,14 @@ interface RunningSession {
 }
 
 type EditingRole = "worker" | "fixer";
+type SystemPrompt = EditingRole | "refine";
+
+interface Steer {
+  summary: string;
+  text: string;
+}
+
+type NextRound = Omit<NewRound, "taskId" | "round" | "sessionId">;
 
 interface WorkerLaunch {
   role: EditingRole;
@@ -78,7 +120,14 @@ interface WorkerLaunch {
   prompt: (running: Task) => string;
   attempt: number;
   attempts?: number;
-  steer?: string;
+  steer?: Steer;
+  nextRound?: NextRound;
+}
+
+interface Launched {
+  live: LiveSession;
+  task: Task;
+  round: Round | null;
 }
 
 const conflict = (message: string) => ActionError.fromMessage("conflict", message);
@@ -109,7 +158,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
 
   async function prepareWorkspace(task: Task, config: ResolvedConfig): Promise<Workspace> {
     if (task.worktree !== null && existsSync(task.worktree))
-      return { path: task.worktree, setup: null };
+      return { path: task.worktree, setup: null, reused: true };
     const path = join(config.worktreeDir, task.id);
     if (existsSync(path)) await deleteClone(path, config.worktreeDir);
     const clone = await createTaskClone(git, {
@@ -142,7 +191,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         baseCommit: clone.baseCommit,
       }),
     );
-    return { path: clone.path, setup };
+    return { path: clone.path, setup, reused: false };
   }
 
   function editingPrint(
@@ -150,6 +199,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     config: ResolvedConfig,
     worktree: string,
     resume: string | null,
+    systemPrompt: SystemPrompt = role,
   ): PrintOptions {
     const session = resume === null ? { sessionId: randomUUID() } : { resume };
     return {
@@ -159,7 +209,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       replayUserMessages: true,
       ...workerPermissionOptions(config.workerPermissions, config.workerAllowedTools),
       noPermissionPrompts: true,
-      appendSystemPromptFile: join(options.promptsDir, `${role}.md`),
+      appendSystemPromptFile: join(options.promptsDir, `${systemPrompt}.md`),
       settings: editingSessionSettings({
         worktree,
         protectedPaths: [repoRoot, join(options.homeDir, ".claude")],
@@ -176,36 +226,47 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     attempt,
     attempts,
     steer,
+    nextRound,
   }: WorkerLaunch): {
     session: Session;
     task: Task;
+    round: Round | null;
   } {
     const started = db.transaction(() => {
       const task = requireTask(taskId);
+      if (nextRound !== undefined && task.status !== "review")
+        throw conflict(`only a task in review can start a new round; ${taskId} is ${task.status}`);
       assertTransition(taskId, task.status, "running");
+      const roundNumber = nextRound === undefined ? task.round : task.round + 1;
       const session = db.sessions.create({
         role,
         taskId,
-        round: task.round,
+        round: roundNumber,
         attempt,
         claudeSessionId: print.sessionId ?? print.resume ?? null,
         model: print.model,
       });
+      const round =
+        nextRound === undefined
+          ? null
+          : db.rounds.create({ ...nextRound, taskId, round: roundNumber, sessionId: session.id });
       const steered =
         steer === undefined
           ? null
           : db.events.append({
               sessionId: session.id,
               type: "steer",
-              summary: steer,
-              payload: userMessageLine(steer),
+              summary: steer.summary,
+              payload: userMessageLine(steer.text),
             });
       return {
         session,
         steered,
+        round,
         task: db.tasks.update(taskId, {
           status: "running",
           resumeSession: null,
+          round: roundNumber,
           ...(attempts === undefined ? {} : { attempts }),
         }),
       };
@@ -221,18 +282,19 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     return started;
   }
 
-  function abandonStart(session: Session, previous: Task): void {
-    const [ended, task] = db.transaction(
-      () =>
-        [
-          db.sessions.end(session.id, { status: "failed" }),
-          db.tasks.update(previous.id, {
-            status: previous.status,
-            attempts: previous.attempts,
-            resumeSession: previous.resumeSession,
-          }),
-        ] as const,
-    );
+  function abandonStart(session: Session, previous: Task, round: Round | null): void {
+    const [ended, task] = db.transaction(() => {
+      if (round !== null) db.rounds.delete(round.id);
+      return [
+        db.sessions.end(session.id, { status: "failed" }),
+        db.tasks.update(previous.id, {
+          status: previous.status,
+          attempts: previous.attempts,
+          resumeSession: previous.resumeSession,
+          round: previous.round,
+        }),
+      ] as const;
+    });
     bus.emit({ type: "session.ended", sessionId: ended.id, taskId: ended.taskId, session: ended });
     emitTask(task);
   }
@@ -288,8 +350,8 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       redeliver(session, report.undeliveredMessages.join("\n\n"));
   }
 
-  async function launchWorker(launch: WorkerLaunch): Promise<LiveSession> {
-    const { session, task: running } = beginSession(launch);
+  async function launchWorker(launch: WorkerLaunch): Promise<Launched> {
+    const { session, task: running, round } = beginSession(launch);
     let started: LiveSession;
     try {
       started = await spawner.launch({
@@ -299,7 +361,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         print: launch.print,
       });
     } catch (error) {
-      abandonStart(session, launch.task);
+      abandonStart(session, launch.task, round);
       throw error;
     }
     const settled = started.finished
@@ -307,7 +369,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       .then((report) => settle(running.id, started.session, launch.worktree, report))
       .catch(onError);
     live.set(session.id, { session: started, settled });
-    return started;
+    return { live: started, task: running, round };
   }
 
   function serialized<T>(work: () => Promise<T>): Promise<T> {
@@ -338,6 +400,37 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
     );
   }
 
+  // An explicit instruction from the owner starts at once, even while work is paused, unless it couldn't run.
+  function startableWorkspace(task: Task): string {
+    if (task.worktree === null || !existsSync(task.worktree))
+      throw conflict(`the workspace of ${task.id} is gone`);
+    const flags = db.flags.get();
+    if (flags.authRequired) throw conflict("sign-in is needed before a session can start");
+    if (flags.backoffResumeAt !== null && new Date(flags.backoffResumeAt) > clock.now())
+      throw conflict(`work is backing off after a usage limit until ${flags.backoffResumeAt}`);
+    return task.worktree;
+  }
+
+  function latestConversation(task: Task): Session & { claudeSessionId: string } {
+    const latest = db.sessions.listForTask(task.id).findLast(isEditingRole);
+    const claudeSessionId = latest?.claudeSessionId ?? null;
+    if (
+      latest === undefined ||
+      claudeSessionId === null ||
+      !canResumeConversation(db, task.id, claudeSessionId)
+    )
+      throw conflict(`${task.id} has no session to continue; start a fresh session instead`);
+    return { ...latest, claudeSessionId };
+  }
+
+  async function freshRoundPrompt(task: Task, worktree: string, request: string) {
+    const config = options.config();
+    const baseCommit = task.baseCommit ?? (await headCommit(git, worktree));
+    const changes = await listChanges(git, worktree, baseCommit);
+    return (running: Task) =>
+      refinePrompt(running, { mainBranch: config.mainBranch, baseCommit, changes, request });
+  }
+
   function assertResumable(session: Session & { taskId: string }, task: Task): string {
     const id = String(session.id);
     const claudeSessionId = session.claudeSessionId;
@@ -362,13 +455,7 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       case "review":
         break;
     }
-    if (task.worktree === null || !existsSync(task.worktree))
-      throw conflict(`the workspace of ${task.id} is gone`);
-    const flags = db.flags.get();
-    if (flags.authRequired) throw conflict("sign-in is needed before a session can resume");
-    if (flags.backoffResumeAt !== null && new Date(flags.backoffResumeAt) > clock.now())
-      throw conflict(`work is backing off after a usage limit until ${flags.backoffResumeAt}`);
-    return task.worktree;
+    return startableWorkspace(task);
   }
 
   async function resumeWithMessage(
@@ -385,9 +472,9 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       print: editingPrint(role, options.config(), worktree, session.claudeSessionId),
       prompt: () => text,
       attempt: session.attempt ?? task.attempts + 1,
-      steer: text,
+      steer: { summary: text, text },
     });
-    return { delivery: "resumed", session: started.session };
+    return { delivery: "resumed", session: started.live.session };
   }
 
   async function deliver(sessionId: number, text: string): Promise<MessageSessionResult> {
@@ -427,13 +514,27 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
       assertTransition(pending.id, pending.status, "running");
       const workspace = await prepareWorkspace(pending, config);
       const task = requireTask(scheduled.id);
+      const resume = task.resumeSession;
+      // A later round that has to start over in its own clone (its session failed) starts fresh from the round's
+      // request; a new clone (after a discard) holds none of that work, so it starts the task from the top.
+      const round = resume === null && workspace.reused ? db.rounds.get(task.id, task.round) : null;
       await launchWorker({
         role: "worker",
         task,
         worktree: workspace.path,
-        print: editingPrint("worker", config, workspace.path, task.resumeSession),
-        prompt: (running) =>
-          task.resumeSession === null ? workerTaskPrompt(running, workspace.setup) : resumePrompt,
+        print: editingPrint(
+          "worker",
+          config,
+          workspace.path,
+          resume,
+          round === null ? "worker" : "refine",
+        ),
+        prompt:
+          resume !== null
+            ? () => resumePrompt
+            : round === null
+              ? (running) => workerTaskPrompt(running, workspace.setup)
+              : await freshRoundPrompt(task, workspace.path, round.message),
         attempt: task.attempts + 1,
       });
     },
@@ -453,7 +554,39 @@ export function createSessionManager(options: SessionManagerOptions): SessionMan
         attempt: attempts + 1,
         attempts,
       });
-      return started.session;
+      return started.live.session;
+    },
+
+    async startRound({ taskId, mode, message, sent }) {
+      const task = requireTask(taskId);
+      if (task.status !== "review")
+        throw conflict(`only a task in review can start a new round; ${taskId} is ${task.status}`);
+      const worktree = startableWorkspace(task);
+      const resumed = mode === "resume" ? latestConversation(task) : null;
+      const role = resumed?.role === "fixer" ? "fixer" : "worker";
+      const config = options.config();
+      const startCommit = await headCommit(git, worktree);
+      const next = String(task.round + 1);
+      const started = await launchWorker({
+        role,
+        task,
+        worktree,
+        print: editingPrint(
+          role,
+          config,
+          worktree,
+          resumed?.claudeSessionId ?? null,
+          resumed === null ? "refine" : role,
+        ),
+        prompt: resumed === null ? await freshRoundPrompt(task, worktree, message) : () => message,
+        attempt: 1,
+        attempts: 0,
+        steer: { summary: `Changes requested for round ${next}`, text: message },
+        nextRound: { ...sent, mode, message, startCommit },
+      });
+      const { round } = started;
+      if (round === null) throw new Error(`round ${next} of ${taskId} was not recorded`);
+      return { task: started.task, session: started.live.session, round };
     },
 
     async stopSession(sessionId) {

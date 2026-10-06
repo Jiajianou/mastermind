@@ -263,6 +263,9 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
         return [];
       case "file.changed":
       case "workspace.changed":
+      case "comment.updated":
+      case "comment.deleted":
+      case "finding.updated":
       case "terminal.output":
       case "chat.message":
       case "chat.delta":

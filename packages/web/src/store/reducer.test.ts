@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   at,
   check,
+  comment,
   config,
+  finding,
   message,
+  notes,
   session,
   sessionEvent,
   snapshot,
@@ -153,7 +156,7 @@ const cases: Case[] = [
     before: stateWith({ changes: { beta: { kind: "failed", message: "gone" } } }),
     action: {
       type: "changes.loaded",
-      taskId: "alpha",
+      key: "alpha",
       view: {
         kind: "loaded",
         changes: { taskId: "alpha", since: "base", fromCommit: "abc1234", files: [] },
@@ -162,6 +165,43 @@ const cases: Case[] = [
     after: (next, before) => {
       expect(next.changes.alpha?.kind).toBe("loaded");
       expect(next.changes.beta).toBe(before.changes.beta);
+    },
+  },
+  {
+    name: "notes.loaded stores a task's comments, findings and rounds",
+    before: stateWith({}),
+    action: { type: "notes.loaded", notes: notes({ comments: [comment(1)] }) },
+    after: (next) => {
+      expect(next.notes.alpha?.comments).toEqual([comment(1)]);
+    },
+  },
+  {
+    name: "comment.updated adds or replaces a comment in id order, for tasks whose notes were read",
+    before: stateWith({ notes: { alpha: notes({ comments: [comment(1), comment(3)] }) } }),
+    action: { type: "comment.updated", taskId: "alpha", comment: comment(2, { text: "new" }) },
+    after: (next) => {
+      expect(next.notes.alpha?.comments.map(({ id }) => id)).toEqual([1, 2, 3]);
+      const unread = stateWith({});
+      expect(
+        reduce(unread, { type: "comment.updated", taskId: "alpha", comment: comment(1) }),
+      ).toBe(unread);
+    },
+  },
+  {
+    name: "comment.deleted removes the comment",
+    before: stateWith({ notes: { alpha: notes({ comments: [comment(1), comment(2)] }) } }),
+    action: { type: "comment.deleted", taskId: "alpha", commentId: 1 },
+    after: (next) => {
+      expect(next.notes.alpha?.comments).toEqual([comment(2)]);
+    },
+  },
+  {
+    name: "finding.updated replaces the finding, such as one just dismissed",
+    before: stateWith({ notes: { alpha: notes({ findings: [finding(1), finding(2)] }) } }),
+    action: { type: "finding.updated", taskId: "alpha", finding: finding(2, { dismissed: true }) },
+    after: (next, before) => {
+      expect(next.notes.alpha?.findings[1]?.dismissed).toBe(true);
+      expect(next.notes.alpha?.findings[0]).toBe(before.notes.alpha?.findings[0]);
     },
   },
   {
@@ -413,6 +453,7 @@ describe("store reducer", () => {
       "snapshot.loaded",
       "session.history.loaded",
       "changes.loaded",
+      "notes.loaded",
       "checks.loaded",
       "connection.changed",
       "flags.changed",

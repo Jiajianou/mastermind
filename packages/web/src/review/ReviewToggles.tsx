@@ -9,7 +9,12 @@ interface ToggleProps<Value extends string> {
   onChange: (value: Value) => void;
 }
 
-function Toggle<Value extends string>({ label, options, value, onChange }: ToggleProps<Value>) {
+export function Toggle<Value extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: ToggleProps<Value>) {
   return (
     <div className="toggle" role="group" aria-label={label}>
       {options.map(([option, text]) => (

@@ -13,7 +13,14 @@ export type { KilledCounts } from "./kill.js";
 export { openDb } from "./open.js";
 export type { Db, OpenDbOptions } from "./open.js";
 export type { NewRebase, RebaseRepository } from "./rebases.js";
-export type { CommentRepository, FindingRepository, NewComment, NewFinding } from "./review.js";
+export type {
+  CommentRepository,
+  FindingRepository,
+  NewComment,
+  NewFinding,
+  NewRound,
+  RoundRepository,
+} from "./review.js";
 export type {
   NewSession,
   SessionEnding,

@@ -60,7 +60,7 @@ describe("decide header", () => {
     {
       status: "review",
       headline: "Ready for review · round 2",
-      enabled: ["approve", "discard", "rerun"],
+      enabled: ["approve", "discard", "rerun", "requestChanges"],
     },
     { status: "checking", headline: "Checks running · round 2", enabled: [] },
     { status: "rebasing", headline: "Rebasing onto main · round 2", enabled: [] },

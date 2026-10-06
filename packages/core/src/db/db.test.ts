@@ -71,6 +71,7 @@ describe("openDb", () => {
       "findings",
       "proposals",
       "rebases",
+      "rounds",
       "runtime_flags",
       "schema_version",
       "sessions",
@@ -81,7 +82,7 @@ describe("openDb", () => {
 
     const reopened = useDb(path);
     expect(reopened.tasks.get("lexer")?.title).toBe("Lexer");
-    expect(rawQuery(path, "SELECT version FROM schema_version")).toEqual([{ version: 1 }]);
+    expect(rawQuery(path, "SELECT version FROM schema_version")).toEqual([{ version: 2 }]);
   });
 
   it("refuses a database written by a newer schema", async () => {

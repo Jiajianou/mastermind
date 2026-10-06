@@ -3,6 +3,7 @@ import { chatMessageSchema, proposalSchema } from "./chat.js";
 import { checkSchema, rebaseSchema } from "./checks.js";
 import { isoTimestampSchema } from "./common.js";
 import { configSchema } from "./config.js";
+import { commentSchema, findingSchema } from "./review.js";
 import { sessionEventSchema, sessionSchema } from "./sessions.js";
 import { taskSchema } from "./tasks.js";
 
@@ -40,6 +41,9 @@ export const busEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("check.updated"), taskId: z.string(), check: checkSchema }),
   z.object({ type: z.literal("rebase.updated"), taskId: z.string(), rebase: rebaseSchema }),
+  z.object({ type: z.literal("comment.updated"), taskId: z.string(), comment: commentSchema }),
+  z.object({ type: z.literal("comment.deleted"), taskId: z.string(), commentId: z.int() }),
+  z.object({ type: z.literal("finding.updated"), taskId: z.string(), finding: findingSchema }),
   z.object({ type: z.literal("main.moved"), branch: z.string(), commit: z.string() }),
   z.object({ type: z.literal("checkout.updated"), branch: z.string(), onMain: z.boolean() }),
   z.object({

@@ -51,12 +51,6 @@
   padding: 12px;
 }
 
-.decide-body .file-list {
-  grid-area: files;
-  max-height: calc(100vh - 460px);
-  min-height: 160px;
-}
-
 .decide-body .file-view,
 .decide-diff {
   grid-area: diff;
@@ -206,7 +200,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .decide-body .file-list {
+  .decide-files .file-list {
     max-height: 280px;
   }
 }

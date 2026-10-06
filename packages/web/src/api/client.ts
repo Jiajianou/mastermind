@@ -14,6 +14,7 @@ import type {
   CheckLog,
   FileContent,
   FileSide,
+  ReviewNotes,
   SessionEvent,
   TaskChanges,
   TaskTree,
@@ -73,10 +74,11 @@ export type ActionArgs<Name extends ActionName> = undefined extends ActionInputs
 export interface ApiClient {
   read<Name extends ReadName>(name: Name, query?: ReadQuery): Promise<ReadResults[Name]>;
   sessionEvents(sessionId: number): Promise<SessionEvent[]>;
-  changes(taskId: string): Promise<TaskChanges>;
-  file(taskId: string, path: string, side: FileSide): Promise<FileContent>;
+  changes(taskId: string, since?: string): Promise<TaskChanges>;
+  file(taskId: string, path: string, side: FileSide, since?: string): Promise<FileContent>;
   tree(taskId: string): Promise<TaskTree>;
   checks(taskId: string): Promise<Check[]>;
+  notes(taskId: string): Promise<ReviewNotes>;
   checkLog(checkId: number): Promise<CheckLog>;
   act<Name extends ActionName>(name: Name, ...args: ActionArgs<Name>): Promise<ActionResults[Name]>;
 }
@@ -98,7 +100,9 @@ function routeAction(name: ActionName, input: object): { path: string; body: Req
   return { path, body };
 }
 
-function taskPath(taskId: string, resource: "changes" | "file" | "tree" | "checks"): string {
+type TaskResource = "changes" | "file" | "tree" | "checks" | "notes";
+
+function taskPath(taskId: string, resource: TaskResource): string {
   return `/api/tasks/${encodeURIComponent(taskId)}/${resource}`;
 }
 
@@ -108,7 +112,7 @@ function failureMessage(method: string, path: string, status: number, body: ApiE
 
 export function createApiClient(token: string | null): ApiClient {
   async function request<Result>(
-    method: "GET" | "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH" | "DELETE",
     path: string,
     schema: z.ZodType<Result>,
     body?: RequestBody,
@@ -162,12 +166,13 @@ export function createApiClient(token: string | null): ApiClient {
       return request("GET", path, apiResponseSchemas.sessionEvents);
     },
 
-    changes(taskId) {
-      return request("GET", taskPath(taskId, "changes"), apiResponseSchemas.changes);
+    changes(taskId, since = "base") {
+      const search = new URLSearchParams({ since }).toString();
+      return request("GET", `${taskPath(taskId, "changes")}?${search}`, apiResponseSchemas.changes);
     },
 
-    file(taskId, path, side) {
-      const search = new URLSearchParams({ path, side }).toString();
+    file(taskId, path, side, since = "base") {
+      const search = new URLSearchParams({ path, side, since }).toString();
       return request("GET", `${taskPath(taskId, "file")}?${search}`, apiResponseSchemas.file);
     },
 
@@ -177,6 +182,10 @@ export function createApiClient(token: string | null): ApiClient {
 
     checks(taskId) {
       return request("GET", taskPath(taskId, "checks"), apiResponseSchemas.checks);
+    },
+
+    notes(taskId) {
+      return request("GET", taskPath(taskId, "notes"), apiResponseSchemas.notes);
     },
 
     checkLog(checkId) {

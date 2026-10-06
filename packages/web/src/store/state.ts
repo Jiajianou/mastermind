@@ -9,6 +9,7 @@ import type {
   IsoTimestamp,
   Proposal,
   Rebase,
+  ReviewNotes,
   RuntimeFlags,
   Session,
   SessionEvent,
@@ -45,6 +46,9 @@ export interface Workspace {
 export type ChangesView =
   { kind: "loaded"; changes: TaskChanges } | { kind: "failed"; message: string };
 
+export const changesKey = (taskId: string, since: string): string =>
+  since === "base" ? taskId : `${taskId}@${since}`;
+
 export interface LiveState {
   connection: Connection;
   instance: InstanceInfo | null;
@@ -57,6 +61,7 @@ export interface LiveState {
   editing: Readonly<Record<number, string>>;
   workspaces: Readonly<Record<string, Workspace>>;
   changes: Readonly<Record<string, ChangesView>>;
+  notes: Readonly<Record<string, ReviewNotes>>;
   checks: Readonly<Record<string, Readonly<Record<number, Check>>>>;
   rebases: Readonly<Record<string, Rebase>>;
   terminals: Readonly<Record<string, TerminalState>>;
@@ -77,7 +82,8 @@ export type StoreAction =
   | BusEvent
   | { type: "snapshot.loaded"; snapshot: Snapshot }
   | { type: "session.history.loaded"; sessionId: number; events: readonly SessionEvent[] }
-  | { type: "changes.loaded"; taskId: string; view: ChangesView }
+  | { type: "changes.loaded"; key: string; view: ChangesView }
+  | { type: "notes.loaded"; notes: ReviewNotes }
   | { type: "checks.loaded"; taskId: string; checks: readonly Check[] }
   | { type: "connection.changed"; connection: Connection }
   | { type: "flags.changed"; flags: RuntimeFlags };
@@ -94,6 +100,7 @@ export const initialState: LiveState = {
   editing: {},
   workspaces: {},
   changes: {},
+  notes: {},
   checks: {},
   rebases: {},
   terminals: {},

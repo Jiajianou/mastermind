@@ -14,9 +14,13 @@ import type {
   ChatView,
   Check,
   CheckLog,
+  Comment,
   Config,
   FileContent,
+  Finding,
   InstanceInfo,
+  ReviewNotes,
+  Round,
   Session,
   SessionEvent,
   TaskChanges,
@@ -60,6 +64,26 @@ export function registerReadRoutes(app: FastifyInstance, reads: ReadModels): voi
   app.get("/api/tasks/:taskId/checks", (request): Check[] => {
     const { taskId } = parseInput(taskParamsSchema, request.params);
     return reads.checks(taskId);
+  });
+
+  app.get("/api/tasks/:taskId/comments", (request): Comment[] => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.comments(taskId);
+  });
+
+  app.get("/api/tasks/:taskId/findings", (request): Finding[] => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.findings(taskId);
+  });
+
+  app.get("/api/tasks/:taskId/rounds", (request): Round[] => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.rounds(taskId);
+  });
+
+  app.get("/api/tasks/:taskId/notes", (request): ReviewNotes => {
+    const { taskId } = parseInput(taskParamsSchema, request.params);
+    return reads.reviewNotes(taskId);
   });
 
   app.get("/api/checks/:checkId/log", (request): Promise<CheckLog> => {

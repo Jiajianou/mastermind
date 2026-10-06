@@ -1,12 +1,14 @@
 import type { TaskChanges } from "@mastermind/core/contracts";
 import { useSessionEvents } from "../sessions/use-session-events.js";
+import { ChangesLoaders } from "./ChangesLoaders.js";
 import { changedFileGroups, defaultFile, treeFileGroups } from "./file-list.js";
 import type { DirectoryGroup } from "./file-list.js";
 import { FileList } from "./FileList.js";
 import { FileView } from "./FileView.js";
-import { reviewPath } from "./location.js";
+import { changesSince, reviewPath } from "./location.js";
 import type { ReviewLocation } from "./location.js";
 import type { TaskSession } from "./selection.js";
+import { SinceToggle } from "./SinceToggle.js";
 import { useLatestEdit } from "./use-editing.js";
 import { useChangesView } from "./use-task-changes.js";
 import { useTaskTree } from "./use-task-tree.js";
@@ -27,7 +29,7 @@ function ReviewBody({
 }: FilesProps & { groups: readonly DirectoryGroup[]; empty: string }) {
   const file = location.file ?? defaultFile(groups);
   const linkTo = (path: string) =>
-    reviewPath({ session: session.id, mode: location.mode, file: path });
+    reviewPath({ session: session.id, mode: location.mode, file: path, since: location.since });
   return (
     <div className="review-body">
       <FileList groups={groups} selected={file} linkTo={linkTo} empty={empty} />
@@ -39,6 +41,7 @@ function ReviewBody({
           path={file}
           change={changes.files.find((change) => change.path === file) ?? null}
           fromCommit={changes.fromCommit}
+          since={changes.since}
           mode={location.mode}
         />
       )}
@@ -66,16 +69,40 @@ export function SessionReview({
   session: TaskSession;
   location: ReviewLocation;
 }) {
-  const changes = useChangesView(session.taskId);
+  const round = session.round ?? 1;
+  const since = location.mode === "diff" ? changesSince(location.since, round) : "base";
+  const changes = useChangesView(session.taskId, since);
   const { events } = useSessionEvents(session.id);
   const latestEdit = useLatestEdit(session.id, events);
-  if (changes === undefined) return <p className="review-message muted">Loading changes…</p>;
-  if (changes.kind === "failed") return <p className="review-message">{changes.message}</p>;
-  const props = {
-    session,
-    changes: changes.changes,
-    editing: session.status === "running" ? latestEdit : null,
-    location,
-  };
-  return location.mode === "diff" ? <ChangedFiles {...props} /> : <AllFiles {...props} />;
+  return (
+    <>
+      {since !== "base" && <ChangesLoaders taskIds={[session.taskId]} since={since} />}
+      {location.mode === "diff" && (
+        <SinceToggle
+          round={round}
+          since={since}
+          pathFor={(value) => reviewPath({ session: session.id, since: value })}
+        />
+      )}
+      {changes === undefined ? (
+        <p className="review-message muted">Loading changes…</p>
+      ) : changes.kind === "failed" ? (
+        <p className="review-message">{changes.message}</p>
+      ) : location.mode === "diff" ? (
+        <ChangedFiles
+          session={session}
+          changes={changes.changes}
+          editing={session.status === "running" ? latestEdit : null}
+          location={location}
+        />
+      ) : (
+        <AllFiles
+          session={session}
+          changes={changes.changes}
+          editing={session.status === "running" ? latestEdit : null}
+          location={location}
+        />
+      )}
+    </>
+  );
 }

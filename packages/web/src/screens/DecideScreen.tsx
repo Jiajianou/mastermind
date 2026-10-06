@@ -7,6 +7,9 @@ import { DecideHeader } from "../decide/DecideHeader.js";
 import { FailedTest } from "../decide/FailedTest.js";
 import { availableDecisions, hasWorkToShow } from "../decide/task-state.js";
 import { useTaskChecks } from "../decide/use-task-checks.js";
+import { roundNotes } from "../notes/notes.js";
+import { useTaskNotes } from "../notes/use-task-notes.js";
+import { changesSince } from "../review/location.js";
 import { useLive } from "../store/hooks.js";
 
 function noWorkText(task: Task): string {
@@ -15,11 +18,18 @@ function noWorkText(task: Task): string {
     : "This task has no work to review: it starts from main when it next runs.";
 }
 
-function Decide({ task, file }: { task: Task; file: string | null }) {
+function Decide({ task, file, since }: { task: Task; file: string | null; since: string }) {
   const { checks, failure } = useTaskChecks(task.id);
+  const { notes, failure: notesFailure } = useTaskNotes(task.id);
+  const current = roundNotes(notes, task.round);
   return (
     <>
-      <DecideHeader task={task} />
+      <DecideHeader task={task} comments={current.comments.length} />
+      {notesFailure !== null && (
+        <p role="alert" className="control-failure">
+          Couldn&apos;t read the review notes: {notesFailure}
+        </p>
+      )}
       <div className="decide-body">
         <CheckList
           taskId={task.id}
@@ -28,7 +38,7 @@ function Decide({ task, file }: { task: Task; file: string | null }) {
           failure={failure}
         />
         {hasWorkToShow(task) ? (
-          <DecideFiles taskId={task.id} file={file} />
+          <DecideFiles task={task} file={file} since={since} notes={current} />
         ) : (
           <p className="decide-diff panel editor-message muted">{noWorkText(task)}</p>
         )}
@@ -53,7 +63,12 @@ export function DecideScreen() {
           {live ? `There is no task called ${taskId}.` : "Loading…"}
         </p>
       ) : (
-        <Decide key={task.id} task={task} file={params.get("file")} />
+        <Decide
+          key={task.id}
+          task={task}
+          file={params.get("file")}
+          since={changesSince(params.get("since"), task.round)}
+        />
       )}
     </section>
   );

@@ -11,6 +11,8 @@ import {
   messageSessionResultSchema,
   noInputSchema,
   proposePlanInputSchema,
+  requestChangesInputSchema,
+  requestChangesResultSchema,
   sessionEventsInputSchema,
   sessionRefInputSchema,
   sessionsQuerySchema,
@@ -182,6 +184,20 @@ export const actionTools: readonly ActionTool[] = [
     },
   }),
   actionTool({
+    name: "request_changes",
+    action: "requestChanges",
+    input: requestChangesInputSchema,
+    description:
+      "Send a task that is waiting in review back for changes, as its next review round. instruction is the owner's request in their own words. commentIds and findingIds add the owner's line comments and the reviewer's findings (see get_review_notes); includeFailingTest adds the log of the round's latest failed check. mode resume (the default) continues the task's latest session, which keeps what it learned and suits small follow-ups; fresh starts a new worker from the task, a summary of the diff and the request, which suits work that went the wrong way. When the round ends, the checks run again. Only for a task in review.",
+    describe: ({ taskId }) => `Request changes on ${taskId}`,
+    done: ({ taskId }, result) => {
+      const started = requestChangesResultSchema.safeParse(result);
+      return started.success
+        ? `Requested changes on ${taskId} (round ${String(started.data.round.round)})`
+        : `Requested changes on ${taskId}`;
+    },
+  }),
+  actionTool({
     name: "approve_rebase",
     action: "approve",
     input: taskRefInputSchema,
@@ -253,6 +269,13 @@ const readTools: readonly ReadTool[] = [
     description:
       "The files a task has changed in its workspace, committed or not, including new untracked files: path, status (added, modified, deleted, or renamed with oldPath), added and deleted line counts (null for binary files), and whether the change is still uncommitted. since is base (the default: everything since the task branched off main) or round:N (only what changed after review round N ended).",
     read: (reads, input) => reads.changes(input),
+  }),
+  readTool({
+    name: "get_review_notes",
+    input: taskRefInputSchema,
+    description:
+      "A task's review notes: the owner's line comments and the reviewer's findings, each with the round it belongs to (dismissed findings are marked), the task's current round, and the earlier request_changes rounds with the message each one sent.",
+    read: (reads, { taskId }) => reads.reviewNotes(taskId),
   }),
   readTool({
     name: "get_check_log",

@@ -41,7 +41,11 @@ function workspaceOf(db: Db, taskId: string): Workspace {
   return { worktree, baseCommit };
 }
 
+// Round N ends where round N+1 was requested: that is the state the owner reviewed, after the checks had rebased it.
+// A round with no later one yet ends at its latest session's end commit.
 function roundEndCommit(db: Db, taskId: string, round: number): string {
+  const reviewed = db.rounds.get(taskId, round + 1)?.startCommit ?? null;
+  if (reviewed !== null) return reviewed;
   const endCommit = db.sessions
     .listForTask(taskId)
     .flatMap((session) =>

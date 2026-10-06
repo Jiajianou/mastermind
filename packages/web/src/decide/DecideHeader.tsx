@@ -1,8 +1,23 @@
 import type { Task } from "@mastermind/core/contracts";
+import { Link } from "react-router";
+import { count } from "../notes/notes.js";
 import { DecisionButton } from "./DecisionButton.js";
-import { availableDecisions, decideHeadline } from "./task-state.js";
+import { availableDecisions, decideHeadline, requestChangesPath } from "./task-state.js";
 
-export function DecideHeader({ task }: { task: Task }) {
+function RequestChanges({ task, comments }: { task: Task; comments: number }) {
+  const label = `Request changes · ${count(comments, "comment")}`;
+  return availableDecisions(task.status).requestChanges ? (
+    <Link className="button-link" to={requestChangesPath(task.id)}>
+      {label}
+    </Link>
+  ) : (
+    <button type="button" disabled>
+      {label}
+    </button>
+  );
+}
+
+export function DecideHeader({ task, comments }: { task: Task; comments: number }) {
   const decisions = availableDecisions(task.status);
   return (
     <header className="decide-header panel">
@@ -21,6 +36,7 @@ export function DecideHeader({ task }: { task: Task }) {
           failurePrefix="Couldn't discard"
           enabled={decisions.discard}
         />
+        <RequestChanges task={task} comments={comments} />
         <DecisionButton
           taskId={task.id}
           decision="approve"

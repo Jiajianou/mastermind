@@ -38,7 +38,7 @@ export const taskIdSchema = z
   .max(64, "expected at most 64 characters")
   .regex(/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/, "expected a slug such as ext2-driver");
 
-function isRepoRelativePath(path: string): boolean {
+export function isRepoRelativePath(path: string): boolean {
   return !path.startsWith("/") && !path.split("/").includes("..");
 }
 

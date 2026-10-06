@@ -2,7 +2,10 @@ import type {
   ApiSummary,
   ChatMessage,
   Check,
+  Comment,
   Config,
+  Finding,
+  ReviewNotes,
   Session,
   SessionEvent,
   Task,
@@ -93,6 +96,38 @@ export function check(id: number, change: Partial<Check> = {}): Check {
     durationMs: null,
     ...change,
   };
+}
+
+export function comment(id: number, change: Partial<Comment> = {}): Comment {
+  return {
+    id,
+    taskId: "alpha",
+    round: 1,
+    file: "src/app.ts",
+    lineStart: 2,
+    lineEnd: 2,
+    excerpt: "const a = 1;",
+    text: `comment ${String(id)}`,
+    ...change,
+  };
+}
+
+export function finding(id: number, change: Partial<Finding> = {}): Finding {
+  return {
+    id,
+    taskId: "alpha",
+    round: 1,
+    file: "src/app.ts",
+    line: 3,
+    text: `finding ${String(id)}`,
+    severity: "minor",
+    dismissed: false,
+    ...change,
+  };
+}
+
+export function notes(change: Partial<ReviewNotes> = {}): ReviewNotes {
+  return { taskId: "alpha", round: 1, comments: [], findings: [], rounds: [], ...change };
 }
 
 export function summary(change: Partial<ApiSummary> = {}): ApiSummary {

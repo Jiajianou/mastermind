@@ -20,6 +20,7 @@ export interface Decisions {
   approve: boolean;
   discard: boolean;
   rerun: boolean;
+  requestChanges: boolean;
 }
 
 export function availableDecisions(status: TaskStatus): Decisions {
@@ -27,16 +28,24 @@ export function availableDecisions(status: TaskStatus): Decisions {
     approve: status === "review",
     discard: status === "review" || status === "blocked",
     rerun: status === "review",
+    requestChanges: status === "review",
   };
 }
 
 export const hasWorkToShow = ({ status, worktree }: Pick<Task, "status" | "worktree">): boolean =>
   worktree !== null && status !== "done";
 
-export function decidePath(taskId: string, file: string | null = null): string {
+export function decidePath(taskId: string, file: string | null = null, since = "base"): string {
   const path = `/review/decide/${encodeURIComponent(taskId)}`;
-  return file === null ? path : `${path}?${new URLSearchParams({ file }).toString()}`;
+  const params = new URLSearchParams();
+  if (since !== "base") params.set("since", since);
+  if (file !== null) params.set("file", file);
+  const search = params.toString();
+  return search === "" ? path : `${path}?${search}`;
 }
+
+export const requestChangesPath = (taskId: string): string =>
+  `${decidePath(taskId)}/request-changes`;
 
 export function taskReviewPath(taskId: string, status: TaskStatus | undefined): string {
   return status === "review" ? decidePath(taskId) : `/review?task=${encodeURIComponent(taskId)}`;

@@ -23,11 +23,13 @@
     "./proposals": "./src/proposals.ts",
     "./rebase": "./src/rebase/index.ts",
     "./recovery": "./src/recovery.ts",
+    "./review": "./src/review/index.ts",
     "./runtime": "./src/runtime.ts",
     "./scheduler": "./src/scheduler.ts",
     "./sessions": "./src/sessions/index.ts",
     "./startup": "./src/startup/index.ts",
-    "./status": "./src/status.ts"
+    "./status": "./src/status.ts",
+    "./task-files": "./src/task-files.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

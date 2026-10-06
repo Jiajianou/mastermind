@@ -25,7 +25,7 @@ function LatestDiff({
     changes?.kind === "loaded"
       ? (changes.changes.files.find((file) => file.path === path) ?? null)
       : null;
-  const sides = useFileSides(diffTarget(taskId, path, change), changeRefresh(change));
+  const sides = useFileSides(diffTarget(taskId, path, change, "base"), changeRefresh(change));
   return (
     <>
       <p className="pane-file">

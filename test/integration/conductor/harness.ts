@@ -26,6 +26,7 @@ import type { ProcessRegistry } from "@mastermind/core/procs";
 import { createProposalGate, proposalActions } from "@mastermind/core/proposals";
 import { createScheduler } from "@mastermind/core/scheduler";
 import type { Scheduler } from "@mastermind/core/scheduler";
+import { requestChangesAction, reviewNoteActions } from "@mastermind/core/review";
 import { messageSessionAction } from "@mastermind/core/sessions";
 import type { SessionManager } from "@mastermind/core/sessions";
 import { z } from "zod";
@@ -68,6 +69,7 @@ export interface ConductorHarnessOptions {
   scenario: Scenario;
   idleMs?: number;
   messageSession?: SessionManager["messageSession"];
+  startRound?: SessionManager["startRound"];
 }
 
 const apiErrorSchema = z.object({ message: z.string() });
@@ -105,6 +107,10 @@ export async function conductorHarness(
   );
   if (options.messageSession !== undefined)
     actions.register(messageSessionAction({ messageSession: options.messageSession }));
+  if (options.startRound !== undefined) {
+    actions.register(requestChangesAction({ startRound: options.startRound }));
+    for (const action of reviewNoteActions) actions.register(action);
+  }
   const scheduler = createScheduler({
     db,
     bus,

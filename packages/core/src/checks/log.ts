@@ -1,5 +1,7 @@
 import { open } from "node:fs/promises";
 
+export const checkLogMaxBytes = 1024 * 1024;
+
 export interface LogTail {
   text: string;
   truncated: boolean;

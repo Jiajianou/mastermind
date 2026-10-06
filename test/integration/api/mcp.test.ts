@@ -33,6 +33,7 @@ describe("MCP server", () => {
         "get_session_events",
         "get_changes",
         "get_check_log",
+        "get_review_notes",
         "create_tasks",
         "update_task",
         "set_priority",

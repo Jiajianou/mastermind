@@ -8,14 +8,15 @@ export interface FileTarget {
   taskId: string;
   path: string;
   basePath: string | null;
+  since: string;
 }
 
 export type FileSides =
   | { kind: "loaded"; base: FileContent | null; current: FileContent }
   | { kind: "failed"; message: string };
 
-const targetKey = ({ taskId, path, basePath }: FileTarget): string =>
-  JSON.stringify([taskId, path, basePath]);
+const targetKey = ({ taskId, path, basePath, since }: FileTarget): string =>
+  JSON.stringify([taskId, path, basePath, since]);
 
 // basePath null reads only the file on disk. The open file is read again on every edit that lands on it or that
 // could have (a shell command), and when `refresh` changes (the changes list saw the file move some other way).
@@ -32,10 +33,10 @@ export function useFileSides(target: FileTarget, refresh: string): FileSides | n
   const key = targetKey(target);
 
   useCoalescedLoad(live ? `${key}@${String(revision)}:${refresh}` : null, async () => {
-    const { taskId, path, basePath } = target;
+    const { taskId, path, basePath, since } = target;
     try {
       const [base, current] = await Promise.all([
-        basePath === null ? null : api.file(taskId, basePath, "base"),
+        basePath === null ? null : api.file(taskId, basePath, "base", since),
         api.file(taskId, path, "current"),
       ]);
       setLoaded({ key, sides: { kind: "loaded", base, current } });
@@ -53,6 +54,11 @@ export function changeRefresh(change: FileChange | null): string {
   return JSON.stringify([status, additions, deletions, uncommitted]);
 }
 
-export function diffTarget(taskId: string, path: string, change: FileChange | null): FileTarget {
-  return { taskId, path, basePath: change?.oldPath ?? path };
+export function diffTarget(
+  taskId: string,
+  path: string,
+  change: FileChange | null,
+  since: string,
+): FileTarget {
+  return { taskId, path, basePath: change?.oldPath ?? path, since };
 }

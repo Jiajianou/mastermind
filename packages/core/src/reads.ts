@@ -1,6 +1,6 @@
 import { ActionError } from "./actions/index.js";
 import type { ChatState } from "./chat.js";
-import { readLogTail } from "./checks/log.js";
+import { checkLogMaxBytes, readLogTail } from "./checks/log.js";
 import { isMissingFileError } from "./config/index.js";
 import type {
   ApiSummary,
@@ -8,8 +8,12 @@ import type {
   Check,
   CheckLog,
   CheckLogInput,
+  Comment,
   Config,
+  Finding,
   InstanceInfo,
+  ReviewNotes,
+  Round,
   Session,
   SessionEvent,
   SessionsQuery,
@@ -39,13 +43,15 @@ export interface ReadModels extends TaskFiles {
   sessions(query: SessionsQuery): Session[];
   sessionEvents(sessionId: number, afterId?: number): SessionEvent[];
   checks(taskId: string): Check[];
+  comments(taskId: string): Comment[];
+  findings(taskId: string): Finding[];
+  rounds(taskId: string): Round[];
+  reviewNotes(taskId: string): ReviewNotes;
   checkLog(checkId: number): Promise<CheckLog>;
   taskCheckLog(input: CheckLogInput): Promise<CheckLog>;
   chat(afterId?: number): ChatView;
   config(): Config;
 }
-
-const maxLogBytes = 1024 * 1024;
 
 const notFound = (message: string) => ActionError.fromMessage("not_found", message);
 
@@ -53,7 +59,7 @@ async function readCheckLog(check: Check, maxLines?: number): Promise<CheckLog> 
   const id = String(check.id);
   if (check.logPath === null) throw notFound(`check ${id} has no log`);
   try {
-    const tail = await readLogTail(check.logPath, { maxBytes: maxLogBytes, maxLines });
+    const tail = await readLogTail(check.logPath, { maxBytes: checkLogMaxBytes, maxLines });
     return { check, ...tail };
   } catch (error) {
     if (isMissingFileError(error)) throw notFound(`the log of check ${id} is gone`);
@@ -67,6 +73,12 @@ function taskViews(tasks: readonly Task[]): TaskView[] {
     for (const dep of task.deps) unblocks.set(dep, [...(unblocks.get(dep) ?? []), task.id]);
   }
   return tasks.map((task) => ({ ...task, unblocks: unblocks.get(task.id) ?? [] }));
+}
+
+function requireTask(db: Db, taskId: string): Task {
+  const task = db.tasks.get(taskId);
+  if (task === null) throw notFound(`no task "${taskId}"`);
+  return task;
 }
 
 export function createReadModels({
@@ -111,8 +123,34 @@ export function createReadModels({
     },
 
     checks(taskId) {
-      if (db.tasks.get(taskId) === null) throw notFound(`no task "${taskId}"`);
+      requireTask(db, taskId);
       return db.checks.listForTask(taskId);
+    },
+
+    comments(taskId) {
+      requireTask(db, taskId);
+      return db.comments.listForTask(taskId);
+    },
+
+    findings(taskId) {
+      requireTask(db, taskId);
+      return db.findings.listForTask(taskId);
+    },
+
+    rounds(taskId) {
+      requireTask(db, taskId);
+      return db.rounds.listForTask(taskId);
+    },
+
+    reviewNotes(taskId) {
+      const { round } = requireTask(db, taskId);
+      return {
+        taskId,
+        round,
+        comments: db.comments.listForTask(taskId),
+        findings: db.findings.listForTask(taskId),
+        rounds: db.rounds.listForTask(taskId),
+      };
     },
 
     checkLog(checkId) {

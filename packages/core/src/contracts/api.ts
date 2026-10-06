@@ -27,6 +27,19 @@ import type { Config } from "./config.js";
 import { busEventSchema } from "./events.js";
 import { runtimeFlagsSchema, summarySchema } from "./runtime.js";
 import type { RuntimeFlags } from "./runtime.js";
+import {
+  addCommentInputSchema,
+  commentRefInputSchema,
+  commentSchema,
+  findingRefInputSchema,
+  findingSchema,
+  requestChangesInputSchema,
+  requestChangesResultSchema,
+  reviewNotesSchema,
+  roundSchema,
+  updateCommentInputSchema,
+} from "./review.js";
+import type { Comment, Finding, RequestChangesResult } from "./review.js";
 import { messageSessionResultSchema, sessionEventSchema, sessionSchema } from "./sessions.js";
 import type { MessageSessionResult, Session } from "./sessions.js";
 import { taskIdSchema, taskSchema } from "./tasks.js";
@@ -60,6 +73,11 @@ export interface ActionResults {
   rerunChecks: Task;
   approve: Task;
   discard: Task;
+  addComment: Comment;
+  updateComment: Comment;
+  deleteComment: Comment;
+  dismissFinding: Finding;
+  requestChanges: RequestChangesResult;
   stopSession: Session;
   messageSession: MessageSessionResult;
   pause: RuntimeFlags;
@@ -74,7 +92,7 @@ export interface ActionResults {
 export type ActionName = keyof ActionResults;
 
 export interface ActionRoute {
-  method: "POST" | "PATCH";
+  method: "POST" | "PATCH" | "DELETE";
   path: string;
   intParams?: readonly string[];
 }
@@ -93,6 +111,23 @@ export const actionRoutes = {
   rerunChecks: { method: "POST", path: "/api/tasks/:taskId/checks/rerun" },
   approve: { method: "POST", path: "/api/tasks/:taskId/approve" },
   discard: { method: "POST", path: "/api/tasks/:taskId/discard" },
+  addComment: { method: "POST", path: "/api/tasks/:taskId/comments" },
+  updateComment: {
+    method: "PATCH",
+    path: "/api/tasks/:taskId/comments/:commentId",
+    intParams: ["commentId"],
+  },
+  deleteComment: {
+    method: "DELETE",
+    path: "/api/tasks/:taskId/comments/:commentId",
+    intParams: ["commentId"],
+  },
+  dismissFinding: {
+    method: "POST",
+    path: "/api/findings/:findingId/dismiss",
+    intParams: ["findingId"],
+  },
+  requestChanges: { method: "POST", path: "/api/tasks/:taskId/request-changes" },
   stopSession: {
     method: "POST",
     path: "/api/sessions/:sessionId/stop",
@@ -134,6 +169,11 @@ export const actionInputSchemas = {
   rerunChecks: taskRefInputSchema,
   approve: taskRefInputSchema,
   discard: taskRefInputSchema,
+  addComment: addCommentInputSchema,
+  updateComment: updateCommentInputSchema,
+  deleteComment: commentRefInputSchema,
+  dismissFinding: findingRefInputSchema,
+  requestChanges: requestChangesInputSchema,
   stopSession: sessionRefInputSchema,
   messageSession: messageSessionInputSchema,
   pause: noInputSchema,
@@ -162,6 +202,11 @@ export const actionResultSchemas = {
   rerunChecks: taskSchema,
   approve: taskSchema,
   discard: taskSchema,
+  addComment: commentSchema,
+  updateComment: commentSchema,
+  deleteComment: commentSchema,
+  dismissFinding: findingSchema,
+  requestChanges: requestChangesResultSchema,
   stopSession: sessionSchema,
   messageSession: messageSessionResultSchema,
   pause: runtimeFlagsSchema,
@@ -215,6 +260,10 @@ export const apiResponseSchemas = {
   config: configSchema,
   checks: z.array(checkSchema),
   checkLog: checkLogSchema,
+  comments: z.array(commentSchema),
+  findings: z.array(findingSchema),
+  rounds: z.array(roundSchema),
+  notes: reviewNotesSchema,
   changes: taskChangesSchema,
   file: fileContentSchema,
   tree: taskTreeSchema,

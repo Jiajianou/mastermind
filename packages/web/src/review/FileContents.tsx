@@ -1,7 +1,9 @@
 import { Suspense } from "react";
+import type { LineSelection } from "./DiffEditor.js";
 import { LazyCodeEditor, LazyDiffEditor } from "./editors.js";
 import { sideText } from "./file-text.js";
 import type { FileSides } from "./use-file-sides.js";
+import type { EditorZone } from "./view-zones.js";
 
 function Message({ text }: { text: string }) {
   return <p className="editor-message muted">{text}</p>;
@@ -13,10 +15,14 @@ export function DiffContents({
   path,
   sides,
   compact,
+  zones,
+  onSelectLines,
 }: {
   path: string;
   sides: FileSides | null;
   compact: boolean;
+  zones?: readonly EditorZone[];
+  onSelectLines?: (selection: LineSelection) => void;
 }) {
   if (sides === null) return <Message text="Loading…" />;
   if (sides.kind === "failed") return <Message text={sides.message} />;
@@ -31,6 +37,8 @@ export function DiffContents({
         original={original.text}
         modified={modified.text}
         compact={compact}
+        zones={zones}
+        onSelectLines={onSelectLines}
       />
     </Suspense>
   );

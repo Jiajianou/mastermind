@@ -7,7 +7,7 @@ import { createApiClient } from "../api/client.js";
 import { DecideScreen } from "../screens/DecideScreen.js";
 import { LiveProvider } from "../store/hooks.js";
 import { createStore } from "../store/store.js";
-import { check, stateWith, task } from "../testing/fixtures.js";
+import { check, notes, stateWith, task } from "../testing/fixtures.js";
 
 const posted: string[] = [];
 
@@ -37,10 +37,11 @@ function serve(afterRerun: Task): void {
       return Promise.resolve(
         Response.json({ check: checks[1], text: `${failedLog}\n`, truncated: false }),
       );
-    if (path === "/api/tasks/alpha/changes")
+    if (path === "/api/tasks/alpha/changes?since=base")
       return Promise.resolve(
         Response.json({ taskId: "alpha", since: "base", fromCommit: "a".repeat(40), files: [] }),
       );
+    if (path === "/api/tasks/alpha/notes") return Promise.resolve(Response.json(notes()));
     return Promise.reject(new TypeError(`no stub for ${path}`));
   });
 }

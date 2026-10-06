@@ -14,7 +14,17 @@ function LineCounts({ change }: { change: FileChange }) {
   );
 }
 
-function FileLink({ entry, to, selected }: { entry: FileEntry; to: string; selected: boolean }) {
+function FileLink({
+  entry,
+  to,
+  selected,
+  notes,
+}: {
+  entry: FileEntry;
+  to: string;
+  selected: boolean;
+  notes: number;
+}) {
   return (
     <Link className="file-link" to={to} aria-current={selected ? "true" : undefined}>
       {entry.marker === null ? (
@@ -26,6 +36,11 @@ function FileLink({ entry, to, selected }: { entry: FileEntry; to: string; selec
       )}
       <code className="file-name">{entry.name}</code>
       {entry.editing && <span className="editing-tag">editing</span>}
+      {notes > 0 && (
+        <span className="note-count">
+          {notes} note{notes === 1 ? "" : "s"}
+        </span>
+      )}
       {entry.change !== null && <LineCounts change={entry.change} />}
     </Link>
   );
@@ -36,11 +51,13 @@ export function FileList({
   selected,
   linkTo,
   empty,
+  noteCounts = {},
 }: {
   groups: readonly DirectoryGroup[];
   selected: string | null;
   linkTo: (path: string) => string;
   empty: string;
+  noteCounts?: Readonly<Record<string, number>>;
 }) {
   return (
     <nav className="file-list panel" aria-label="Files">
@@ -57,6 +74,7 @@ export function FileList({
                   entry={entry}
                   to={linkTo(entry.path)}
                   selected={entry.path === selected}
+                  notes={noteCounts[entry.path] ?? 0}
                 />
               </li>
             ))}

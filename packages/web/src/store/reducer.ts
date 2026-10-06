@@ -1,4 +1,10 @@
-import type { ChatMessage, Check, Session, SessionEvent } from "@mastermind/core/contracts";
+import type {
+  ChatMessage,
+  Check,
+  ReviewNotes,
+  Session,
+  SessionEvent,
+} from "@mastermind/core/contracts";
 import type { ChatState, LiveState, SchedulerState, Snapshot, StoreAction } from "./state.js";
 
 export const terminalOutputLimit = 200_000;
@@ -128,6 +134,21 @@ function applySnapshot(
   };
 }
 
+function upsertById<Item extends { id: number }>(items: readonly Item[], item: Item): Item[] {
+  return [...items.filter((known) => known.id !== item.id), item].sort((a, b) => a.id - b.id);
+}
+
+// Notes are only kept for tasks whose notes were read; a task opened later reads them in full.
+function withNotes(
+  state: LiveState,
+  taskId: string,
+  change: (notes: ReviewNotes) => Partial<ReviewNotes>,
+): LiveState {
+  const notes = state.notes[taskId];
+  if (notes === undefined) return state;
+  return { ...state, notes: { ...state.notes, [taskId]: { ...notes, ...change(notes) } } };
+}
+
 export function reduce(state: LiveState, action: StoreAction): LiveState {
   switch (action.type) {
     case "snapshot.loaded":
@@ -169,7 +190,21 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     case "workspace.changed":
       return touchWorkspace(state, action.taskId, "any-file");
     case "changes.loaded":
-      return { ...state, changes: { ...state.changes, [action.taskId]: action.view } };
+      return { ...state, changes: { ...state.changes, [action.key]: action.view } };
+    case "notes.loaded":
+      return { ...state, notes: { ...state.notes, [action.notes.taskId]: action.notes } };
+    case "comment.updated":
+      return withNotes(state, action.taskId, ({ comments }) => ({
+        comments: upsertById(comments, action.comment),
+      }));
+    case "comment.deleted":
+      return withNotes(state, action.taskId, ({ comments }) => ({
+        comments: comments.filter((comment) => comment.id !== action.commentId),
+      }));
+    case "finding.updated":
+      return withNotes(state, action.taskId, ({ findings }) => ({
+        findings: upsertById(findings, action.finding),
+      }));
     case "checks.loaded":
       return withLoadedChecks(state, action.taskId, action.checks);
     case "check.updated": {
