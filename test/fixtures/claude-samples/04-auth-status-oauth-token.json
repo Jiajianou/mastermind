@@ -1,0 +1,8 @@
+{
+  "loggedIn": true,
+  "authMethod": "oauth_token",
+  "apiProvider": "firstParty",
+  "analyticsDisabled": false,
+  "projectsDirectory": "/tmp/mm-spikes/cfg-sandbox/projects",
+  "configDirectory": "/tmp/mm-spikes/cfg-sandbox"
+}
