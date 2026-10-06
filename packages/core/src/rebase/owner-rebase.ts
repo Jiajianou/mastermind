@@ -10,10 +10,11 @@ import {
   quietGit,
   rebaseInProgress,
 } from "../checks/rebase.js";
-import { describeExit, errorMessage, exitedCleanly, fileStamp } from "../checks/runner.js";
+import { fileStamp } from "../checks/runner.js";
 import { systemClock } from "../clock.js";
 import type { Clock } from "../clock.js";
 import type { ResolvedConfig } from "../config/index.js";
+import { errorMessage, plural } from "../contracts/index.js";
 import type { BranchRebase, OwnerBranch } from "../contracts/index.js";
 import { cleanEnv } from "../env.js";
 import type { Environment } from "../env.js";
@@ -21,6 +22,7 @@ import type { EventBus } from "../events.js";
 import {
   createBranchCopy,
   deleteClone,
+  exitedWith,
   fetchHeadIntoRepo,
   fetchMainIntoClone,
   GitError,
@@ -28,6 +30,7 @@ import {
   upstreamRef,
 } from "../git/index.js";
 import type { Git } from "../git/index.js";
+import { describeExit, exitedCleanly } from "../procs.js";
 import type { ExitResult, ProcessRegistry } from "../procs.js";
 import type { BranchFixer } from "../sessions/branch-fixer.js";
 import { deleteRef, fastForwardMain, mainCheckedOut, readMain } from "./main-ref.js";
@@ -36,7 +39,6 @@ import {
   checkoutIsClean,
   countCommits,
   currentBranch,
-  exitedWith,
   mainUpstream,
   readOwnerBranch,
 } from "./owner-checkout.js";
@@ -101,9 +103,6 @@ export const ownerBranchRef = (branch: string): string => `refs/mastermind-branc
 
 const maxTries = 5;
 const conflictMarker = "^(<{7}|>{7})( |$)";
-
-const plural = (count: number, noun: string): string =>
-  `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 
 const refused = (message: string) => ActionError.fromMessage("conflict", message);
 

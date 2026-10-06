@@ -6,7 +6,7 @@ import { createCtrlCGuard } from "../ctrl-c.js";
 import type { TerminalCommand } from "../terminal-commands.js";
 import { StatusApp } from "./app.js";
 
-function snapshot(authRequired: boolean): StatusSnapshot {
+function snapshot(authRequired: boolean, resumeAt: string | null = null): StatusSnapshot {
   return {
     header: {
       repoName: "demo",
@@ -26,7 +26,7 @@ function snapshot(authRequired: boolean): StatusSnapshot {
       blocked: [],
       paused: authRequired,
       authRequired,
-      resumeAt: null,
+      resumeAt,
     },
     runningChecks: 0,
     events: [],
@@ -72,4 +72,50 @@ describe("the terminal view", () => {
       expect(received).toEqual([...commands, "pause"]);
     },
   );
+
+  it("reads Ctrl+C as a key in raw mode: the first press arms the footer, the second kills", async () => {
+    const onFire = vi.fn();
+    const guard = createCtrlCGuard({ onFire });
+    const received: TerminalCommand[] = [];
+    const { lastFrame, stdin } = render(
+      <StatusApp
+        store={staticStore(snapshot(false))}
+        guard={guard}
+        onCommand={(command) => received.push(command)}
+      />,
+    );
+    await vi.waitFor(() => {
+      stdin.write("o");
+      expect(received).toContain("open");
+    });
+
+    stdin.write("c");
+    stdin.write("\x03");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Press Ctrl+C again to quit.");
+    });
+    stdin.write("\x03");
+
+    await vi.waitFor(() => {
+      expect(onFire).toHaveBeenCalledTimes(1);
+    });
+    expect(received.at(-1)).toBe("copy");
+    guard.dispose();
+  });
+
+  it("shows when new sessions may start again after the usage limit", () => {
+    const resumeAt = new Date(2026, 9, 6, 14, 5, 0);
+    const guard = createCtrlCGuard({ onFire: () => undefined });
+
+    const { lastFrame } = render(
+      <StatusApp
+        store={staticStore(snapshot(false, resumeAt.toISOString()))}
+        guard={guard}
+        onCommand={() => undefined}
+      />,
+    );
+
+    expect(lastFrame()).toContain("RUNNING 0 of 2 workers · usage limit until 14:05:00");
+    guard.dispose();
+  });
 });

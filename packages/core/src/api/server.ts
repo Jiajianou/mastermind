@@ -5,6 +5,7 @@ import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { errorMessage } from "../contracts/index.js";
 import type { ActionRegistry } from "../actions/index.js";
 import type { ChatState } from "../chat.js";
 import { registerMcpRoutes } from "../conductor/mcp.js";
@@ -83,7 +84,7 @@ export async function createApiServer(options: ApiServerOptions): Promise<ApiSer
     const known = errorReply(error);
     if (known !== null) return reply.code(known.status).send(known.body);
     onError(error);
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return reply.code(500).send(apiError("internal", message));
   });
 

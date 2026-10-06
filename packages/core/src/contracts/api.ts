@@ -166,6 +166,26 @@ export const actionRoutes = {
   stopChat: { method: "POST", path: "/api/chat/stop" },
 } as const satisfies Record<ActionName, ActionRoute>;
 
+export interface ActionRequest {
+  path: string;
+  body: Readonly<Record<string, unknown>>;
+}
+
+export function actionRequest(name: ActionName, input: object): ActionRequest {
+  const route = actionRoutes[name];
+  const fields = new Map<string, unknown>(Object.entries(input));
+  const params = new Set<string>();
+  const path = route.path.replace(/:(\w+)/g, (_match, param: string) => {
+    const value = fields.get(param);
+    if (typeof value !== "string" && typeof value !== "number")
+      throw new Error(`${name} needs ${param} for ${route.path}`);
+    params.add(param);
+    return encodeURIComponent(String(value));
+  });
+  const body = Object.fromEntries([...fields].filter(([field]) => !params.has(field)));
+  return { path, body };
+}
+
 export const actionInputSchemas = {
   createTasks: createTasksInputSchema,
   importTasks: importTasksInputSchema,

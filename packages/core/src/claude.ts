@@ -3,7 +3,7 @@ import type { JsonValue } from "./contracts/index.js";
 import { cleanEnv } from "./env.js";
 import type { Environment } from "./env.js";
 import { locateOnPath } from "./executables.js";
-import { collectOutput } from "./procs.js";
+import { collectOutput, exitedCleanly } from "./procs.js";
 import type {
   ChildHandle,
   CompletedRun,
@@ -41,13 +41,11 @@ export interface PrintOptions {
   maxTurns?: number;
   tools?: readonly string[];
   allowedTools?: readonly string[];
-  disallowedTools?: readonly string[];
   permissionMode?: PermissionMode;
   noPermissionPrompts?: boolean;
   appendSystemPromptFile?: string;
   mcpConfigFile?: string;
   settings?: JsonValue;
-  fallbackModel?: string;
   effort?: string;
   noSessionPersistence?: boolean;
   name?: string;
@@ -112,13 +110,11 @@ function printArgs(options: PrintOptions): string[] {
     ...valued("--max-turns", options.maxTurns),
     ...list("--tools", options.tools),
     ...list("--allowedTools", options.allowedTools),
-    ...list("--disallowedTools", options.disallowedTools),
     ...valued("--permission-mode", options.permissionMode),
     ...(options.noPermissionPrompts === true ? ["--permission-prompts", "none"] : []),
     ...valued("--append-system-prompt-file", options.appendSystemPromptFile),
     ...valued("--mcp-config", options.mcpConfigFile),
     ...json("--settings", options.settings),
-    ...valued("--fallback-model", options.fallbackModel),
     ...valued("--effort", options.effort),
     ...toggle("--no-session-persistence", options.noSessionPersistence),
     ...valued("--name", options.name),
@@ -206,7 +202,7 @@ export async function checkClaude(cli: ClaudeCli): Promise<ClaudeCheck> {
   const path = cli.locate();
   if (path === null) return { status: "missing" };
   const { exit, stdout, stderr } = await cli.run({ command: "version" });
-  const parts = exit.kind === "exited" && exit.code === 0 ? parseVersion(stdout) : null;
+  const parts = exitedCleanly(exit) ? parseVersion(stdout) : null;
   if (parts === null)
     return { status: "unreadable", path, output: [stdout, stderr].join("\n").trim() };
   const version = parts.join(".");

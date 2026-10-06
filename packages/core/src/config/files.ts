@@ -1,13 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
-
-export function isMissingFileError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
-}
+import { isMissingFileError } from "../errno.js";
 
 export async function readOptionalFile(path: string): Promise<string | null> {
   try {

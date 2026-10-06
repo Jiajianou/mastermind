@@ -18,7 +18,7 @@ export interface ChangeRequestParts {
 
 export const failingTestLogLines = 60;
 
-const checkTitles: Record<CheckKind, string> = {
+export const checkTitles: Record<CheckKind, string> = {
   setup: "Setup",
   build: "Build",
   acceptance: "Acceptance",
@@ -66,16 +66,16 @@ function findingSection(findings: readonly FindingNote[]): string[] {
   return ["## Reviewer findings", findings.map(findingLine).join("\n")];
 }
 
-function logTail(log: string): string {
-  const all = log.replace(/\n+$/, "").split("\n");
-  return all.slice(-failingTestLogLines).join("\n");
+export function logTail(text: string, maxLines: number): { text: string; cut: boolean } {
+  const lines = text.replace(/\n+$/, "").split("\n");
+  return { text: lines.slice(-maxLines).join("\n"), cut: lines.length > maxLines };
 }
 
 function failingTestSection(failingTest: FailingTest | null): string[] {
   if (failingTest === null) return [];
   const { check, log } = failingTest;
   const summary = check.summary === null ? "" : `: ${check.summary}`;
-  const tail = logTail(log);
+  const tail = logTail(log, failingTestLogLines).text;
   return [
     `## Failing check: ${checkTitles[check.kind]}`,
     `It failed${summary}. The last lines of its log:`,

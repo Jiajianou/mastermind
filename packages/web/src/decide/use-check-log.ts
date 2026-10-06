@@ -1,6 +1,6 @@
 import type { Check, CheckLog } from "@mastermind/core/contracts";
 import { useState } from "react";
-import { errorMessage } from "../components/errors.js";
+import { errorMessage } from "@mastermind/core/contracts";
 import { useCoalescedLoad } from "../review/use-coalesced-load.js";
 import { useApi, useLive } from "../store/hooks.js";
 

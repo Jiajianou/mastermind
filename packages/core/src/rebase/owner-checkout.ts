@@ -1,9 +1,6 @@
 import type { MainUpstream, OwnerBranch } from "../contracts/index.js";
-import { GitError } from "../git/index.js";
+import { exitedWith, GitError } from "../git/index.js";
 import type { Git } from "../git/index.js";
-
-export const exitedWith = (error: unknown, code: number): boolean =>
-  error instanceof GitError && error.exit.kind === "exited" && error.exit.code === code;
 
 export async function currentBranch(git: Git, repoRoot: string): Promise<string | null> {
   try {

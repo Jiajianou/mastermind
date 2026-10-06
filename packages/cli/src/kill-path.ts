@@ -1,5 +1,6 @@
 import type { KilledCounts } from "@mastermind/core/db";
 import type { KillReport } from "@mastermind/core/procs";
+import { errorMessage } from "@mastermind/core/contracts";
 import { killSummary } from "./messages.js";
 import type { LiveCounts } from "./messages.js";
 
@@ -15,11 +16,8 @@ export interface KillPathSteps {
 
 export const exitCodes = { interrupt: 130, hangup: 129, terminate: 143, crash: 1 } as const;
 
-const describe = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
 function countsFromProcesses({ counts }: KillReport): LiveCounts {
-  return { sessions: counts.session + counts.conductor, checks: counts.check };
+  return { sessions: counts.session, checks: counts.check };
 }
 
 export interface KillRequest {
@@ -33,14 +31,14 @@ export function runKillPath(steps: KillPathSteps, { exitCode, reason }: KillRequ
     try {
       return work();
     } catch (error) {
-      failures.push(`${step}: ${describe(error)}`);
+      failures.push(`${step}: ${errorMessage(error)}`);
       return null;
     }
   }
 
   const processes = attempt("killing processes", () => steps.killProcesses());
   for (const { target, error } of processes?.failures ?? [])
-    failures.push(`killing ${String(target)}: ${describe(error)}`);
+    failures.push(`killing ${String(target)}: ${errorMessage(error)}`);
   const killed = attempt("marking sessions killed", () => steps.markKilled());
   attempt("restoring the terminal", () => {
     steps.restoreTerminal();

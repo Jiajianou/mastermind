@@ -8,7 +8,7 @@ import type { Task } from "../contracts/index.js";
 import type { Db, NewTask, TaskPatch } from "../db/index.js";
 import { describeGraphIssue, findGraphIssues } from "./dag.js";
 import type { GraphIssue } from "./dag.js";
-import { ActionError } from "./errors.js";
+import { ActionError, requireTask } from "./errors.js";
 import { defineAction } from "./registry.js";
 import type { ActionScope } from "./registry.js";
 import { assertTransition } from "./transitions.js";
@@ -20,12 +20,6 @@ function graphError(issues: readonly GraphIssue[]): ActionError {
     "invalid_input",
     issues.map((issue) => ({ path: null, message: describeGraphIssue(issue) })),
   );
-}
-
-function requireTask({ db }: TaskScope, taskId: string): Task {
-  const task = db.tasks.get(taskId);
-  if (task === null) throw ActionError.fromMessage("not_found", `no task "${taskId}"`);
-  return task;
 }
 
 function updateTaskRow(scope: TaskScope, taskId: string, patch: TaskPatch): Task {
@@ -72,7 +66,7 @@ export const updateTask = defineAction({
   handler: ({ taskId, ...changes }, scope) => {
     const { db } = scope;
     const task = db.transaction(() => {
-      requireTask(scope, taskId);
+      requireTask(scope.db, taskId);
       if (changes.deps !== undefined) {
         const others = db.tasks.list().filter((other) => other.id !== taskId);
         const issues = findGraphIssues([{ id: taskId, deps: changes.deps }], others);
@@ -91,7 +85,7 @@ export const setPriority = defineAction({
   input: setPriorityInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId, priority }, scope) => {
-    requireTask(scope, taskId);
+    requireTask(scope.db, taskId);
     return updateTaskRow(scope, taskId, { priority });
   },
 });
@@ -102,7 +96,7 @@ export const moveToTop = defineAction({
   input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
-    const task = requireTask(scope, taskId);
+    const task = requireTask(scope.db, taskId);
     const otherPriorities = scope.db.tasks
       .list()
       .filter((other) => other.id !== taskId && other.status !== "done")
@@ -119,7 +113,7 @@ export const hold = defineAction({
   input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
-    requireTask(scope, taskId);
+    requireTask(scope.db, taskId);
     return updateTaskRow(scope, taskId, { held: true });
   },
 });
@@ -130,7 +124,7 @@ export const release = defineAction({
   input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
-    requireTask(scope, taskId);
+    requireTask(scope.db, taskId);
     return updateTaskRow(scope, taskId, { held: false });
   },
 });
@@ -141,7 +135,7 @@ export const retry = defineAction({
   input: taskRefInputSchema,
   emits: ["task.updated"],
   handler: ({ taskId }, scope) => {
-    const task = requireTask(scope, taskId);
+    const task = requireTask(scope.db, taskId);
     assertTransition(taskId, task.status, "pending");
     return updateTaskRow(scope, taskId, { status: "pending", attempts: 0 });
   },

@@ -121,6 +121,12 @@
   gap: 8px 12px;
 }
 
+.decision-controls a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-min-height);
+}
+
 .setup-commands {
   display: grid;
   grid-template-columns: max-content 1fr;

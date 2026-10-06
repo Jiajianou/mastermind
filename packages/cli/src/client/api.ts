@@ -1,4 +1,4 @@
-import { actionRoutes, apiErrorSchema } from "@mastermind/core/contracts";
+import { actionRequest, actionRoutes, apiErrorSchema } from "@mastermind/core/contracts";
 import type { ActionName, ActionRoute, ApiError } from "@mastermind/core/contracts";
 import type { z } from "zod";
 import { ClientError } from "./errors.js";
@@ -20,19 +20,6 @@ function errorText({ message, issues }: ApiError): string {
   return issues
     .map(({ path, message: issue }) => (path === null ? issue : `${path}: ${issue}`))
     .join("\n");
-}
-
-function routeRequest(action: ActionName, input: ActionInput): { path: string; body: object } {
-  const route = actionRoutes[action];
-  const params = new Set<string>();
-  const path = route.path.replace(/:(\w+)/g, (_match, name: string) => {
-    const value = input[name];
-    if (value === undefined) throw new Error(`${action} needs ${name} for ${route.path}`);
-    params.add(name);
-    return encodeURIComponent(String(value));
-  });
-  const body = Object.fromEntries(Object.entries(input).filter(([name]) => !params.has(name)));
-  return { path, body };
 }
 
 export function createApiClient({ origin, token }: Instance): ApiClient {
@@ -75,7 +62,7 @@ export function createApiClient({ origin, token }: Instance): ApiClient {
   return {
     read: (path, schema) => request("GET", path, schema),
     invoke(action, input, schema) {
-      const { path, body } = routeRequest(action, input);
+      const { path, body } = actionRequest(action, input);
       return request(actionRoutes[action].method, path, schema, body);
     },
   };

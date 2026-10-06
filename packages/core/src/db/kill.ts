@@ -7,9 +7,13 @@ export interface KilledCounts {
   rebases: number;
 }
 
+// The chat's own process is killed too, but it is not one of the sessions the terminal lists, so it isn't counted.
 export function createKillRunning({ database, clock, transaction }: DbContext): () => KilledCounts {
-  const killSessions = database.prepare(
-    "UPDATE sessions SET status = 'killed', ended_at = ? WHERE status = 'running'",
+  const killConductor = database.prepare(
+    "UPDATE sessions SET status = 'killed', ended_at = ? WHERE status = 'running' AND role = 'conductor'",
+  );
+  const killTaskSessions = database.prepare(
+    "UPDATE sessions SET status = 'killed', ended_at = ? WHERE status = 'running' AND role != 'conductor'",
   );
   const killChecks = database.prepare(
     "UPDATE checks SET status = 'killed' WHERE status = 'running'",
@@ -19,9 +23,13 @@ export function createKillRunning({ database, clock, transaction }: DbContext): 
   );
 
   return () =>
-    transaction(() => ({
-      sessions: changedRows(killSessions.run(timestamp(clock))),
-      checks: changedRows(killChecks.run()),
-      rebases: changedRows(killRebases.run()),
-    }));
+    transaction(() => {
+      const endedAt = timestamp(clock);
+      killConductor.run(endedAt);
+      return {
+        sessions: changedRows(killTaskSessions.run(endedAt)),
+        checks: changedRows(killChecks.run()),
+        rebases: changedRows(killRebases.run()),
+      };
+    });
 }

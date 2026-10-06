@@ -8,6 +8,7 @@ import {
 } from "../auth.js";
 import type { AcceptedAuth, AuthVerdict, WrongKindReason } from "../auth.js";
 import type { ClaudeCli } from "../claude.js";
+import { describeExit, exitedCleanly } from "../procs.js";
 import type { ExitResult } from "../procs.js";
 import { StartupError } from "./errors.js";
 import type { StartupPrompts } from "./prompts.js";
@@ -22,12 +23,6 @@ function newSignInCanHelp({ reason }: WrongKindReason): boolean {
   return reason !== "provider" && reason !== "api-key-helper" && reason !== "unverified-token";
 }
 
-function describeExit(exit: ExitResult): string {
-  return exit.kind === "exited"
-    ? `exited with code ${String(exit.code)}`
-    : `was killed by ${exit.signal}`;
-}
-
 async function handOff(
   step: (cli: ClaudeCli) => Promise<ExitResult>,
   command: string,
@@ -35,7 +30,7 @@ async function handOff(
   prompts: StartupPrompts,
 ): Promise<boolean> {
   const exit = await step(cli);
-  if (exit.kind === "exited" && exit.code === 0) return true;
+  if (exitedCleanly(exit)) return true;
   prompts.say(`\`${command}\` ${describeExit(exit)}.`);
   return false;
 }

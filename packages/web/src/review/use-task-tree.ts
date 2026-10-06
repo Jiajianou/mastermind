@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { errorMessage } from "../components/errors.js";
+import { errorMessage } from "@mastermind/core/contracts";
 import { useApi, useLive } from "../store/hooks.js";
 import { useCoalescedLoad } from "./use-coalesced-load.js";
 

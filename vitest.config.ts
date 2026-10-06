@@ -24,6 +24,9 @@ export default defineConfig({
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}"],
       exclude: ["**/*.test.{ts,tsx}"],
+      thresholds: {
+        "packages/core/src/**": { lines: 91, statements: 88, functions: 92, branches: 77 },
+      },
     },
     projects: [
       {

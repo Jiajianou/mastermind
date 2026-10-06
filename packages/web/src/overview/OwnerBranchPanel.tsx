@@ -1,6 +1,6 @@
 import type { OwnerBranch } from "@mastermind/core/contracts";
 import { useEffect, useState } from "react";
-import { errorMessage } from "../components/errors.js";
+import { errorMessage } from "@mastermind/core/contracts";
 import { useRequest } from "../components/use-request.js";
 import { useCoalescedLoad } from "../review/use-coalesced-load.js";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";

@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { relative } from "node:path";
 import { Document, isMap, parseDocument } from "yaml";
+import { isPlainRecord } from "../contracts/index.js";
 import { configLayerSchema, configSchema } from "../contracts/config.js";
 import type { Config, ConfigLayer } from "../contracts/config.js";
 import { defaultConfig } from "./defaults.js";
@@ -10,10 +11,6 @@ import { projectPaths } from "./paths.js";
 import type { ConfigContext } from "./paths.js";
 
 type PlainRecord = Record<string, unknown>;
-
-function isPlainRecord(value: unknown): value is PlainRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function parseYaml(text: string, fileLabel: string): Document {
   const document = parseDocument(text);

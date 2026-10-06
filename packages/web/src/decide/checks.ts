@@ -9,15 +9,6 @@ const pipelineOrder: readonly CheckKind[] = [
   "reviewer",
 ];
 
-export const checkNames: Record<CheckKind, string> = {
-  setup: "Setup",
-  build: "Build",
-  acceptance: "Acceptance",
-  rebase: "Rebase onto main",
-  suite: "Test suite",
-  reviewer: "Reviewer",
-};
-
 export const checkStatusWords: Record<CheckStatus, string> = {
   running: "Running",
   passed: "Passed",
@@ -47,9 +38,4 @@ export function latestFailure(checks: readonly Check[], round: number): Failure 
     (check) => check.kind === failed.kind && check.id > failed.id && check.status === "passed",
   );
   return { check: failed, passedSince };
-}
-
-export function logTail(text: string, maxLines: number): { text: string; cut: boolean } {
-  const lines = text.replace(/\n+$/, "").split("\n");
-  return { text: lines.slice(-maxLines).join("\n"), cut: lines.length > maxLines };
 }

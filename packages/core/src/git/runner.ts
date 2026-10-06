@@ -1,6 +1,6 @@
 import { cleanEnv } from "../env.js";
 import type { Environment } from "../env.js";
-import { collectOutput } from "../procs.js";
+import { collectOutput, exitedCleanly } from "../procs.js";
 import type { ExitResult, ProcessRegistry } from "../procs.js";
 
 export class GitError extends Error {
@@ -41,7 +41,7 @@ export function createGit({ registry, env }: GitOptions): Git {
         env: childEnv,
         cwd,
       });
-      if (exit.kind !== "exited" || exit.code !== 0) throw new GitError(args, exit, stderr.trim());
+      if (!exitedCleanly(exit)) throw new GitError(args, exit, stderr.trim());
       return stdout;
     },
 
@@ -61,9 +61,11 @@ export function createGit({ registry, env }: GitOptions): Git {
         },
       });
       const exit = await child.exited;
-      if (exit.kind !== "exited" || exit.code !== 0)
-        throw new GitError(args, exit, stderr.join("\n").trim());
+      if (!exitedCleanly(exit)) throw new GitError(args, exit, stderr.join("\n").trim());
       return Buffer.concat(chunks);
     },
   };
 }
+
+export const exitedWith = (error: unknown, code: number): boolean =>
+  error instanceof GitError && error.exit.kind === "exited" && error.exit.code === code;

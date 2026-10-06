@@ -29,6 +29,11 @@ describe("attribution scanner and rewriter", () => {
       stripped: "Work",
     },
     {
+      name: "a co-author whose name only starts with Claude",
+      text: "Work\n\nCo-Authored-By: ClaudeAI <bot@example.com>\nCo-Authored-By: Claude3 Opus",
+      stripped: "Work",
+    },
+    {
       name: "other -by trailers that name Claude",
       text: "Work\n\nAssisted-by: Claude Code\nSigned-off-by: Ada Lovelace <ada@example.com>",
       stripped: "Work\n\nSigned-off-by: Ada Lovelace <ada@example.com>",

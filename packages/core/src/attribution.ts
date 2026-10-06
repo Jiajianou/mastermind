@@ -8,7 +8,7 @@ export interface AttributionMatch {
 // robot and link, "Claude-Session:"-style trailers, Claude Code session links and Anthropic's noreply address.
 // The session trailer needs "session" in its key, so a subject such as "claude-cli: parse flags" is kept.
 const attributionPatterns: readonly RegExp[] = [
-  /^\s*[\w-]*-by\s*:.*\b(?:claude|anthropic)\b/i,
+  /^\s*[\w-]*-by\s*:.*\b(?:claude|anthropic)/i,
   /generated\s+(?:with|by|using)\s+\[?\s*claude\b/i,
   /^\s*claude-[\w-]*session[\w-]*\s*:/i,
   /\bclaude\.ai\/code\b/i,

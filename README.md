@@ -69,6 +69,7 @@ mastermind tasks
 mastermind logs <task> -f
 mastermind chat "what's running?"
 mastermind hold|release|retry|approve|discard <task>
+mastermind pause|resume
 mastermind import|export tasks.yaml
 ```
 

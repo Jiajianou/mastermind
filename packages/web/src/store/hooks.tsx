@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import type { Session, Task } from "@mastermind/core/contracts";
+import type { Task } from "@mastermind/core/contracts";
 import type { ApiClient } from "../api/client.js";
 import type { LiveState } from "./state.js";
 import type { Store } from "./store.js";
@@ -32,10 +32,6 @@ export function useLive<Selected>(select: (state: LiveState) => Selected): Selec
 
 export function useTask(taskId: string): Task | undefined {
   return useLive((state) => state.tasks[taskId]);
-}
-
-export function useSession(sessionId: number): Session | undefined {
-  return useLive((state) => state.sessions[sessionId]);
 }
 
 export function useApi(): ApiClient {

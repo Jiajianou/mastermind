@@ -11,7 +11,7 @@ import { useTaskChecks } from "../decide/use-task-checks.js";
 import { roundNotes } from "../notes/notes.js";
 import { useTaskNotes } from "../notes/use-task-notes.js";
 import { changesSince } from "../review/location.js";
-import { useLive } from "../store/hooks.js";
+import { useLive, useTask } from "../store/hooks.js";
 
 function noWorkText(task: Task): string {
   return task.status === "done"
@@ -55,7 +55,7 @@ function Decide({ task, file, since }: { task: Task; file: string | null; since:
 export function DecideScreen() {
   const { taskId = "" } = useParams();
   const [params] = useSearchParams();
-  const task = useLive((state) => state.tasks[taskId]);
+  const task = useTask(taskId);
   const live = useLive((state) => state.connection === "live");
 
   return (

@@ -1,3 +1,4 @@
+import { plural } from "@mastermind/core/contracts";
 import { Link } from "react-router";
 import { decidePath } from "../decide/task-state.js";
 import { tasksPath } from "../tasks/location.js";
@@ -23,11 +24,7 @@ function NeedsYouEntry({ item }: { item: NeedsYouItem }) {
         </Link>
       );
     case "decisions":
-      return (
-        <Link to="/">
-          {item.count === 1 ? "1 decision" : `${String(item.count)} decisions`} waiting in the chat
-        </Link>
-      );
+      return <Link to="/">{plural(item.count, "decision")} waiting in the chat</Link>;
   }
 }
 

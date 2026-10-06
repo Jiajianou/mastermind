@@ -1,7 +1,7 @@
-import { ActionError } from "./actions/index.js";
+import { ActionError, requireTask } from "./actions/index.js";
 import type { ChatState } from "./chat.js";
 import { checkLogMaxBytes, readLogTail } from "./checks/log.js";
-import { isMissingFileError } from "./config/index.js";
+import { isMissingFileError } from "./errno.js";
 import type {
   ApiSummary,
   ChatView,
@@ -76,12 +76,6 @@ function taskViews(tasks: readonly Task[]): TaskView[] {
     for (const dep of task.deps) unblocks.set(dep, [...(unblocks.get(dep) ?? []), task.id]);
   }
   return tasks.map((task) => ({ ...task, unblocks: unblocks.get(task.id) ?? [] }));
-}
-
-function requireTask(db: Db, taskId: string): Task {
-  const task = db.tasks.get(taskId);
-  if (task === null) throw notFound(`no task "${taskId}"`);
-  return task;
 }
 
 export function createReadModels({

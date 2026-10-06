@@ -1,8 +1,9 @@
 import type { Session } from "@mastermind/core/contracts";
 import { Link } from "react-router";
+import { capitalized } from "@mastermind/core/contracts";
 import { clockTime } from "../components/format.js";
 import { sessionPath } from "./links.js";
-import { capitalized, sessionStatusWord } from "./session-list.js";
+import { sessionStatusWord } from "./session-list.js";
 import type { SessionGroups } from "./session-list.js";
 
 function SessionLink({ session, selected }: { session: Session; selected: boolean }) {

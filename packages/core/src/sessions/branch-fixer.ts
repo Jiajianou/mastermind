@@ -1,3 +1,4 @@
+import { errorMessage } from "../contracts/index.js";
 import type { ResolvedConfig } from "../config/index.js";
 import type { Session, SessionStatus } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
@@ -101,7 +102,7 @@ export function createBranchFixer(options: BranchFixerOptions): BranchFixer {
         const live = await spawner.launch({ session, cwd: worktree, prompt, print });
         settled = settle((await live.finished).end);
       } catch (error) {
-        const failure = error instanceof Error ? error.message : String(error);
+        const failure = errorMessage(error);
         end(session, { status: "failed", effect: { kind: "none" }, failure });
         throw error;
       }

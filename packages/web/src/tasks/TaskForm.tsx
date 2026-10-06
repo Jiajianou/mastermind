@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import type { ChangeEvent, SyntheticEvent } from "react";
+import { capitalized } from "@mastermind/core/contracts";
 import { useRequest } from "../components/use-request.js";
 import { useLive } from "../store/hooks.js";
 import type { FieldIssues, FormResult, TaskField, TaskFormValues } from "./form.js";
@@ -46,8 +47,6 @@ const fields: readonly FieldSpec[] = [
   { name: "priority", label: "Priority", hint: "Higher starts first.", control: "number" },
 ];
 
-const sentence = (message: string): string => message.charAt(0).toUpperCase() + message.slice(1);
-
 function FormField({
   spec,
   value,
@@ -91,7 +90,7 @@ function FormField({
       )}
       {issue !== undefined && (
         <span id={issueId} className="field-issue">
-          {sentence(issue)}
+          {capitalized(issue)}
         </span>
       )}
     </div>

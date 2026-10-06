@@ -1,6 +1,6 @@
 import { appendFile, mkdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { GitError } from "./runner.js";
+import { exitedWith } from "./runner.js";
 import type { Git } from "./runner.js";
 
 export interface TaskClone {
@@ -41,8 +41,7 @@ async function readConfig(git: Git, cwd: string, key: string): Promise<string | 
   try {
     return (await git.run(cwd, ["config", "--get", key])).trim();
   } catch (error) {
-    if (error instanceof GitError && error.exit.kind === "exited" && error.exit.code === 1)
-      return null;
+    if (exitedWith(error, 1)) return null;
     throw error;
   }
 }

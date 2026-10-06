@@ -1,7 +1,7 @@
 import { ActionError, defineAction } from "../actions/index.js";
 import type { ContractedActions } from "../actions/index.js";
 import { checkLogMaxBytes, readLogTail } from "../checks/log.js";
-import { isMissingFileError } from "../config/index.js";
+import { isMissingFileError } from "../errno.js";
 import { buildChangeRequest, requestChangesInputSchema } from "../contracts/index.js";
 import type { Check, FailingTest, Task } from "../contracts/index.js";
 import type { Db } from "../db/index.js";

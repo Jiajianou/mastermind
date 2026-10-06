@@ -1,4 +1,4 @@
-import { streamLineEnvelopeSchema, streamLineSchema } from "../contracts/index.js";
+import { plural, streamLineEnvelopeSchema, streamLineSchema } from "../contracts/index.js";
 import type {
   EventType,
   RateLimitStatus,
@@ -18,6 +18,9 @@ export interface TokenUsage {
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
 }
+
+export const contextTokens = (usage: TokenUsage): number =>
+  usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
 
 export interface RateLimit {
   status: RateLimitStatus;
@@ -154,10 +157,6 @@ function event(
 
 function otherLine(lineType: string | null, summary: string): DerivedEvent {
   return event("note", summary, { line: "other", lineType }, false);
-}
-
-function plural(count: number, noun: string): string {
-  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 export function createStreamParser(): StreamParser {

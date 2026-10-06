@@ -1,6 +1,6 @@
 import type { Check } from "@mastermind/core/contracts";
 import type { ReactNode } from "react";
-import { checkNames } from "../decide/checks.js";
+import { checkTitles } from "@mastermind/core/contracts";
 import { lineRange } from "../notes/notes.js";
 import type { RoundNotes } from "../notes/notes.js";
 import { commentKey, findingKey, isIncluded } from "./request.js";
@@ -88,7 +88,7 @@ export function WhatToSend({
           ))}
           {failing !== null && (
             <Item sendKey="failing" included={included} onToggle={onToggle} kind="Failing check">
-              {checkNames[failing.kind]}
+              {checkTitles[failing.kind]}
               {failing.summary === null ? "" : `: ${failing.summary}`}
             </Item>
           )}

@@ -1,8 +1,8 @@
 import type { Session, Task } from "@mastermind/core/contracts";
+import { capitalized } from "@mastermind/core/contracts";
 import { contextWindow } from "./activity.js";
 import type { SessionActivity } from "./activity.js";
 import { Elapsed } from "./Elapsed.js";
-import { capitalized } from "./session-list.js";
 
 const thousands = (tokens: number): string => `${String(Math.round(tokens / 1000))}k`;
 

@@ -1,13 +1,10 @@
+import { plural } from "@mastermind/core/contracts";
 import { Link } from "react-router";
 import { sessionStatusWord } from "../sessions/session-list.js";
 import { reviewPath } from "./location.js";
 import type { ReviewMode } from "./location.js";
 import type { TaskSession } from "./selection.js";
 import { useChangesView } from "./use-task-changes.js";
-
-function fileCount(count: number): string {
-  return count === 1 ? "1 file" : `${String(count)} files`;
-}
 
 function SessionTab({
   session,
@@ -24,7 +21,7 @@ function SessionTab({
       ? "…"
       : changes.kind === "failed"
         ? "no files"
-        : fileCount(changes.changes.files.length);
+        : plural(changes.changes.files.length, "file");
   return (
     <Link
       className="review-tab"

@@ -1,14 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { ActionRegistry } from "../actions/index.js";
-import { actionRoutes, isActionName } from "../contracts/index.js";
+import { actionRoutes, isActionName, isPlainRecord } from "../contracts/index.js";
 import type { ActionRoute } from "../contracts/index.js";
 
 const pathParamsSchema = z.record(z.string(), z.string());
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function actionInput(route: ActionRoute, params: unknown, body: unknown): unknown {
   const intParams = new Set(route.intParams);

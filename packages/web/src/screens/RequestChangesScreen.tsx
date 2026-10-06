@@ -18,7 +18,7 @@ import type { Included, RequestDraft, SendKey } from "../request/request.js";
 import { RoundsHistory } from "../request/RoundsHistory.js";
 import { WhatToSend } from "../request/WhatToSend.js";
 import { WhoDoesTheWork } from "../request/WhoDoesTheWork.js";
-import { useApi, useDispatch, useLive } from "../store/hooks.js";
+import { useApi, useDispatch, useLive, useTask } from "../store/hooks.js";
 
 function useFailingLog(
   failing: Check | null,
@@ -151,7 +151,7 @@ function RequestChanges({ task }: { task: Task }) {
 
 export function RequestChangesScreen() {
   const { taskId = "" } = useParams();
-  const task = useLive((state) => state.tasks[taskId]);
+  const task = useTask(taskId);
   const live = useLive((state) => state.connection === "live");
   return (
     <section className="request-screen" aria-label="Request changes">

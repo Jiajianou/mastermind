@@ -1,4 +1,5 @@
 import type { Server } from "node:http";
+import { errorCode } from "../errno.js";
 
 export interface PortChoice {
   first: number;
@@ -11,10 +12,6 @@ export class PortUnavailableError extends Error {
 
 const fallbackAttempts = 100;
 const maxPort = 65_535;
-
-function errorCode(error: unknown): unknown {
-  return error instanceof Error && "code" in error ? error.code : undefined;
-}
 
 function listenOnce(server: Server, port: number): Promise<void> {
   return new Promise((resolve, reject) => {

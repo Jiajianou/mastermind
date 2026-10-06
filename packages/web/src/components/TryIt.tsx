@@ -1,9 +1,9 @@
 import type { Task, TerminalSize } from "@mastermind/core/contracts";
 import { useMemo, useRef, useState } from "react";
+import { errorMessage } from "@mastermind/core/contracts";
 import { hasWorkToShow } from "../decide/task-state.js";
 import { useCoalescedLoad } from "../review/use-coalesced-load.js";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
-import { errorMessage } from "./errors.js";
 import { createInputQueue } from "./terminal-input.js";
 import { useRequest } from "./use-request.js";
 import { XtermView } from "./XtermView.js";

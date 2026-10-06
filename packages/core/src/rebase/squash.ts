@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { stripAttribution } from "../attribution.js";
 import { readOptionalFile } from "../config/index.js";
 import type { Task } from "../contracts/index.js";
-import { GitError, headCommit, resultFileName } from "../git/index.js";
+import { exitedWith, headCommit, resultFileName } from "../git/index.js";
 import type { Git } from "../git/index.js";
 
 export type Squash = { kind: "squashed"; commit: string; subject: string } | { kind: "empty" };
@@ -26,8 +26,7 @@ async function nothingStaged(git: Git, worktree: string): Promise<boolean> {
     await git.run(worktree, ["diff", "--cached", "--quiet"]);
     return true;
   } catch (error) {
-    if (error instanceof GitError && error.exit.kind === "exited" && error.exit.code === 1)
-      return false;
+    if (exitedWith(error, 1)) return false;
     throw error;
   }
 }

@@ -1,11 +1,11 @@
 import type { Task } from "@mastermind/core/contracts";
 import { Link } from "react-router";
-import { count } from "../notes/notes.js";
+import { plural } from "@mastermind/core/contracts";
 import { TaskActionButton } from "../components/TaskActionButton.js";
 import { availableDecisions, decideHeadline, requestChangesPath } from "./task-state.js";
 
 function RequestChanges({ task, comments }: { task: Task; comments: number }) {
-  const label = `Request changes · ${count(comments, "comment")}`;
+  const label = `Request changes · ${plural(comments, "comment")}`;
   return availableDecisions(task.status).requestChanges ? (
     <Link className="button-link" to={requestChangesPath(task.id)}>
       {label}

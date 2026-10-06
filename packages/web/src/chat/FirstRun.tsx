@@ -1,11 +1,9 @@
+import { plural } from "@mastermind/core/contracts";
 import { useRef, useState } from "react";
 import { useApi, useLive } from "../store/hooks.js";
 import { SetupQuestion } from "./SetupQuestion.js";
 import { useRequest } from "../components/use-request.js";
 import { useSend } from "./use-send.js";
-
-const plural = (count: number, noun: string): string =>
-  `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 
 export function FirstRun({
   setupConfirmed,

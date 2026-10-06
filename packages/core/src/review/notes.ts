@@ -1,4 +1,4 @@
-import { ActionError, defineAction } from "../actions/index.js";
+import { ActionError, defineAction, requireTask } from "../actions/index.js";
 import type { ContractedActions } from "../actions/index.js";
 import {
   addCommentInputSchema,
@@ -6,16 +6,10 @@ import {
   findingRefInputSchema,
   updateCommentInputSchema,
 } from "../contracts/index.js";
-import type { Comment, Task } from "../contracts/index.js";
+import type { Comment } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 
 const conflict = (message: string) => ActionError.fromMessage("conflict", message);
-
-function requireTask(db: Db, taskId: string): Task {
-  const task = db.tasks.get(taskId);
-  if (task === null) throw ActionError.fromMessage("not_found", `no task "${taskId}"`);
-  return task;
-}
 
 // Comments sent with an earlier round are part of that round's request, so only the current round's can change.
 function editableComment(db: Db, taskId: string, commentId: number): Comment {

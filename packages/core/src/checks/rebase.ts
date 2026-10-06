@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { errorMessage } from "../contracts/index.js";
 import type { Check } from "../contracts/index.js";
-import { fetchMainIntoClone, GitError, upstreamRef } from "../git/index.js";
+import { exitedWith, fetchMainIntoClone, upstreamRef } from "../git/index.js";
 import type { Git } from "../git/index.js";
-import { describeExit, errorMessage, exitedCleanly, startCheck } from "./runner.js";
+import { describeExit, exitedCleanly } from "../procs.js";
+import { startCheck } from "./runner.js";
 import type { CheckContext } from "./runner.js";
 
 export interface RebaseRequest {
@@ -41,8 +43,7 @@ export async function isAncestor(git: Git, worktree: string, commit: string): Pr
     await git.run(worktree, ["merge-base", "--is-ancestor", commit, "HEAD"]);
     return true;
   } catch (error) {
-    if (error instanceof GitError && error.exit.kind === "exited" && error.exit.code === 1)
-      return false;
+    if (exitedWith(error, 1)) return false;
     throw error;
   }
 }

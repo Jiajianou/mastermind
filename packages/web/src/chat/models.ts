@@ -1,3 +1,5 @@
+import { capitalized } from "@mastermind/core/contracts";
+
 const knownModels: readonly string[] = ["opus", "sonnet", "haiku"];
 
 export interface ModelChoice {
@@ -5,8 +7,7 @@ export interface ModelChoice {
   label: string;
 }
 
-const label = (model: string): string =>
-  knownModels.includes(model) ? `${model.charAt(0).toUpperCase()}${model.slice(1)}` : model;
+const label = (model: string): string => (knownModels.includes(model) ? capitalized(model) : model);
 
 export function modelChoices(current: string | null): ModelChoice[] {
   const models =

@@ -4,7 +4,7 @@ import type { ActionRegistry, ContractedActions } from "./actions/index.js";
 import { postChatMessage, postConductorMessage } from "./chat.js";
 import type { Clock } from "./clock.js";
 import { ConfigError } from "./config/index.js";
-import { jsonValueSchema, proposalRefInputSchema } from "./contracts/index.js";
+import { errorMessage, jsonValueSchema, proposalRefInputSchema } from "./contracts/index.js";
 import type {
   ChatTurnRef,
   JsonValue,
@@ -133,7 +133,7 @@ export function createProposalGate(options: ProposalGateOptions): ProposalGate {
     try {
       value = await actions.invoke(proposal.action, proposal.args);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       const decided = settle(proposal, "confirmed", { ok: false, message });
       if (isActionFailure(error)) return decided;
       throw error;

@@ -1,5 +1,10 @@
 import { once } from "node:events";
-import { streamMessageSchema, streamPath, streamProtocols } from "@mastermind/core/contracts";
+import {
+  errorMessage,
+  streamMessageSchema,
+  streamPath,
+  streamProtocols,
+} from "@mastermind/core/contracts";
 import type { StreamMessage } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -45,7 +50,7 @@ async function connect(test: TestApi): Promise<StreamClient> {
 
 async function refusal(test: TestApi, offer: Offer): Promise<string> {
   const [error] = await once(open(test, offer), "error").catch((reason: unknown) => [reason]);
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }
 
 describe("WebSocket stream", () => {

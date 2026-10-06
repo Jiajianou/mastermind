@@ -6,12 +6,12 @@ import type { ClaudeCli, PrintOptions } from "../claude.js";
 import type { ExitOutcome, Session } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
-import { stopGroup } from "../procs.js";
-import type { ChildHandle, ExitResult } from "../procs.js";
+import { exitCode, stopGroup } from "../procs.js";
+import type { ChildHandle } from "../procs.js";
 import { classifyExit } from "./exit.js";
 import { fileEdit, ranShellCommand } from "./file-edits.js";
-import { createStreamParser } from "./parser.js";
-import type { ParsedEvent, TokenUsage } from "./parser.js";
+import { contextTokens, createStreamParser } from "./parser.js";
+import type { ParsedEvent } from "./parser.js";
 
 export interface StuckVerdict {
   reason: string;
@@ -62,15 +62,8 @@ export interface SessionSpawner {
 export const userMessageLine = (text: string): string =>
   JSON.stringify({ type: "user", message: { role: "user", content: text } });
 
-const totalInput = (usage: TokenUsage): number =>
-  usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
-
 function closeStream(stream: Writable): Promise<void> {
   return new Promise((resolve) => stream.end(resolve));
-}
-
-function exitCode(exit: ExitResult): number | null {
-  return exit.kind === "exited" ? exit.code : null;
 }
 
 export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpawner {
@@ -108,7 +101,7 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
       resultEvent = event;
       acceptingMessages = false;
       if (event.details.usage !== null) {
-        usage.inputTokens += totalInput(event.details.usage);
+        usage.inputTokens += contextTokens(event.details.usage);
         usage.outputTokens += event.details.usage.outputTokens;
         db.sessions.update(session.id, usage);
       }

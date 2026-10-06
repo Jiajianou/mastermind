@@ -1,5 +1,6 @@
 import {
   actionResultSchemas,
+  actionRequest,
   actionRoutes,
   apiErrorSchema,
   apiResponseSchemas,
@@ -95,21 +96,6 @@ export interface ApiClient {
 }
 
 type RequestBody = Readonly<Record<string, unknown>>;
-
-function routeAction(name: ActionName, input: object): { path: string; body: RequestBody } {
-  const route = actionRoutes[name];
-  const fields = new Map<string, unknown>(Object.entries(input));
-  const params = new Set<string>();
-  const path = route.path.replace(/:(\w+)/g, (_match, param: string) => {
-    const value = fields.get(param);
-    if (typeof value !== "string" && typeof value !== "number")
-      throw new Error(`${name} needs ${param} for ${route.path}`);
-    params.add(param);
-    return encodeURIComponent(String(value));
-  });
-  const body = Object.fromEntries([...fields].filter(([field]) => !params.has(field)));
-  return { path, body };
-}
 
 type TaskResource = "changes" | "file" | "tree" | "checks" | "notes" | "terminal";
 
@@ -233,7 +219,7 @@ export function createApiClient(token: string | null): ApiClient {
     },
 
     act<Name extends ActionName>(name: Name, ...[input]: ActionArgs<Name>) {
-      const { path, body } = routeAction(name, input ?? {});
+      const { path, body } = actionRequest(name, input ?? {});
       return request(actionRoutes[name].method, path, resultSchemas[name], body);
     },
   };

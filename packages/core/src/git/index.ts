@@ -14,7 +14,7 @@ export {
   upstreamRef,
 } from "./clones.js";
 export type { BranchCopyRequest, CloneRequest, TaskClone } from "./clones.js";
-export { createGit, GitError } from "./runner.js";
+export { createGit, exitedWith, GitError } from "./runner.js";
 export type { Git, GitOptions } from "./runner.js";
 export {
   listChanges,

@@ -1,7 +1,7 @@
 import type { TaskStatus } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
 import { check } from "../testing/fixtures.js";
-import { latestFailure, logTail, roundChecks } from "./checks.js";
+import { latestFailure, roundChecks } from "./checks.js";
 import { availableDecisions, decideHeadline } from "./task-state.js";
 
 describe("roundChecks", () => {
@@ -71,12 +71,5 @@ describe("decide header", () => {
     expect(decideHeadline({ status, round: 2 })).toBe(headline);
     const decisions = Object.entries(availableDecisions(status));
     expect(decisions.filter(([, allowed]) => allowed).map(([name]) => name)).toEqual(enabled);
-  });
-});
-
-describe("logTail", () => {
-  it("keeps the last lines and says when it cut some", () => {
-    expect(logTail("a\nb\nc\nd\n\n", 2)).toEqual({ text: "c\nd", cut: true });
-    expect(logTail("a\nb\n", 5)).toEqual({ text: "a\nb", cut: false });
   });
 });

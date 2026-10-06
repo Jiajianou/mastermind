@@ -1,3 +1,4 @@
+import { capitalized } from "./contracts/index.js";
 import type { Clock } from "./clock.js";
 import type {
   BranchRebase,
@@ -69,7 +70,7 @@ export const visibleEventLines = 5;
 
 type Line = Pick<EventLine, "label" | "text">;
 
-const sessionEndings: Record<Exclude<SessionStatus, "running">, string> = {
+export const sessionEndings: Record<Exclude<SessionStatus, "running">, string> = {
   succeeded: "finished",
   failed: "failed",
   stopped: "stopped",
@@ -83,8 +84,6 @@ const taskStatusLines: Partial<Record<TaskStatus, string>> = {
   blocked: "Blocked",
   done: "Done",
 };
-
-const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
 export function clockTime(date: Date): string {
   return [date.getHours(), date.getMinutes(), date.getSeconds()]
@@ -108,7 +107,7 @@ function endLine(session: Session): Line | null {
   if (session.status === "running") return null;
   return {
     label: sessionLabel(session),
-    text: `${capitalize(session.role)} ${sessionEndings[session.status]}`,
+    text: `${capitalized(session.role)} ${sessionEndings[session.status]}`,
   };
 }
 
@@ -118,7 +117,7 @@ function sessionEventLine({ taskId, event }: BusEventOf<"session.event">): Line 
 }
 
 function checkLine({ taskId, check }: BusEventOf<"check.updated">): Line {
-  return { label: taskId, text: `${capitalize(check.kind)} check ${check.status}` };
+  return { label: taskId, text: `${capitalized(check.kind)} check ${check.status}` };
 }
 
 function rebaseLine(

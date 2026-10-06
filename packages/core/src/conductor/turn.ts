@@ -1,4 +1,5 @@
-import type { ParsedEvent, TokenUsage } from "../sessions/index.js";
+import { contextTokens } from "../sessions/index.js";
+import type { ParsedEvent } from "../sessions/index.js";
 import type { ToolCallRecord } from "./action-line.js";
 
 export interface TurnRecorder {
@@ -8,9 +9,6 @@ export interface TurnRecorder {
   evidence(): ParsedEvent[];
   contextTokens(): number | null;
 }
-
-const contextSize = (usage: TokenUsage): number =>
-  usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
 
 // Text blocks around tool calls are separate in the stream; the reply joins them as paragraphs, so the streamed
 // deltas carry the same separator. A block cut short by Stop never gets its complete line, so its streamed text is
@@ -41,7 +39,7 @@ export function createTurnRecorder(): TurnRecorder {
         case "partial":
           return delta(details.textDelta);
         case "assistant":
-          if (details.usage !== null) tokens = contextSize(details.usage);
+          if (details.usage !== null) tokens = contextTokens(details.usage);
           if (details.text !== null && details.text !== "") {
             texts.push(details.text);
             needsSeparator = streamed;
@@ -49,7 +47,7 @@ export function createTurnRecorder(): TurnRecorder {
           }
           return null;
         case "tool_use":
-          if (details.usage !== null) tokens = contextSize(details.usage);
+          if (details.usage !== null) tokens = contextTokens(details.usage);
           started.set(details.toolUseId, { name: details.toolName, input: details.input });
           return null;
         case "tool_result": {

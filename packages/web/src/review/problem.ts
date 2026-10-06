@@ -1,5 +1,5 @@
 import type { Check, Rebase, SessionEvent } from "@mastermind/core/contracts";
-import { capitalized } from "../sessions/session-list.js";
+import { capitalized } from "@mastermind/core/contracts";
 
 function failedCheck(checks: readonly Check[]): Check | undefined {
   const latestByKind = new Map<Check["kind"], Check>();

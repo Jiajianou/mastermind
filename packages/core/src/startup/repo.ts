@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { isMissingFileError } from "../config/index.js";
+import { isMissingFileError } from "../errno.js";
 import { GitError } from "../git/index.js";
 import type { Git } from "../git/index.js";
 import { StartupError } from "./errors.js";

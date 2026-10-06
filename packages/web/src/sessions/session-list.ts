@@ -1,4 +1,5 @@
 import type { Check, Rebase, Session, SessionStatus } from "@mastermind/core/contracts";
+import { capitalized } from "@mastermind/core/contracts";
 
 const statusWords: Record<SessionStatus, string> = {
   running: "Running",
@@ -12,26 +13,23 @@ const statusWords: Record<SessionStatus, string> = {
 
 export const sessionStatusWord = (status: SessionStatus): string => statusWords[status];
 
-export const capitalized = (word: string): string =>
-  `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
-
 export interface SessionGroups {
   active: Session[];
   finishedToday: Session[];
 }
 
-function isTaskSession(session: Session): boolean {
+function isWorkSession(session: Session): boolean {
   return session.role !== "conductor";
 }
 
 export function activeSessions<Entry extends Session>(sessions: readonly Entry[]): Entry[] {
   return sessions
-    .filter((session) => isTaskSession(session) && session.status === "running")
+    .filter((session) => isWorkSession(session) && session.status === "running")
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id - b.id);
 }
 
 export function groupSessions(sessions: readonly Session[], now: Date): SessionGroups {
-  const shown = sessions.filter(isTaskSession);
+  const shown = sessions.filter(isWorkSession);
   const today = now.toDateString();
   return {
     active: activeSessions(shown),

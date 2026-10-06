@@ -33,7 +33,7 @@ export type {
   OneShotRole,
   OneShotRunner,
 } from "./one-shot.js";
-export { createStreamParser } from "./parser.js";
+export { contextTokens, createStreamParser } from "./parser.js";
 export type { EventDetails, ParsedEvent, RateLimit, StreamParser, TokenUsage } from "./parser.js";
 export type { CommitInfo } from "./commits.js";
 export { isInside, pathGuardResponse } from "./path-guard.js";
@@ -56,7 +56,7 @@ export { outcomeEffect, settleWorkerRun } from "./settlement.js";
 export type { SettlementEffect, SettlementInput, WorkerSettlement } from "./settlement.js";
 export { runSetupCheck } from "./setup.js";
 export type { SetupCheckRequest } from "./setup.js";
-export { createSessionSpawner } from "./spawner.js";
+export { createSessionSpawner, userMessageLine } from "./spawner.js";
 export { createStuckMonitor, stuckJudgeModel } from "./stuck-monitor.js";
 export type { StuckMonitor, StuckMonitorOptions } from "./stuck-monitor.js";
 export { stuckJudgePrompt, stuckSignals, stuckVerdictSchema } from "./stuck.js";

@@ -7,21 +7,21 @@ import type { ClaudeCli } from "../claude.js";
 import {
   ConfigError,
   hostPlatform,
-  isMissingFileError,
   loadConfig,
   projectPaths,
   readOptionalFile,
   resolveConfigPath,
 } from "../config/index.js";
 import type { ConfigContext } from "../config/index.js";
-import { planLabel } from "../contracts/index.js";
+import { isMissingFileError } from "../errno.js";
+import { errorMessage, planLabel, plural } from "../contracts/index.js";
 import type { Config } from "../contracts/index.js";
 import { cleanEnv } from "../env.js";
 import type { Environment } from "../env.js";
 import { isExecutableFile, locateOnPath } from "../executables.js";
 import { createGit } from "../git/index.js";
 import { listLogFiles } from "../logs.js";
-import { collectOutput, SpawnError } from "../procs.js";
+import { collectOutput, exitedCleanly, SpawnError } from "../procs.js";
 import type { ProcessRegistry } from "../procs.js";
 import { StartupError } from "./errors.js";
 import { currentBranch, findRepo } from "./repo.js";
@@ -60,9 +60,6 @@ const ok = (message: string): Outcome => ({ level: "ok", message });
 const warning = (message: string): Outcome => ({ level: "warning", message });
 const failure = (message: string): Outcome => ({ level: "error", message });
 const skipped = (message: string): Outcome => ({ level: "skipped", message });
-
-const describeError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 interface RepoState {
   outcome: Outcome;
@@ -138,7 +135,7 @@ async function checkAttribution({ env, homeDir }: DoctorOptions): Promise<Outcom
     if (!parsed.success) return warning(`${path} has an unexpected attribution setting. ${advice}`);
     settings = parsed.data;
   } catch (error) {
-    return warning(`Could not read ${path}: ${describeError(error)}. ${advice}`);
+    return warning(`Could not read ${path}: ${errorMessage(error)}. ${advice}`);
   }
   const attribution = settings.attribution ?? {};
   const stillOn = attributionKeys.filter((key) => attribution[key] !== attributionOff[key]);
@@ -193,9 +190,9 @@ async function checkWorktrees(
     env: cleanEnv(options.env),
   });
   const kilobytes = Number(/^\d+/.exec(stdout)?.[0]);
-  if (exit.kind !== "exited" || exit.code !== 0 || Number.isNaN(kilobytes))
+  if (!exitedCleanly(exit) || Number.isNaN(kilobytes))
     return warning(`Could not measure ${dir}: ${stderr.trim() || "du failed"}`);
-  const count = `${String(clones.length)} task clone${clones.length === 1 ? "" : "s"}`;
+  const count = plural(clones.length, "task clone");
   return ok(`${formatKilobytes(kilobytes)} in ${count} in ${dir}`);
 }
 
@@ -205,7 +202,7 @@ async function checkLogs(context: ConfigContext, config: Config): Promise<Outcom
   const files = await listLogFiles(dir);
   if (files.length === 0) return ok(`no logs yet in ${dir}, ${kept}`);
   const kilobytes = Math.ceil(files.reduce((total, { bytes }) => total + bytes, 0) / 1024);
-  const count = `${String(files.length)} file${files.length === 1 ? "" : "s"}`;
+  const count = plural(files.length, "file");
   return ok(`${formatKilobytes(kilobytes)} in ${count} in ${dir}, ${kept}`);
 }
 
@@ -285,9 +282,9 @@ export function formatDoctorReport(checks: readonly DoctorCheck[]): string {
   const warned = checks.filter(({ level }) => level === "warning").length;
   const summary =
     failed > 0
-      ? `${String(failed)} check${failed === 1 ? "" : "s"} failed.`
+      ? `${plural(failed, "check")} failed.`
       : warned > 0
-        ? `All checks passed, with ${String(warned)} warning${warned === 1 ? "" : "s"}.`
+        ? `All checks passed, with ${plural(warned, "warning")}.`
         : "All checks passed.";
   return [...lines, "", summary, ""].join("\n");
 }

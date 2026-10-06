@@ -245,6 +245,33 @@ describe("rebasing the owner's branch", () => {
     expect(await harness.env.invocations()).toEqual([]);
   });
 
+  it("refuses to put a commit with an attribution line on main, moving nothing", async () => {
+    const harness = await ownerHarness();
+    const { repo } = harness;
+    await commit(
+      repo,
+      "notes.txt",
+      "notes\n",
+      "--message",
+      "Add notes\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+    );
+    await commitOnMain(repo, "other.txt", "other\n", "main: other change");
+    const main = await repo.git("rev-parse", "main");
+    const dev = await repo.git("rev-parse", "dev");
+
+    await harness.actions.invoke("rebaseOwnerBranch", {});
+    const rebase = await harness.finished();
+
+    expect(rebase.status).toBe("failed");
+    expect(rebase.outcome).toContain(
+      "a commit message has an attribution line (Co-Authored-By: Claude <noreply@anthropic.com>)",
+    );
+    expect(await repo.git("rev-parse", "main")).toBe(main);
+    expect(await repo.git("rev-parse", "dev")).toBe(dev);
+    expect(await repo.git("for-each-ref", "refs/mastermind-branches/")).toBe("");
+    expect(harness.events.some((event) => event.type === "main.moved")).toBe(false);
+  });
+
   it("folds a fixer's conflict resolution into the owner's commit", async () => {
     const harness = await ownerHarness({
       turns: [
@@ -284,22 +311,22 @@ describe("rebasing the owner's branch", () => {
     expect(harness.errors).toEqual([]);
   });
 
-  it("offers to rebase the branch when main moves, and rebases it once confirmed", async () => {
+  it("offers once to rebase the branch when main moves, and rebases it once confirmed", async () => {
     const harness = await ownerHarness();
     const { repo } = harness;
     await commit(repo, "notes.txt", "notes\n", "--message", "Add notes");
     await commitOnMain(repo, "other.txt", "other\n", "main: other change");
-    harness.bus.emit({
-      type: "main.moved",
-      branch: "main",
-      commit: await repo.git("rev-parse", "main"),
-    });
+    const moved = await repo.git("rev-parse", "main");
+    harness.bus.emit({ type: "main.moved", branch: "main", commit: moved });
+    harness.bus.emit({ type: "main.moved", branch: "main", commit: moved });
 
     const offer = await waitFor(() =>
       harness.db.chat.list().find((message) => message.kind === "proposal"),
     );
     expect(offer.content).toBe("main moved 1 commit; rebase dev onto it?");
-    const [proposal] = harness.db.proposals.listPending();
+    const pending = harness.db.proposals.listPending();
+    expect(pending).toHaveLength(1);
+    const [proposal] = pending;
     expect(proposal?.args).toEqual({ branch: "dev" });
 
     await harness.gate.confirm(proposal?.id ?? 0);

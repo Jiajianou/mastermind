@@ -1,9 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  actionResultSchemas,
   actionRoutes,
   apiResponseSchemas,
+  errorMessage,
   isActionName,
+  plural,
   taskSchema,
 } from "@mastermind/core/contracts";
 import type { ActionName } from "@mastermind/core/contracts";
@@ -39,11 +42,15 @@ const controlDescriptions: Partial<Record<string, string>> = {
   approve: "approve a task in review and rebase it onto main",
 };
 
-// A task control is an action routed as POST /api/tasks/:taskId/<its own name>, so the commands follow the
-// registered actions: discard and approve appear once their actions have routes.
+// A task control is an action routed as POST /api/tasks/:taskId/<its own name>, so the commands follow the routes.
 const taskControls: ActionName[] = Object.entries(actionRoutes).flatMap(([name, route]) =>
   isActionName(name) && route.path === `/api/tasks/:taskId/${name}` ? [name] : [],
 );
+
+const schedulerControls = [
+  ["pause", "stop starting new sessions; running ones carry on"],
+  ["resume", "start new sessions again"],
+] as const;
 
 type ClientRun = (instance: Instance, output: ClientOutput) => Promise<number>;
 
@@ -53,7 +60,7 @@ async function runClient(json: boolean, repo: string, run: ClientRun): Promise<n
     return await run(await locateInstance(repo), output);
   } catch (error) {
     if (error instanceof ClientError) output.warn(error.message);
-    else output.warn(`mastermind: ${error instanceof Error ? error.message : String(error)}`);
+    else output.warn(`mastermind: ${errorMessage(error)}`);
     return 1;
   }
 }
@@ -81,9 +88,6 @@ async function writeTasksFile(path: string, yaml: string): Promise<void> {
     throw new ClientError(`cannot write ${path}`, { cause: error });
   }
 }
-
-const plural = (count: number, noun: string): string =>
-  `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 
 export function registerClientCommands(program: Command): void {
   clientCommand(program, "status", "show what the running mastermind is doing").action(
@@ -143,6 +147,22 @@ export function registerClientCommands(program: Command): void {
           return 0;
         });
       });
+  }
+
+  for (const [action, description] of schedulerControls) {
+    clientCommand(program, action, description).action(async (options: unknown) => {
+      const { json, repo } = clientOptionsSchema.parse(options);
+      process.exitCode = await runClient(json, repo, async (instance, output) => {
+        const flags = await createApiClient(instance).invoke(
+          action,
+          {},
+          actionResultSchemas[action],
+        );
+        if (output.json) output.writeJson(flags);
+        else output.write(flags.paused ? "Paused: no new sessions start.\n" : "Resumed.\n");
+        return 0;
+      });
+    });
   }
 
   clientCommand(program, "import", "add the tasks of a tasks.yaml file")

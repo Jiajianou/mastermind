@@ -1,12 +1,13 @@
 import type { Check } from "@mastermind/core/contracts";
 import { durationText } from "../sessions/duration.js";
-import { checkNames, checkStatusWords } from "./checks.js";
+import { checkTitles } from "@mastermind/core/contracts";
+import { checkStatusWords } from "./checks.js";
 import { TaskActionButton } from "../components/TaskActionButton.js";
 
 function CheckRow({ check }: { check: Check }) {
   return (
     <li className={`check-row check-${check.status}`}>
-      <span className="check-name">{checkNames[check.kind]}</span>
+      <span className="check-name">{checkTitles[check.kind]}</span>
       <span className="check-status">{checkStatusWords[check.status]}</span>
       {check.durationMs !== null && (
         <span className="check-duration muted">{durationText(check.durationMs)}</span>

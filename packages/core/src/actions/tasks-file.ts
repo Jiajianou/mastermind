@@ -2,8 +2,10 @@ import { Document, isMap, isSeq, parseDocument } from "yaml";
 import {
   createTasksInputSchema,
   importTasksInputSchema,
+  isPlainRecord,
   newTaskSchema,
   noInputSchema,
+  plural,
 } from "../contracts/index.js";
 import type { Task } from "../contracts/index.js";
 import type { NewTask } from "../db/index.js";
@@ -16,10 +18,6 @@ const taskKeys = new Set<string>(newTaskSchema.keyof().options);
 export interface TasksFile {
   tasks: NewTask[];
   warnings: string[];
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function topLevelEntries(content: unknown, warnings: string[]): unknown {
@@ -42,14 +40,12 @@ function knownTaskFields(entries: unknown, warnings: string[]): unknown {
     return Object.fromEntries(known);
   });
   for (const [key, count] of ignoredCounts) {
-    warnings.push(
-      `ignored unknown key "${key}" (${String(count)} ${count === 1 ? "task" : "tasks"})`,
-    );
+    warnings.push(`ignored unknown key "${key}" (${plural(count, "task")})`);
   }
   return tasks;
 }
 
-export function readTasksFile(text: string): TasksFile {
+export function parseTasksYaml(text: string): TasksFile {
   const document = parseDocument(text);
   const [syntaxError] = document.errors;
   if (syntaxError !== undefined) {
@@ -63,7 +59,7 @@ export function readTasksFile(text: string): TasksFile {
   return { tasks, warnings };
 }
 
-export function writeTasksFile(tasks: readonly Task[]): string {
+export function tasksToYaml(tasks: readonly Task[]): string {
   const document = new Document({
     tasks: tasks.map((task) => ({
       id: task.id,
@@ -95,7 +91,7 @@ export const importTasks = defineAction({
   input: importTasksInputSchema,
   emits: ["task.updated"],
   handler: ({ yaml }, scope): { tasks: Task[]; warnings: string[] } => {
-    const { tasks, warnings } = readTasksFile(yaml);
+    const { tasks, warnings } = parseTasksYaml(yaml);
     return { tasks: insertTaskBatch(scope, tasks), warnings };
   },
 });
@@ -105,5 +101,5 @@ export const exportTasks = defineAction({
   description: "Write every task as the text of a tasks.yaml file.",
   input: noInputSchema,
   emits: [],
-  handler: (_input, { db }) => ({ yaml: writeTasksFile(db.tasks.list()) }),
+  handler: (_input, { db }) => ({ yaml: tasksToYaml(db.tasks.list()) }),
 });

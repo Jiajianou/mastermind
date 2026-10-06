@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { errorMessage } from "@mastermind/core/contracts";
 
 export interface Request {
   busy: boolean;
@@ -16,7 +17,7 @@ export function useRequest(): Request {
       await work();
       return true;
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
+      setFailure(errorMessage(error));
       return false;
     } finally {
       setBusy(false);

@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApiClient } from "../api/client.js";
 import { session, stateWith, task } from "../testing/fixtures.js";
-import { LiveProvider, useSession, useTask } from "./hooks.js";
+import { LiveProvider, useLive, useTask } from "./hooks.js";
 import { createStore } from "./store.js";
 
 declare global {
@@ -21,7 +21,7 @@ function TaskPane({ taskId }: { taskId: string }) {
 }
 
 function SessionPane({ sessionId }: { sessionId: number }) {
-  const shown = useSession(sessionId);
+  const shown = useLive((state) => state.sessions[sessionId]);
   renders.push(`session ${String(sessionId)}`);
   return <p>{shown?.status}</p>;
 }

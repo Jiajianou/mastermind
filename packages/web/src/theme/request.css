@@ -106,6 +106,13 @@
   padding: 14px 16px;
 }
 
+.request-header > a {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  min-height: var(--control-min-height);
+}
+
 .request-header h1 {
   margin: 0;
   font-size: 20px;

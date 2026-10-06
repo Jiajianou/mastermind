@@ -35,6 +35,3 @@ export function commentExcerpt(text: string): string {
 
 export const lineRange = (start: number, end: number): string =>
   start === end ? `line ${String(start)}` : `lines ${String(start)}–${String(end)}`;
-
-export const count = (amount: number, noun: string): string =>
-  `${String(amount)} ${noun}${amount === 1 ? "" : "s"}`;

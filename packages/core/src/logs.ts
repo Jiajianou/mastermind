@@ -2,7 +2,7 @@ import type { Dirent } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Clock } from "./clock.js";
-import { isMissingFileError } from "./config/files.js";
+import { isMissingFileError } from "./errno.js";
 
 export interface LogFile {
   path: string;

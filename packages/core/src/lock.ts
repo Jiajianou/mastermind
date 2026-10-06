@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { errorCode } from "./errno.js";
 
 const lockRecordSchema = z.strictObject({
   pid: z.int().positive(),
@@ -179,8 +180,4 @@ function readText(path: string): string | null {
     if (errorCode(error) === "ENOENT") return null;
     throw error;
   }
-}
-
-function errorCode(error: unknown): unknown {
-  return error instanceof Error && "code" in error ? error.code : undefined;
 }

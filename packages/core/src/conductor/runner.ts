@@ -3,6 +3,7 @@ import { createWriteStream } from "node:fs";
 import type { WriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { errorMessage } from "../contracts/index.js";
 import { postChatMessage } from "../chat.js";
 import type { ClaudeCli, PrintOptions } from "../claude.js";
 import type {
@@ -14,9 +15,14 @@ import type {
 } from "../contracts/index.js";
 import type { Db, NewChatMessage } from "../db/index.js";
 import type { EventBus } from "../events.js";
-import { stopGroup } from "../procs.js";
+import { exitCode, stopGroup } from "../procs.js";
 import type { ChildHandle, ExitResult } from "../procs.js";
-import { attributionOff, classifyExit, createStreamParser } from "../sessions/index.js";
+import {
+  attributionOff,
+  classifyExit,
+  createStreamParser,
+  userMessageLine,
+} from "../sessions/index.js";
 import type { EventDetails, ParsedEvent, StreamParser, UsageBackoff } from "../sessions/index.js";
 import { summariseActions } from "./action-line.js";
 import { turnPrompt, wakeText, withSummary } from "./prompt.js";
@@ -104,20 +110,12 @@ type TurnEnd =
 
 type InitDetails = Extract<EventDetails, { line: "init" }>;
 
-const userLine = (text: string): string =>
-  `${JSON.stringify({ type: "user", message: { role: "user", content: text } })}\n`;
-
 const interruptLine = (): string =>
   `${JSON.stringify({
     type: "control_request",
     request_id: `stop-${randomUUID()}`,
     request: { subtype: "interrupt" },
   })}\n`;
-
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
-const exitCode = (exit: ExitResult): number | null => (exit.kind === "exited" ? exit.code : null);
 
 function closeStream(stream: WriteStream): Promise<void> {
   return new Promise((resolve) => stream.end(resolve));
@@ -233,7 +231,7 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   }
 
   function deliver(current: Turn, proc: ConductorProcess, text: string): void {
-    write(proc, userLine(text));
+    write(proc, `${userMessageLine(text)}\n`);
     current.written += 1;
   }
 

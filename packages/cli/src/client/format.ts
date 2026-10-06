@@ -1,16 +1,7 @@
 import { taskStatusSchema } from "@mastermind/core/contracts";
 import type { ApiSummary, Session, SessionEvent, Task, TaskView } from "@mastermind/core/contracts";
-import { clockTime } from "@mastermind/core/status";
+import { clockTime, sessionEndings } from "@mastermind/core/status";
 import { elapsed, sessionRole } from "../tui/format.js";
-
-const sessionEndings: Record<Exclude<Session["status"], "running">, string> = {
-  succeeded: "finished",
-  failed: "failed",
-  stopped: "stopped",
-  killed: "killed",
-  rate_limited: "hit the usage limit",
-  auth_failed: "lost its Claude sign-in",
-};
 
 const listOrNone = (items: readonly string[]): string =>
   items.length === 0 ? "none" : items.join(", ");

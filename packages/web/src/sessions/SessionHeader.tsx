@@ -1,8 +1,9 @@
 import type { Session, Task } from "@mastermind/core/contracts";
 import { Link } from "react-router";
+import { capitalized } from "@mastermind/core/contracts";
 import { clockTime } from "../components/format.js";
 import { sessionDiffPath } from "./links.js";
-import { capitalized, sessionStatusWord } from "./session-list.js";
+import { sessionStatusWord } from "./session-list.js";
 import { StopSessionButton } from "./StopSessionButton.js";
 
 export function SessionHeader({ session, task }: { session: Session; task: Task | undefined }) {

@@ -1,3 +1,4 @@
+import { fenced } from "../contracts/index.js";
 import type { Check, Finding, Task } from "../contracts/index.js";
 import { taskBrief } from "../sessions/prompts.js";
 
@@ -22,8 +23,6 @@ const checkNames: Record<Check["kind"], string> = {
 };
 
 export const checkName = (check: Pick<Check, "kind">): string => checkNames[check.kind];
-
-const fenced = (text: string): string => "```text\n" + text + "\n```";
 
 function fixerPrompt(task: Task, problem: string[], instruction: string): string {
   return [`# Fix task ${task.id}: ${task.title}`, ...problem, instruction, ...taskBrief(task)].join(

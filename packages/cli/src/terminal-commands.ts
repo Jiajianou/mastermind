@@ -1,6 +1,7 @@
 import { describeAuth } from "@mastermind/core/auth";
 import { cleanEnv } from "@mastermind/core/env";
 import type { Environment } from "@mastermind/core/env";
+import { exitedCleanly } from "@mastermind/core/procs";
 import type { ProcessRegistry, SpawnRequest } from "@mastermind/core/procs";
 import type { Runtime } from "@mastermind/core/runtime";
 
@@ -45,7 +46,7 @@ export function createTerminalCommands(
     });
     child.stdin?.end(input);
     const exit = await child.exited;
-    const succeeded = exit.kind === "exited" && exit.code === 0;
+    const succeeded = exitedCleanly(exit);
     if (!succeeded) store.notice(`${request.command} did not succeed`);
     return succeeded;
   }

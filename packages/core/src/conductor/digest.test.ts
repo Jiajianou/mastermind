@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { Summary, TaskStatus } from "../contracts/index.js";
-import { buildDigest } from "./digest.js";
+import { openDb } from "../db/index.js";
+import { allowSandboxHostDescriber } from "../sandbox.js";
+import { makeTempDir } from "../testing/temp-dir.js";
+import { buildDigest, readDigestInput } from "./digest.js";
 import type { DigestInput } from "./digest.js";
+import { actionTools } from "./tools.js";
 
 const now = new Date(2026, 9, 6, 14, 2);
 const minutesAgo = (minutes: number): string =>
@@ -128,5 +133,29 @@ describe("buildDigest", () => {
     expect(estimatedTokens(digest)).toBeLessThanOrEqual(300);
     expect(digest).toContain("and 38 more");
     expect(digest).toContain("Tasks (1000)");
+  });
+
+  it("names each pending decision by its question, including mastermind's own offers", async () => {
+    const clock = { now: () => now };
+    const db = openDb(join(await makeTempDir(), "db.sqlite"), { clock });
+    onTestFinished(() => {
+      db.close();
+    });
+    db.proposals.create({ action: "approve", args: { taskId: "sched-prio" } });
+    db.proposals.create({ action: "allowSandboxHost", args: { host: "github.com" } });
+    db.proposals.create({ action: "rebaseOwnerBranch", args: { branch: "dev" } });
+
+    const digest = buildDigest(
+      readDigestInput({
+        db,
+        clock,
+        summary: () => summary(),
+        describers: [...actionTools, allowSandboxHostDescriber],
+      }),
+    );
+
+    expect(digest).toContain(
+      "waiting for a decision: Rebase sched-prio onto main?, Allow github.com for this project?, Rebase dev onto main?.",
+    );
   });
 });

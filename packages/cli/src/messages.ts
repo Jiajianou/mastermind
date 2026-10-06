@@ -1,10 +1,8 @@
+import { plural } from "@mastermind/core/contracts";
+
 export interface LiveCounts {
   sessions: number;
   checks: number;
-}
-
-function count(n: number, noun: string): string {
-  return `${String(n)} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 export function footerHint(paused: boolean): string {
@@ -12,12 +10,12 @@ export function footerHint(paused: boolean): string {
 }
 
 export function armedWarning({ sessions, checks }: LiveCounts): string {
-  return `Press Ctrl+C again to quit. This kills ${count(sessions, "session")} and ${count(checks, "check")} immediately. Worktrees are kept.`;
+  return `Press Ctrl+C again to quit. This kills ${plural(sessions, "session")} and ${plural(checks, "check")} immediately. Worktrees are kept.`;
 }
 
 export function killSummary({ sessions, checks }: LiveCounts): string {
   return [
-    `Stopped mastermind. Killed ${count(sessions, "session")}, ${count(checks, "check")}.`,
+    `Stopped mastermind. Killed ${plural(sessions, "session")}, ${plural(checks, "check")}.`,
     "Worktrees kept. Unfinished tasks resume on the next `mastermind .`",
   ].join("\n");
 }

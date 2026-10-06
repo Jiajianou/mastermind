@@ -1,7 +1,7 @@
+import { errorMessage } from "@mastermind/core/contracts";
 import { changesKey } from "../store/state.js";
 import type { ChangesView } from "../store/state.js";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
-import { errorMessage } from "../components/errors.js";
 import { useCoalescedLoad } from "./use-coalesced-load.js";
 
 export function useChangesView(taskId: string, since = "base"): ChangesView | undefined {

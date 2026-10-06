@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { issuesFromZod } from "../config/errors.js";
-import type { ActionErrorCode, ActionIssue, TaskStatus } from "../contracts/index.js";
+import type { ActionErrorCode, ActionIssue, Task, TaskStatus } from "../contracts/index.js";
+import type { Db } from "../db/index.js";
 
 export class ActionError extends Error {
   override readonly name: string = "ActionError";
@@ -40,4 +41,10 @@ export class IllegalTransitionError extends ActionError {
 
 function describeIssue({ path, message }: ActionIssue): string {
   return path === null ? message : `${path}: ${message}`;
+}
+
+export function requireTask(db: Pick<Db, "tasks">, taskId: string): Task {
+  const task = db.tasks.get(taskId);
+  if (task === null) throw ActionError.fromMessage("not_found", `no task "${taskId}"`);
+  return task;
 }

@@ -3,6 +3,7 @@ import type { Stats } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { join } from "node:path";
+import { isMissingFileError } from "../errno.js";
 import { maxFileBytes } from "../contracts/index.js";
 import type { ChangeStatus, FileChange, FileContent } from "../contracts/index.js";
 import { normalizeRelativePath, resolveInsideWorktree } from "./path-safety.js";
@@ -135,14 +136,11 @@ function parseStatus(output: string): WorktreeStatus {
 
 const unknownCounts: LineCounts = { additions: null, deletions: null, binary: false };
 
-const isNotFound = (error: unknown): boolean =>
-  error instanceof Error && "code" in error && error.code === "ENOENT";
-
 async function lstatIfPresent(path: string): Promise<Stats | null> {
   try {
     return await lstat(path);
   } catch (error) {
-    if (isNotFound(error)) return null;
+    if (isMissingFileError(error)) return null;
     throw error;
   }
 }
@@ -252,7 +250,7 @@ async function openIfPresent(path: string): Promise<FileHandle | null> {
   try {
     return await open(path, openFlags);
   } catch (error) {
-    if (isNotFound(error)) return null;
+    if (isMissingFileError(error)) return null;
     throw error;
   }
 }

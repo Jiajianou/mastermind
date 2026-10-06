@@ -10,6 +10,7 @@ import {
   StartupError,
 } from "@mastermind/core/startup";
 import type { Startup } from "@mastermind/core/startup";
+import { errorMessage } from "@mastermind/core/contracts";
 import { exitOnSignalsDuringStartup, runInForeground } from "./foreground.js";
 import { createTerminalPrompts } from "./terminal-prompts.js";
 
@@ -19,7 +20,7 @@ export interface ForegroundOptions {
 }
 
 function reportFailure(error: unknown): number {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   process.stderr.write(error instanceof StartupError ? `${message}\n` : `mastermind: ${message}\n`);
   return 1;
 }

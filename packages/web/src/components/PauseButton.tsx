@@ -1,25 +1,17 @@
-import { useState } from "react";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
+import { useRequest } from "./use-request.js";
 
 export function PauseButton() {
   const api = useApi();
   const dispatch = useDispatch();
   const live = useLive((state) => state.connection === "live");
   const paused = useLive((state) => state.scheduler.paused);
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const { busy, failure, run } = useRequest();
 
-  const toggle = async () => {
-    setBusy(true);
-    setFailure(null);
-    try {
+  const toggle = () =>
+    run(async () => {
       dispatch({ type: "flags.changed", flags: await api.act(paused ? "resume" : "pause") });
-    } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   return (
     <div className="pause-control">

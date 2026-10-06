@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { errorMessage } from "../contracts/index.js";
 import { commandKindSchema } from "../contracts/config.js";
 import type {
   CommandKind,
@@ -95,7 +96,7 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false; me
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    return { ok: false, message: errorMessage(error) };
   }
 }
 

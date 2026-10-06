@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IPty, IPtyForkOptions } from "node-pty";
 import { ActionError } from "./actions/index.js";
-import { terminalScrollbackLimit } from "./contracts/index.js";
+import { errorMessage, terminalScrollbackLimit } from "./contracts/index.js";
 import type {
   Task,
   TaskTerminal,
@@ -54,9 +54,6 @@ const conflict = (message: string) => ActionError.fromMessage("conflict", messag
 const hasWorkspace = (task: Task): task is Task & { worktree: string } =>
   task.worktree !== null && task.status !== "done";
 
-const describe = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
 const viewOf = ({ terminal, output, received }: OpenTerminal): TerminalView => ({
   terminal,
   output,
@@ -81,7 +78,7 @@ export function createTerminals({
       ({ spawn }): PtyLoad => ({ kind: "loaded", spawn }),
       (error: unknown): PtyLoad => ({
         kind: "failed",
-        message: `Try it yourself needs node-pty, which could not be loaded: ${describe(error)}`,
+        message: `Try it yourself needs node-pty, which could not be loaded: ${errorMessage(error)}`,
       }),
     );
     return loading;
@@ -122,7 +119,7 @@ export function createTerminals({
         env: childEnv,
       });
     } catch (error) {
-      throw conflict(`could not start ${shell} in ${task.worktree}: ${describe(error)}`);
+      throw conflict(`could not start ${shell} in ${task.worktree}: ${errorMessage(error)}`);
     }
     const untrack = registry.track({ kind: "terminal", ...groupOf(pty) });
     const terminal: Terminal = {

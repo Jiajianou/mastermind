@@ -236,6 +236,46 @@ describe("checks pipeline", () => {
     expect(harness.errors).toEqual([]);
   });
 
+  it("counts an attempt each time a conflict fixer gives up, and blocks the task at maxAttempts", async () => {
+    const harness = await checksHarness({
+      startPipeline: false,
+      config: { maxAttempts: 2 },
+      scenario: {
+        turns: [
+          worker({
+            kind: "edit",
+            path: "README.md",
+            oldString: "# Demo",
+            newString: "# Task demo",
+          }),
+          {
+            match: { role: "fixer", prompt: "## Rebase conflict" },
+            steps: [{ kind: "text", text: "I could not resolve it." }],
+          },
+        ],
+      },
+    });
+    await harness.startTask("readme");
+    await harness.waitForStatus("readme", "checking");
+    await writeFile(join(harness.repo.path, "README.md"), "# Main demo\n");
+    await harness.repo.git("commit", "-qam", "readme: retitle on main");
+
+    harness.pipeline.start();
+    const task = await harness.waitForStatus("readme", "blocked");
+
+    expect(task.attempts).toBe(2);
+    const sessions = harness.db.sessions.listForTask("readme");
+    expect(sessions.map(({ role, attempt }) => ({ role, attempt }))).toEqual([
+      { role: "worker", attempt: 1 },
+      { role: "fixer", attempt: 1 },
+      { role: "fixer", attempt: 2 },
+    ]);
+    expect(harness.db.events.listForSession(sessions[2]?.id ?? 0).at(-1)?.summary).toMatch(
+      /^Blocked after 2 attempts: the fixer could not resolve the rebase conflict/,
+    );
+    expect(harness.errors).toEqual([]);
+  });
+
   it("sends a serious review finding to a fixer, then stores a minor one and lets the task proceed", async () => {
     const harness = await checksHarness({
       config: { reviewer: { enabled: true } },

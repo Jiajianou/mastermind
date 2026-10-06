@@ -1,25 +1,20 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createProcessRegistry } from "@mastermind/core/procs";
+import {
+  doctorCheckNames,
+  doctorPassed,
+  formatDoctorReport,
+  runDoctor,
+} from "@mastermind/core/startup";
 import { describe, expect, it } from "vitest";
-import { runCli } from "../support/cli.js";
 import { isolatedEnv } from "../support/isolated-env.js";
 import type { IsolatedEnv, IsolatedEnvOptions } from "../support/isolated-env.js";
 import { createTempRepo } from "../support/temp-repo.js";
 
-const checkNames = [
-  "git",
-  "claude",
-  "sign-in",
-  "attribution",
-  "config",
-  "worktrees",
-  "logs",
-  "sandbox",
-];
-
-function reportLines(stdout: string): Record<string, string> {
+function reportLines(report: string): Record<string, string> {
   return Object.fromEntries(
-    stdout.split("\n").flatMap((line) => {
+    report.split("\n").flatMap((line) => {
       const name = /^[✓!✗-] (\S+)/.exec(line)?.[1];
       return name === undefined ? [] : [[name, line]];
     }),
@@ -33,6 +28,20 @@ async function stubLinuxSandboxTools(env: IsolatedEnv): Promise<void> {
     await writeFile(path, "#!/bin/sh\nexit 0\n");
     await chmod(path, 0o755);
   }
+}
+
+async function doctor(
+  path: string,
+  env: IsolatedEnv,
+): Promise<{ report: string; passed: boolean }> {
+  const checks = await runDoctor({
+    path,
+    env: env.env,
+    homeDir: env.home,
+    platform: process.platform,
+    registry: createProcessRegistry(),
+  });
+  return { report: formatDoctorReport(checks), passed: doctorPassed(checks) };
 }
 
 async function doctorEnv(options: IsolatedEnvOptions): Promise<IsolatedEnv> {
@@ -64,18 +73,18 @@ describe("mastermind doctor", () => {
       Buffer.alloc(3 * 1024),
     );
 
-    const run = await runCli(["doctor", repo.path], { env: env.env });
+    const run = await doctor(repo.path, env);
 
-    const lines = reportLines(run.stdout);
-    expect(Object.keys(lines)).toEqual(checkNames);
-    for (const name of checkNames) expect(lines[name]).toMatch(new RegExp(`^✓ ${name} `));
+    const lines = reportLines(run.report);
+    expect(Object.keys(lines)).toEqual(doctorCheckNames);
+    for (const name of doctorCheckNames) expect(lines[name]).toMatch(new RegExp(`^✓ ${name} `));
     expect(lines.git).toContain(`${repo.path} on branch dev`);
     expect(lines.claude).toContain("Claude Code 2.1.283");
     expect(lines["sign-in"]).toContain("owner@example.com (Max)");
     expect(lines.worktrees).toMatch(/\d+ KB in 1 task clone in /);
     expect(lines.logs).toMatch(/3 KB in 1 file in .*, kept for 30d$/);
-    expect(run.stdout).toContain("All checks passed.");
-    expect(run.code).toBe(0);
+    expect(run.report).toContain("All checks passed.");
+    expect(run.passed).toBe(true);
   });
 
   it("flags each problem it finds and exits non-zero", async () => {
@@ -84,10 +93,10 @@ describe("mastermind doctor", () => {
     await mkdir(join(repo.path, ".mastermind"));
     await writeFile(join(repo.path, ".mastermind", "config.yaml"), "models:\n  wroker: opus\n");
 
-    const run = await runCli(["doctor", repo.path], { env: env.env });
+    const run = await doctor(repo.path, env);
 
-    const lines = reportLines(run.stdout);
-    expect(Object.keys(lines)).toEqual(checkNames);
+    const lines = reportLines(run.report);
+    expect(Object.keys(lines)).toEqual(doctorCheckNames);
     expect(lines.git).toMatch(/^✓ git /);
     expect(lines.claude).toMatch(/^! claude .*Claude Code 2\.1\.300 has not been tested/);
     expect(lines["sign-in"]).toMatch(/^✗ sign-in .*Not signed in/);
@@ -95,18 +104,18 @@ describe("mastermind doctor", () => {
     expect(lines.config).toMatch(/^✗ config .*models\.wroker: unknown key/);
     expect(lines.worktrees).toMatch(/^- worktrees .*needs a valid config/);
     expect(lines.logs).toMatch(/^- logs .*needs a valid config/);
-    expect(run.stdout).toContain("2 checks failed.");
-    expect(run.code).toBe(1);
+    expect(run.report).toContain("2 checks failed.");
+    expect(run.passed).toBe(false);
   });
 
   it("fails the git check outside a repository", async () => {
     const env = await doctorEnv({});
 
-    const run = await runCli(["doctor", env.root], { env: env.env });
+    const run = await doctor(env.root, env);
 
-    const lines = reportLines(run.stdout);
+    const lines = reportLines(run.report);
     expect(lines.git).toMatch(/^✗ git .*is not inside a git repository/);
     expect(lines.config).toMatch(/^- config /);
-    expect(run.code).toBe(1);
+    expect(run.passed).toBe(false);
   });
 });

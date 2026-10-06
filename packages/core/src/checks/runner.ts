@@ -1,12 +1,14 @@
 import { createWriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { errorMessage } from "../contracts/index.js";
 import type { Clock } from "../clock.js";
 import type { Check, CheckKind } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import { cleanEnv } from "../env.js";
 import type { Environment } from "../env.js";
 import type { EventBus } from "../events.js";
+import { describeExit, exitedCleanly } from "../procs.js";
 import type { ExitResult, ProcessRegistry } from "../procs.js";
 
 export interface CheckContext {
@@ -37,18 +39,6 @@ export interface ShellCheck extends CheckTarget {
   command: string;
   notes?: readonly string[];
 }
-
-export function describeExit(exit: ExitResult): string {
-  return exit.kind === "exited"
-    ? `exited with code ${String(exit.code)}`
-    : `was killed by ${exit.signal}`;
-}
-
-export const exitedCleanly = (exit: ExitResult): boolean =>
-  exit.kind === "exited" && exit.code === 0;
-
-export const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 export const fileStamp = (date: Date): string => date.toISOString().replace(/[:.]/g, "-");
 

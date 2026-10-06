@@ -7,7 +7,7 @@ import { createTasks, hold, moveToTop, release, retry, setPriority, updateTask }
 
 export { describeGraphIssue, findGraphIssues } from "./dag.js";
 export type { GraphIssue, GraphNode } from "./dag.js";
-export { ActionError, IllegalTransitionError } from "./errors.js";
+export { ActionError, IllegalTransitionError, requireTask } from "./errors.js";
 export { createActionRegistry, defineAction, parseInput } from "./registry.js";
 export type {
   ActionContext,
@@ -22,7 +22,6 @@ export type {
 export { setBackoff, setSignInRequired } from "./runtime.js";
 export type { SchedulerScope, SignInScope } from "./runtime.js";
 export { assertValidBatch } from "./tasks.js";
-export { readTasksFile, writeTasksFile } from "./tasks-file.js";
 export type { TasksFile } from "./tasks-file.js";
 export { assertTransition, canTransition } from "./transitions.js";
 export {

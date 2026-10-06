@@ -159,7 +159,14 @@ export async function conductorHarness(
     mcpConfigPath,
     model: () => config.models.conductor,
     digest: () =>
-      buildDigest(readDigestInput({ db, clock: systemClock, summary: () => scheduler.summary() })),
+      buildDigest(
+        readDigestInput({
+          db,
+          clock: systemClock,
+          summary: () => scheduler.summary(),
+          describers: actionTools,
+        }),
+      ),
     backoff: scheduler,
     summariser: createConductorSummariser({
       db,

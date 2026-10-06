@@ -1,4 +1,9 @@
-import { planMetaSchema, planStartedMetaSchema, startPlanInputSchema } from "../contracts/index.js";
+import {
+  planMetaSchema,
+  planStartedMetaSchema,
+  plural,
+  startPlanInputSchema,
+} from "../contracts/index.js";
 import type { ChatMessage, PlanMeta, PlanStartedMeta, Task } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import { ActionError } from "./errors.js";
@@ -45,8 +50,6 @@ function assertStartable(db: Db, plan: Plan): void {
   }
 }
 
-const taskCount = (count: number): string => `${String(count)} task${count === 1 ? "" : "s"}`;
-
 export const startPlan = defineAction({
   name: "startPlan",
   description:
@@ -61,7 +64,7 @@ export const startPlan = defineAction({
       const ids = tasks.map((task) => task.id).join(", ");
       const posted = db.chat.append({
         kind: "system",
-        content: `Plan started: added ${taskCount(tasks.length)} (${ids}).`,
+        content: `Plan started: added ${plural(tasks.length, "task")} (${ids}).`,
         meta: { plan: "started", planId: plan.id } satisfies PlanStartedMeta,
       });
       return { created: tasks, message: posted };

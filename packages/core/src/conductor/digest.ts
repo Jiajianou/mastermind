@@ -2,8 +2,8 @@ import type { Clock } from "../clock.js";
 import { taskStatusSchema } from "../contracts/index.js";
 import type { Session, Summary } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
+import type { ActionDescriber } from "../proposals.js";
 import { hourMinute, listWithin, truncate } from "./format.js";
-import { actionTools } from "./tools.js";
 
 export interface DigestInput {
   now: Date;
@@ -17,6 +17,7 @@ export interface DigestSources {
   db: Db;
   clock: Clock;
   summary: () => Summary;
+  describers: readonly ActionDescriber[];
 }
 
 const maxDecisionLength = 80;
@@ -88,12 +89,11 @@ export function buildDigest(input: DigestInput): string {
   ].join("\n");
 }
 
-function decisionQuestion(action: string, args: unknown): string {
-  const tool = actionTools.find((candidate) => candidate.action === action);
-  return tool === undefined ? action : `${tool.describe(args)}?`;
-}
-
-export function readDigestInput({ db, clock, summary }: DigestSources): DigestInput {
+export function readDigestInput({ db, clock, summary, describers }: DigestSources): DigestInput {
+  const decisionQuestion = (action: string, args: unknown): string => {
+    const describer = describers.find((candidate) => candidate.action === action);
+    return describer === undefined ? action : `${describer.describe(args)}?`;
+  };
   return {
     now: clock.now(),
     summary: summary(),

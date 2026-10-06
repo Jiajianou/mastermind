@@ -1,5 +1,6 @@
 import type { SessionEvent } from "@mastermind/core/contracts";
 import { useEffect, useState } from "react";
+import { errorMessage } from "@mastermind/core/contracts";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
 
 const noEvents: readonly SessionEvent[] = [];
@@ -28,7 +29,7 @@ export function useSessionEvents(sessionId: number): SessionTimeline {
         if (current) dispatch({ type: "session.history.loaded", sessionId, events: history });
       },
       (error: unknown) => {
-        if (current) setFailure(error instanceof Error ? error.message : String(error));
+        if (current) setFailure(errorMessage(error));
       },
     );
     return () => {

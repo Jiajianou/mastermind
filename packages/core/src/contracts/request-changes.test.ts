@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChangeRequest, failingTestLogLines } from "./request-changes.js";
+import { buildChangeRequest, failingTestLogLines, logTail } from "./request-changes.js";
 import type { ChangeRequestParts, CommentNote } from "./request-changes.js";
 
 const nothing: ChangeRequestParts = {
@@ -126,5 +126,12 @@ describe("buildChangeRequest", () => {
     expect(kept).toHaveLength(failingTestLogLines);
     expect(kept[0]).toBe(`line ${String(200 - failingTestLogLines + 1)}`);
     expect(kept.at(-1)).toBe("line 200");
+  });
+});
+
+describe("logTail", () => {
+  it("keeps the last lines and says when it cut some", () => {
+    expect(logTail("a\nb\nc\nd\n\n", 2)).toEqual({ text: "c\nd", cut: true });
+    expect(logTail("a\nb\n", 5)).toEqual({ text: "a\nb", cut: false });
   });
 });

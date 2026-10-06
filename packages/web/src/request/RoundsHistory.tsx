@@ -1,13 +1,13 @@
 import type { Round, Task } from "@mastermind/core/contracts";
 import { clockTime } from "../components/format.js";
-import { count } from "../notes/notes.js";
+import { plural } from "@mastermind/core/contracts";
 
 const modeWords = { resume: "Continued the same session", fresh: "Started a fresh session" };
 
 function sentWords(round: Round): string {
   const parts = [
-    ...(round.commentIds.length > 0 ? [count(round.commentIds.length, "comment")] : []),
-    ...(round.findingIds.length > 0 ? [count(round.findingIds.length, "finding")] : []),
+    ...(round.commentIds.length > 0 ? [plural(round.commentIds.length, "comment")] : []),
+    ...(round.findingIds.length > 0 ? [plural(round.findingIds.length, "finding")] : []),
     ...(round.failingCheckId === null ? [] : ["the failing check"]),
   ];
   return parts.length === 0 ? "an instruction" : parts.join(", ");

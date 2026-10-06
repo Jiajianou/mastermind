@@ -1,3 +1,4 @@
+import { plural } from "@mastermind/core/contracts";
 import type { FileChange } from "./activity.js";
 
 const shownFiles = 5;
@@ -10,8 +11,7 @@ export function FileChanges({ files }: { files: readonly FileChange[] }) {
   return (
     <div className="file-changes">
       <p className="file-summary">
-        {files.length === 1 ? "1 file" : `${String(files.length)} files`}{" "}
-        <LineCounts added={added} removed={removed} />
+        {plural(files.length, "file")} <LineCounts added={added} removed={removed} />
       </p>
       <ul>
         {files.slice(0, shownFiles).map((file) => (

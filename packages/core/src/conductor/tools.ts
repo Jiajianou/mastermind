@@ -11,6 +11,7 @@ import {
   messageSessionInputSchema,
   messageSessionResultSchema,
   noInputSchema,
+  plural,
   proposePlanInputSchema,
   rebaseOwnerBranchInputSchema,
   requestChangesInputSchema,
@@ -92,9 +93,6 @@ function readTool<Schema extends z.ZodType>(tool: {
 
 const fieldList = (input: object): string => Object.keys(input).join(", ");
 
-const count = (amount: number, noun: string): string =>
-  `${String(amount)} ${noun}${amount === 1 ? "" : "s"}`;
-
 export const actionTools: readonly ActionTool[] = [
   actionTool({
     name: "create_tasks",
@@ -103,7 +101,7 @@ export const actionTools: readonly ActionTool[] = [
     description:
       "Add tasks to the graph in one batch. Each task needs a unique slug id, a title, a goal written for the worker, an acceptance shell command that exits 0 when the task is done, and touches: the repo paths it will change (tasks with overlapping touches never run at the same time). deps may name tasks in the batch or existing ones. The whole batch is rejected on a duplicate id, an unknown dep or a cycle. A task starts once its deps are done and a worker is free.",
     describe: ({ tasks }) => `Add ${tasks.map((task) => task.id).join(", ")}`,
-    done: ({ tasks }) => `Added ${count(tasks.length, "task")}`,
+    done: ({ tasks }) => `Added ${plural(tasks.length, "task")}`,
   }),
   actionTool({
     name: "start_plan",
@@ -115,7 +113,7 @@ export const actionTools: readonly ActionTool[] = [
       planId === undefined ? "Start the plan" : `Start plan ${String(planId)}`,
     done: (_input, result) => {
       const created = taskListSchema.safeParse(result);
-      return created.success ? `Added ${count(created.data.length, "task")}` : "Started the plan";
+      return created.success ? `Added ${plural(created.data.length, "task")}` : "Started the plan";
     },
   }),
   actionTool({

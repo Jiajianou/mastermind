@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router";
-import { capitalized, sessionStatusWord } from "../sessions/session-list.js";
+import { capitalized } from "@mastermind/core/contracts";
+import { sessionStatusWord } from "../sessions/session-list.js";
 import { useSessionEvents } from "../sessions/use-session-events.js";
 import { useLive } from "../store/hooks.js";
 import { DiffContents } from "./FileContents.js";

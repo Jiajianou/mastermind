@@ -178,7 +178,7 @@ describe("transaction", () => {
 });
 
 describe("killRunning", () => {
-  it("marks exactly the running sessions, checks and rebases killed", async () => {
+  it("marks exactly the running sessions, checks and rebases killed, counting all sessions but the chat's", async () => {
     let now = new Date("2026-10-06T09:00:00.000Z");
     const db = useDb(await tempDbPath(), { now: () => now });
     db.tasks.create(lexer);
@@ -198,7 +198,7 @@ describe("killRunning", () => {
     now = new Date("2026-10-06T09:30:00.000Z");
     const counts = db.killRunning();
 
-    expect(counts).toEqual({ sessions: 2, checks: 1, rebases: 1 });
+    expect(counts).toEqual({ sessions: 1, checks: 1, rebases: 1 });
     expect(db.sessions.listRunning()).toEqual([]);
     expect(db.sessions.get(worker.id)).toMatchObject({
       status: "killed",

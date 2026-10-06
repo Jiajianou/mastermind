@@ -2,7 +2,7 @@ export { defaultConfig } from "./defaults.js";
 export { detectProject } from "./detect.js";
 export { ConfigError } from "./errors.js";
 export type { ConfigIssue } from "./errors.js";
-export { isMissingFileError, readOptionalFile } from "./files.js";
+export { readOptionalFile } from "./files.js";
 export { loadConfig, setConfig } from "./layers.js";
 export { projectPaths } from "./paths.js";
 export type { ConfigContext, ProjectPaths } from "./paths.js";

@@ -3,8 +3,10 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { findAttribution } from "@mastermind/core/attribution";
 import { postEventLines } from "@mastermind/core/conductor";
+import { createMainWatcher } from "@mastermind/core/rebase";
 import { describe, expect, it } from "vitest";
 import type { Scenario, Step } from "../../support/fake-claude.js";
+import { onCleanup } from "../../support/cleanup.js";
 import { waitFor } from "../../support/processes.js";
 import { owner } from "../../support/temp-repo.js";
 import type { TempRepo } from "../../support/temp-repo.js";
@@ -177,6 +179,52 @@ describe("rebase queue", () => {
     expect(harness.errors).toEqual([]);
   });
 
+  it("sends a suite that fails on the squashed commit to a fixer, counting an attempt, then rebases the fix", async () => {
+    // Only the suite run on the squashed commit (whose message has "Task id:") needs the fix.
+    const suite = [
+      "make test",
+      'if git log -1 --format=%B | grep -q "^Task id:" && ! test -f src/fix.txt; then',
+      "  echo 'squashed commit lacks src/fix.txt'; exit 1",
+      "fi",
+    ].join("\n");
+    const harness = await rebaseHarness({
+      config: { commands: { setup: "", build: "make build", test: suite } },
+      scenario: {
+        turns: [
+          worker("src/feature.txt"),
+          {
+            match: { role: "fixer", prompt: "lacks src/fix.txt" },
+            steps: [
+              { kind: "write", path: "src/fix.txt", content: "fix\n" },
+              { kind: "commit", message: "add the fix" },
+              { kind: "text", text: "Fixed." },
+            ],
+          },
+        ],
+      },
+    });
+    const initial = await harness.repo.git("rev-parse", "main");
+
+    await startFeature(harness, "fragile", "src/feature.txt");
+    const task = await harness.waitForStatus("fragile", "done");
+
+    expect(task.attempts).toBe(1);
+    expect(harness.db.rebases.listForTask("fragile").map((rebase) => rebase.status)).toEqual([
+      "failed",
+      "succeeded",
+    ]);
+    expect(
+      harness.db.sessions.listForTask("fragile").map(({ role, attempt }) => ({ role, attempt })),
+    ).toEqual([
+      { role: "worker", attempt: 1 },
+      { role: "fixer", attempt: 2 },
+    ]);
+    const { repo } = harness;
+    expect(await repo.git("rev-list", "--count", `${initial}..main`)).toBe("1");
+    expect(await repo.git("show", "main:src/fix.txt")).toBe("fix");
+    expect(harness.errors).toEqual([]);
+  });
+
   it("pauses rebasing onto main while the owner is on main, and carries on once they switch away", async () => {
     const harness = await checksHarness({
       startRebaseQueue: true,
@@ -292,6 +340,43 @@ describe("rebase queue", () => {
     expect(await mainLog(harness.repo, "%s")).toBe(
       ["Build guarded", "Build open", "Initial commit"].join("\n"),
     );
+    expect(harness.errors).toEqual([]);
+  });
+
+  it("keeps a task in review current when main moves outside mastermind", async () => {
+    const harness = await rebaseHarness({
+      config: { requireReviewFor: ["src/guarded.txt"] },
+      scenario: { turns: [worker("src/guarded.txt")] },
+    });
+    const watcher = createMainWatcher({
+      git: harness.git,
+      bus: harness.bus,
+      repoRoot: harness.repo.path,
+      config: () => harness.config,
+      onError: (error) => harness.errors.push(error),
+      pollMs: 50,
+    });
+    watcher.start();
+    onCleanup(() => {
+      watcher.stop();
+    });
+    await startFeature(harness, "guarded", "src/guarded.txt");
+    await harness.waitForStatus("guarded", "review");
+    const reviewChecks = harness.checks("guarded").length;
+
+    const moved = await commitOnMain(harness.repo, "README.md", "# Moved\n", "main: by hand");
+
+    const refreshed = await waitFor(() => {
+      const task = harness.db.tasks.get("guarded");
+      return task?.status === "review" && task.baseCommit === moved && task;
+    });
+    expect(harness.events).toContainEqual({ type: "main.moved", branch: "main", commit: moved });
+    expect(harness.checks("guarded").slice(reviewChecks)).toEqual([
+      { kind: "rebase", status: "passed" },
+      { kind: "suite", status: "passed" },
+    ]);
+    expect(await harness.cloneGit("guarded", "show", "HEAD:README.md")).toBe("# Moved");
+    expect(refreshed.attempts).toBe(0);
     expect(harness.errors).toEqual([]);
   });
 

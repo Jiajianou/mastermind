@@ -1,3 +1,4 @@
+import { plural } from "@mastermind/core/contracts";
 import type { FileChange } from "@mastermind/core/contracts";
 import { Link } from "react-router";
 import { markerWords } from "./file-list.js";
@@ -36,11 +37,7 @@ function FileLink({
       )}
       <code className="file-name">{entry.name}</code>
       {entry.editing && <span className="editing-tag">editing</span>}
-      {notes > 0 && (
-        <span className="note-count">
-          {notes} note{notes === 1 ? "" : "s"}
-        </span>
-      )}
+      {notes > 0 && <span className="note-count">{plural(notes, "note")}</span>}
       {entry.change !== null && <LineCounts change={entry.change} />}
     </Link>
   );

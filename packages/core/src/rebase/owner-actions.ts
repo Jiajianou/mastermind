@@ -1,6 +1,6 @@
 import { defineAction } from "../actions/index.js";
 import type { ContractedActions } from "../actions/index.js";
-import { rebaseOwnerBranchInputSchema } from "../contracts/index.js";
+import { plural, rebaseOwnerBranchInputSchema } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import type { ProposalGate } from "../proposals.js";
@@ -36,7 +36,7 @@ export function offerOwnerRebase({ db, bus, gate, rebaser, onError }: OwnerRebas
       .listPending()
       .some((proposal) => proposal.action === rebaseOwnerBranchActionName);
     if (pending) return;
-    const commits = `${String(view.behind)} commit${view.behind === 1 ? "" : "s"}`;
+    const commits = plural(view.behind, "commit");
     gate.offer({
       action: rebaseOwnerBranchActionName,
       args: { branch: view.branch },

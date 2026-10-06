@@ -3,7 +3,7 @@ import type { ChatMessage, OwnerNotification } from "./contracts/index.js";
 import { cleanEnv } from "./env.js";
 import type { Environment } from "./env.js";
 import type { EventBus } from "./events.js";
-import { collectOutput } from "./procs.js";
+import { collectOutput, exitedCleanly } from "./procs.js";
 import type { ProcessRegistry } from "./procs.js";
 
 export interface DesktopNotification {
@@ -70,7 +70,7 @@ export function createNativeNotifier({
         ...spawn,
         env: childEnv,
       });
-      if (exit.kind !== "exited" || exit.code !== 0)
+      if (!exitedCleanly(exit))
         throw new NotificationError(
           `${spawn.command} could not show a notification${stderr === "" ? "" : `: ${stderr}`}`,
         );

@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { FastifyInstance } from "fastify";
 import { apiError, errorReply } from "../api/errors.js";
-import { mcpPath } from "../contracts/index.js";
+import { errorMessage, mcpPath } from "../contracts/index.js";
 import { conductorTools } from "./tools.js";
 import type { ConductorTool, ToolSources } from "./tools.js";
 
@@ -28,7 +28,7 @@ async function callTool(
     const known = errorReply(error);
     if (known !== null) return textResult(known.body.message, true);
     onError(error);
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return textResult(`internal error: ${message}`, true);
   }
 }
@@ -61,7 +61,7 @@ export function registerMcpRoutes(app: FastifyInstance, options: McpOptions): vo
     } catch (error) {
       options.onError(error);
       if (!reply.raw.headersSent) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = errorMessage(error);
         reply.raw
           .writeHead(500, { "content-type": "application/json" })
           .end(JSON.stringify(apiError("internal", message)));

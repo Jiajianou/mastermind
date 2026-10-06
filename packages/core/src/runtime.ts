@@ -36,6 +36,7 @@ import { createProposalGate, proposalActions } from "./proposals.js";
 import { allowSandboxHostAction, allowSandboxHostDescriber, offerBlockedHosts } from "./sandbox.js";
 import {
   approve,
+  createMainWatcher,
   createOwnerRebaser,
   createRebaseQueue,
   discardAction,
@@ -201,6 +202,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
   });
   actions.register(rerunChecksAction(pipeline));
   const rebaseQueue = createRebaseQueue(gitWork);
+  const mainWatcher = createMainWatcher(gitWork);
   actions.register(approve);
   actions.register(discardAction({ git: startup.git, repoRoot, config: () => config, clock }));
   const spawner = createSessionSpawner({
@@ -227,13 +229,14 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     signedIn: () => signIn.ensureSignedIn(),
   });
   actions.register(rebaseOwnerBranchAction(ownerRebaser));
+  const offerDescribers = [allowSandboxHostDescriber];
   const gate = createProposalGate({
     db,
     bus,
     actions,
     clock,
     tools: actionTools,
-    describers: [allowSandboxHostDescriber],
+    describers: offerDescribers,
     confirmList: () => config.conductor.confirm,
     activeTurn: () => runner.activeTurn(),
   });
@@ -261,7 +264,15 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     logsDir,
     mcpConfigPath,
     model: () => config.models.conductor,
-    digest: () => buildDigest(readDigestInput({ db, clock, summary: () => scheduler.summary() })),
+    digest: () =>
+      buildDigest(
+        readDigestInput({
+          db,
+          clock,
+          summary: () => scheduler.summary(),
+          describers: [...actionTools, ...offerDescribers],
+        }),
+      ),
     backoff: scheduler,
     summariser: createConductorSummariser({
       db,
@@ -368,6 +379,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       scheduler.start();
       pipeline.start();
       rebaseQueue.start();
+      mainWatcher.start();
       ownerRebaser.start();
       stuckMonitor.start();
       expireProposals();
@@ -401,6 +413,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       runner.dispose();
       api.closeSync();
       ownerRebaser.stop();
+      mainWatcher.stop();
       rebaseQueue.stop();
       pipeline.stop();
       scheduler.stop();

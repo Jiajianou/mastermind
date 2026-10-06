@@ -1874,3 +1874,118 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   logs of different ages in every log folder, for the default and a configured retention, and with a read-only
   log folder (skipped as root) to show startup continues and reports the file it couldn't remove. The doctor integration
   test asserts the new line.
+
+## m8-final-audit
+
+- **How the audit ran.** Every section of `docs/PLAN.md` was walked against the code and the tests. The table below
+  maps each requirement to where it lives and the test that proves it. Paths are under `packages/core/src` unless they
+  start with `cli/`, `web/` (`packages/…/src`), `test/` or `prompts/`. Deviations already recorded in earlier sections
+  are not repeated here.
+- **Defects fixed.**
+  - The Conductor's `<state>` digest named a pending sandbox offer by its internal action (`allowSandboxHost`) instead
+    of its question. `readDigestInput` now takes the same describers as the proposal gate, so every pending decision
+    reads as a question ("Allow github.com for this project?").
+  - The Ctrl+C warning counted the sessions the terminal lists, but the exit summary also counted the chat's own
+    process, so after any chat message the two disagreed ("kills 2 sessions" then "Killed 3 sessions"). `killRunning`
+    still marks the Conductor's row killed but no longer counts it.
+  - The `-by:` trailer pattern needed a word boundary after "claude", so `Co-Authored-By: ClaudeAI <…>` or
+    `Claude3 Opus` slipped past both the strip and the final scan. PLAN 11's pattern has no such boundary; the
+    pattern now only needs one before the name.
+  - **Staying current when main moves outside mastermind** (PLAN 9.2 "whenever main moves"). `main.moved` was only
+    emitted by mastermind's own rebases, so a main the owner moved themselves (a fetch into main, a commit from
+    another worktree) left tasks in review on the old base until a restart. `rebase/main-watcher.ts` polls the main
+    ref every 5 s and emits `main.moved` for a commit mastermind didn't announce; consumers were already idempotent.
+  - "← Back to review" on Request changes and "See changes" in the chat's decision box were bare links below the
+    44px control height (15.1).
+- **CLI.** PLAN 5 says every action has a CLI subcommand, while 14.3 lists the concrete set. 14.3 is followed, plus
+  `mastermind pause|resume`, which 5 names and the terminal's `p` key already offers. The other actions (steering,
+  request changes, settings, task edits) stay in the web app and the chat, where their inputs are composed.
+- **Code quality.** A repo-wide scan found no `any`, no casts outside validated boundaries, no non-null assertions, no
+  TODOs and no commented-out code. Duplicated logic was merged:
+  - `contracts/wording.ts` holds `plural`, `errorMessage` and `capitalized` (about 40 hand-rolled copies across core,
+    cli and web); `contracts/common.ts` holds `isPlainRecord`.
+  - `contracts/request-changes.ts` exports `checkTitles` and `logTail` for the web's checks and failed-test views,
+    and the fixer prompts use its `fenced`, whose fence can't be closed early by a log that contains one.
+  - `contracts/api.ts` has the one `actionRequest` (route parameters and body) for both clients.
+  - `actions/errors.ts` has the one `requireTask`; `procs.ts` has `exitCode`, `exitedCleanly` and `describeExit`;
+    `git/runner.ts` has `exitedWith`; `src/errno.ts` has `errorCode` and `isMissingFileError`;
+    `sessions/parser.ts` has `contextTokens`; the chat runner reuses `userMessageLine`; the CLI reuses
+    `sessionEndings`; the pipeline reuses `readMain`.
+  - Removed unused code: the `fallbackModel` and `disallowedTools` print options, the `useSession` hook. Renamed
+    `readTasksFile`/`writeTasksFile` in core (they only parse and print YAML) to `parseTasksYaml`/`tasksToYaml`.
+- **Tests added where the audit found gaps.** The terminal's event lines and state (`status.test.ts`), the chat's
+  "what it did" line for every action tool (`conductor/action-line.test.ts`), the default confirm list
+  (`proposals.test.ts`), raw-mode Ctrl+C, the `o`/`c` keys and the usage-limit time in the Ink view
+  (`cli/tui/status-app.test.tsx`), the attribution final scan refusing an owner commit, a conflict fixer that gives up
+  counting an attempt until the task blocks, a suite that fails on the squashed commit inside the rebase queue, and
+  main moving outside mastermind. No test was found trivial or overlapping enough to delete; earlier verify tasks had
+  already pruned them.
+- **Coverage floor.** `pnpm coverage` (unit, web and integration) enforces thresholds for `packages/core/src/**` at
+  the level reached over three runs, rounded down: 91% lines, 88% statements, 92% functions, 77% branches. The doctor
+  integration tests now call `runDoctor` in-process (still with real git and fake-claude) instead of spawning the CLI
+  through `tsx`, whose coverage the test process can't see; the binary's `doctor` command stays covered by
+  `pnpm smoke:install`. The CLI and web packages have no floor: the CLI is mostly exercised as a child process.
+- **Flakiness.** `pnpm test` and `pnpm test:e2e` were each run three times in a row; every run passed.
+- **Known untested paths, judged not worth a test.** SIGHUP and an uncaught exception run the same kill path as
+  Ctrl+C twice (only SIGINT and SIGTERM are driven); the 15-minute periodic sign-in check (the 5-minute pre-start
+  check is tested); Esc at the sign-in prompt; the 10 s SIGTERM grace default (tests pass their own); and "at most one
+  reviewer", which follows from the checks pipeline running one task at a time.
+
+### Conformance
+
+| PLAN | Requirement | Implemented in | Proven by |
+| --- | --- | --- | --- |
+| 2.1, 4 | Pro and Max subscriptions only; every refusal case | `auth.ts` (`classifyAuth`), `startup/auth-gate.ts` | `auth.test.ts`; `test/integration/auth.test.ts`; `test/e2e/m1-runtime.test.ts` (API-key account refused) |
+| 2.2, 4.4 | Clean environment for every `claude` child; never `--bare` and other forbidden flags | `env.ts`, `claude.ts` | `env.test.ts`; `claude.test.ts`; `test/integration/auth.test.ts` (API keys ignored, OAuth token kept) |
+| 3.1.1–3 | Repo found, single-instance lock with the "already running" message, `claude` version check | `startup/repo.ts`, `lock.ts`, `claude.ts`, `startup/start.ts` | `test/integration/startup/startup.test.ts`; `test/integration/lock.test.ts`; `test/integration/claude.test.ts` |
+| 3.1.4a, 22.6 | Owner moved off main at startup; rebasing onto main pauses while main is checked out | `startup/branch-guard.ts`, `rebase/queue.ts` | `startup.test.ts` (switching keeps changes); `test/integration/rebase/rebase-queue.test.ts` (pauses while on main) |
+| 3.1.5 | First run: `.git/info/exclude`, detected commands, `config.yaml`, setup question | `config/setup.ts`, `config/detect.ts`, `web/chat/SetupQuestion.tsx` | `config/setup.test.ts`; `config/detect.test.ts`; `test/e2e/web/chat.spec.ts` (Use these) |
+| 3.1.7–8 | 127.0.0.1, port 4700 or next free, token file mode 600, link with `#t=`, token moved to sessionStorage | `api/listen.ts`, `api/token.ts`, `web/api/token.ts` | `test/integration/api/http.test.ts`; `web/api/token.test.ts`; `test/e2e/web/shell.spec.ts` |
+| 3.2 | Ink view (plain log without a TTY), header, RUNNING/QUEUE, five event lines, `p`/`o`/`c` | `status.ts`, `cli/tui/*`, `cli/plain-log.ts` | `status.test.ts`; `cli/tui/status-app.test.tsx`; `test/e2e/m1-runtime.test.ts` |
+| 3.3 | Two-press Ctrl+C (2 s), raw-mode key and SIGINT, kill path under 500 ms, exit 130, summary | `cli/ctrl-c.ts`, `cli/kill-path.ts`, `cli/foreground.ts`, `procs.ts`, `db/kill.ts` | `cli/ctrl-c.test.ts`; `cli/tui/ctrl-c-footer.test.tsx`; `status-app.test.tsx`; `test/integration/kill-path.test.ts`; `m1-runtime.test.ts` (zero pids in 500 ms) |
+| 3.4 | Banner, permanent footer, `Running · Max` tooltip, stopped page | `startup/start.ts`, `cli/messages.ts`, `web/components/RunStatusLink.tsx`, `Banners.tsx` | `startup.test.ts`; `ctrl-c-footer.test.tsx`; `shell.spec.ts` (top bar, stopped banner) |
+| 3.5 | Recovery: reap only matching pids, `WIP: interrupted`, requeue with resume, no attempt | `recovery.ts` | `test/integration/recovery/recovery.test.ts`; `m1-runtime.test.ts` (restart resumes) |
+| 4.2 | Sign-in prompt, `auth login --claudeai` hand-off, 3 failures, wrong-kind message, switch account | `startup/auth-gate.ts`, `claude.ts` | `startup.test.ts`; `m1-runtime.test.ts` (offers sign-in) |
+| 4.3 | Expiry mid-run: `authRequired`, pause, requeue without an attempt, terminal Enter prompt, web banner, checks | `sign-in.ts`, `actions/runtime.ts`, `sessions/settlement.ts`, `cli/tui/footer.tsx` | `test/integration/auth-expiry.test.ts`; `status-app.test.tsx`; `web/store/status.test.ts` |
+| 5 | One action layer: zod input, HTTP route, MCP tool, CLI subcommand (14.3 set plus pause/resume), bus events | `actions/*`, `api/action-routes.ts`, `conductor/tools.ts`, `cli/client/commands.ts` | `actions/actions.test.ts`; `test/integration/api/http.test.ts`, `ws.test.ts`, `mcp.test.ts`; `test/e2e/cli-client.test.ts` |
+| 6.1–6.2 | Conductor: Read/Grep/Glob plus MCP only, flags, one persistent process, idle stop and resume, Stop, mid-turn messages, `chat.delta`, digest ≤ 300 tokens | `conductor/runner.ts`, `turn.ts`, `digest.ts`, `mcp-config.ts` | `test/integration/conductor/chat.test.ts`; `conductor/digest.test.ts`; `test/live/conductor.live.test.ts` (opt-in) |
+| 6.2 | History and rollover through a judge summary | `conductor/rollover.ts`, `runner.ts` | `test/integration/conductor/rollover.test.ts` |
+| 6.3 | Every MCP tool; gated tools store a proposal and wait for a click | `conductor/tools.ts`, `proposals.ts` | `test/integration/api/mcp.test.ts`; `proposals.test.ts` (default confirm list, once-only, expiry); `chat.spec.ts` |
+| 6.4 | Event lines only for review, blocked, rebased, sign-in, usage limit; `wakeOnEvents` off by default | `conductor/event-lines.ts`, `conductor/wake.ts` | `chat.test.ts` (event lines); `test/integration/conductor/wake.test.ts` |
+| 6.5 | Chat UI: pill, bubbles, action line, plan list, decision box, Send/Stop, model menu, Enter/Shift+Enter, `@task`, `/pause`, first run, no internal names | `web/chat/*`, `conductor/action-line.ts` | `web/chat/chat-screen.test.tsx`; `conductor/action-line.test.ts`; `chat.spec.ts`; `m3.spec.ts`; `m7.spec.ts` |
+| 7.1 | Task fields; tasks.yaml import/export; cycles and unknown deps rejected whole | `contracts/tasks.ts`, `actions/tasks-file.ts`, `actions/dag.ts` | `actions/dag.test.ts`; `actions.test.ts`; `test/integration/api/tasks-import.test.ts` |
+| 7.2 | State machine, held, discard, killed → pending without an attempt, blocked at `maxAttempts` | `actions/transitions.ts`, `rebase/actions.ts`, `sessions/settlement.ts` | `actions/transitions.test.ts`; `sessions/settlement.test.ts`; `rebase-queue.test.ts` (discard) |
+| 7.3 | Readiness, touches-prefix overlap, `maxWorkers` counts worker and fixer only, back-off 5→60 min | `scheduler.ts`, `contracts/queue.ts` | `scheduler.test.ts` |
+| 8.1–8.3 | Roles and models; local clone with origin removed; setup check; spawn flags, sandbox and path guard settings; worker prompt | `git/clones.ts`, `sessions/editing-print.ts`, `sessions/settings.ts`, `sessions/path-guard.ts`, `prompts/worker.md` | `test/integration/sessions/task-clones.test.ts`; `worker-sessions.test.ts`; `sessions/path-guard.test.ts` |
+| 8.4 | Event types and summaries from recorded samples; end of session: end commit, WIP commit, → checking | `sessions/parser.ts`, `sessions/manager.ts` | `sessions/parser.test.ts`; `worker-sessions.test.ts`; `test/integration/fake-claude/fake-claude.test.ts` (fake matches samples) |
+| 8.5 | Steering by stdin, resume fallback, redelivery | `sessions/manager.ts`, `sessions/spawner.ts` | `test/integration/sessions/steering.test.ts`; `test/e2e/m4-steering.test.ts` |
+| 8.6 | Stop: SIGTERM, then SIGKILL after the grace period | `procs.ts`, `sessions/manager.ts` | `test/integration/procs.test.ts`; `worker-sessions.test.ts` |
+| 9.1 | Live diff against the working directory, base and current file, since a round, tree, path safety | `git/changes.ts`, `git/path-safety.ts`, `task-files.ts` | `test/integration/git-service.test.ts`; `git/path-safety.test.ts`; `test/e2e/web/m4.spec.ts`, `review.spec.ts` |
+| 9.2 | Checks in order; conflict → abort and fixer without an attempt, an attempt when it gives up; serious findings → fixer; review vs rebasing | `checks/pipeline.ts`, `checks/fixing.ts`, `checks/outcome.ts`, `checks/reviewer.ts` | `test/integration/checks/pipeline.test.ts`; `checks/outcome.test.ts`; `test/e2e/m5-rebase.test.ts` |
+| 9.2 | Staying current whenever main moves, including outside mastermind | `checks/pipeline.ts` (`stayCurrent`), `rebase/main-watcher.ts` | `rebase-queue.test.ts` (main moves by mastermind and by hand) |
+| 9.3, 22.13 | One at a time, squash with mastermind's message, build and test (failure → fixer), `refs/mastermind/<id>`, `update-ref` with old main, cleanup | `rebase/queue.ts`, `rebase/squash.ts`, `rebase/main-ref.ts` | `rebase-queue.test.ts`; `m5-rebase.test.ts` |
+| 10 | Line comments per round, request-changes message and preview, resume vs fresh, rounds, Try it | `review/*`, `contracts/request-changes.ts`, `terminals.ts`, `web/request/*` | `contracts/request-changes.test.ts`; `test/integration/review/rounds.test.ts`; `test/integration/try-it.test.ts`; `m6.spec.ts`; `request-changes.spec.ts`; `test/e2e/m6-rounds.test.ts` |
+| 11 | No attribution: doctor reports the setting, `--settings` per spawn, prompts, strip, final scan refuses | `attribution.ts`, `sessions/settings.ts`, `rebase/squash.ts`, `rebase/queue.ts`, `rebase/owner-rebase.ts`, `prompts/*.md` | `attribution.test.ts`; `rebase-queue.test.ts`; `owner-branch.test.ts` (refusal); `m5-rebase.test.ts`; `test/integration/doctor.test.ts` |
+| 12 | Data model (extra columns allowed) | `db/*` | `db/db.test.ts` |
+| 13 | Config keys and defaults, `mastermind.yaml` under `.mastermind/config.yaml` | `contracts/config.ts`, `config/*` | `config/layers.test.ts`, `resolve.test.ts`, `setup.test.ts` |
+| 14.1–14.2 | HTTP routes with bearer, Host and Origin checks; WebSocket events; MCP at `/mcp` | `api/*`, `conductor/mcp.ts` | `test/integration/api/http.test.ts`, `ws.test.ts`, `mcp.test.ts` |
+| 14.3 | CLI: run, doctor, status, tasks, logs -f, chat, task controls, pause/resume, import/export | `cli/commands.ts`, `cli/client/*`, `startup/doctor.ts` | `test/e2e/cli-client.test.ts`; `test/integration/doctor.test.ts`; `test/e2e/cli-version.test.ts` |
+| 15.1 | Arctic tokens, real controls, status never by colour alone, 44px controls | `web/theme/*` | `test/e2e/web/m3.spec.ts` (labelled controls, colours paired with words) |
+| 15.2 | Top bar, Overview, Tasks board and graph, Sessions, Review one/all, Test and decide, Request changes, Settings | `web/screens/*` and their folders | `web/overview/overview.test.ts`, `tasks/tasks.test.ts`, `sessions/sessions.test.ts`, `review/review.test.ts`, `decide/*.test.ts*`, `settings/settings-screen.test.tsx`; Playwright `overview`, `tasks`, `review`, `decide`, `request-changes`, `settings` specs |
+| 16 | Minimum and tested `claude` versions, warnings in startup and doctor | `claude.ts` | `test/integration/claude.test.ts`; `doctor.test.ts` |
+| 17 | Stack; node-pty loaded lazily | package manifests, `terminals.ts` | build and typecheck; `try-it.test.ts` (without node-pty) |
+| 18 | Each milestone's "done when" | — | `test/e2e/m1-runtime.test.ts`, `m2-chat.test.ts`, `web/m3.spec.ts`, `web/m4.spec.ts` with `m4-steering.test.ts`, `m5-rebase.test.ts`, `web/m6.spec.ts` with `m6-rounds.test.ts`, `web/m7.spec.ts`; M8: `rollover.test.ts`, `wake.test.ts`, `auth-expiry.test.ts`, `pnpm smoke:install` |
+| 19 | Unit, integration, live and web tests as listed | — | the tests above; `pnpm test:live` runs only with `MASTERMIND_LIVE=1` |
+| 20 | Risk mitigations: local-only server, process groups and reaping, one check pipeline at a time, log retention | `api/local-request.ts`, `procs.ts`, `recovery.ts`, `checks/pipeline.ts`, `logs.ts` | `http.test.ts`, `ws.test.ts`; `recovery.test.ts`; `test/integration/startup/log-retention.test.ts` |
+| 22.1, 22.15 | Opus chat with a remembered model menu; per-role models; reviewer toggle | `conductor/chat-actions.ts`, `web/chat/ModelMenu.tsx`, `web/screens/SettingsScreen.tsx` | `chat.test.ts` (model switch); `chat.spec.ts`; `settings.spec.ts` |
+| 22.2, 22.21 | Auto-rebase onto main, `requireReviewFor`, serious findings to a fixer | `checks/outcome.ts`, `checks/pipeline.ts` | `outcome.test.ts`; `pipeline.test.ts`; `test/e2e/web/decide.spec.ts` |
+| 22.3, 22.9 | Bypass inside the worktree by default; sandbox on with presets, never prompting; blocked-access offers | `sessions/settings.ts`, `config/presets.ts`, `sandbox.ts` | `worker-sessions.test.ts`; `config/setup.test.ts`; `sandbox.test.ts`; `test/integration/sandbox.test.ts` |
+| 22.4, 22.20 | Central folder of local clones with the repo hash; removed after rebase or discard; disk use in doctor | `config/defaults.ts`, `git/clones.ts`, `startup/doctor.ts` | `config/resolve.test.ts`; `task-clones.test.ts`; `rebase-queue.test.ts`; `doctor.test.ts` |
+| 22.7 | Stay local: never push or fetch remotes; ahead-of-upstream count only reported | `git/clones.ts`, `rebase/owner-checkout.ts` | `owner-branch.test.ts` (origin/main untouched, count reported) |
+| 22.8 | macOS and Linux, CI on both | `startup/start.ts` (other platforms refused), `.github/workflows/ci.yml` | the whole suite, run by CI on ubuntu and macos |
+| 22.10 | Private install from the repo | `README.md`, `scripts/smoke-install.sh` | `pnpm smoke:install` |
+| 22.14, 22.22 | The owner's branch rebased on request, commits kept, fixer changes folded in, offered when main moves | `rebase/owner-*.ts`, `sessions/branch-fixer.ts` | `test/integration/rebase/owner-branch.test.ts`; `web/overview/owner-branch.test.tsx` |
+| 22.16 | Desktop notifications: browser tab first, else `osascript` or `notify-send`; toggle | `notify.ts`, `web/notifications/*` | `test/integration/notify.test.ts`; `web/notifications/notifications.test.tsx`; `notifications.spec.ts` |
+| 22.17 | Stuck checks after 60 min, every 20 min; fresh session counting an attempt | `sessions/stuck.ts`, `sessions/stuck-monitor.ts` | `sessions/stuck.test.ts`; `test/integration/sessions/stuck.test.ts` |
+| 22.18 | The owner's identity on every commit | `git/clones.ts` | `rebase-queue.test.ts` (author and committer); `worker-sessions.test.ts` (WIP identity) |
+| 22.19 | "Rebase" everywhere, never Merge or Land | web strings, status names, config keys | `web/wording.test.ts` |

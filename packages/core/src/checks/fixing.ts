@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { assertTransition } from "../actions/index.js";
 import type { Clock } from "../clock.js";
-import { isEditingRole } from "../contracts/index.js";
+import { isEditingRole, plural } from "../contracts/index.js";
 import type { Check, Task } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
@@ -94,7 +94,7 @@ export function createFixerLauncher(options: FixerLauncherOptions): FixerLaunche
       if (task === null) return null;
       assertTransition(taskId, task.status, "blocked");
       const session = db.sessions.listForTask(taskId).findLast(isEditingRole);
-      const tries = `${String(attempts)} attempt${attempts === 1 ? "" : "s"}`;
+      const tries = plural(attempts, "attempt");
       const event =
         session === undefined
           ? null

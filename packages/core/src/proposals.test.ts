@@ -85,6 +85,19 @@ async function proposeWorkers(harness: Harness, maxWorkers: number): Promise<num
 }
 
 describe("proposal gate", () => {
+  it("by default gates only the tools that move main, throw work away or change settings", async () => {
+    const harness = await setup();
+
+    const gated = actionTools.filter(({ name }) => harness.gate.isGated(name));
+
+    expect(gated.map(({ name }) => name).sort()).toEqual([
+      "approve_rebase",
+      "discard_task",
+      "rebase_my_branch",
+      "set_config",
+    ]);
+  });
+
   it.each([
     { name: "hold", input: { taskId: "sched-prio" }, gated: false },
     { name: "set_config", input: { maxWorkers: 3 }, gated: true },

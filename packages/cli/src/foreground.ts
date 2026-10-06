@@ -4,6 +4,7 @@ import type { ProcessRegistry } from "@mastermind/core/procs";
 import { createNativeNotifier } from "@mastermind/core/notify";
 import { createRuntime } from "@mastermind/core/runtime";
 import type { Startup } from "@mastermind/core/startup";
+import { errorMessage } from "@mastermind/core/contracts";
 import { promptsDir, webRoot } from "./assets.js";
 import { createCtrlCGuard } from "./ctrl-c.js";
 import { exitCodes, runKillPath } from "./kill-path.js";
@@ -97,7 +98,7 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
   };
 
   const reportError = (error: unknown): void => {
-    runtime.store.notice(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    runtime.store.notice(`Error: ${errorMessage(error)}`);
   };
 
   const runtime = await createRuntime({

@@ -1,13 +1,13 @@
 import { join } from "node:path";
 import { z } from "zod";
 import type { ResolvedConfig } from "../config/index.js";
-import { findingSeveritySchema } from "../contracts/index.js";
+import { errorMessage, findingSeveritySchema, plural } from "../contracts/index.js";
 import type { Check, Finding, Task } from "../contracts/index.js";
 import type { Git } from "../git/index.js";
 import type { OneShotRunner } from "../sessions/one-shot.js";
 import { attributionOff } from "../sessions/settings.js";
 import { reviewPrompt } from "./prompts.js";
-import { errorMessage, startCheck } from "./runner.js";
+import { startCheck } from "./runner.js";
 import type { CheckContext } from "./runner.js";
 
 export const reviewOutputSchema = z.strictObject({
@@ -52,7 +52,7 @@ const findingLine = ({ severity, file, line, text }: Finding): string =>
 function findingsSummary(findings: readonly Finding[]): string {
   if (findings.length === 0) return "No findings";
   const serious = findings.filter((finding) => finding.severity === "serious").length;
-  const total = `${String(findings.length)} finding${findings.length === 1 ? "" : "s"}`;
+  const total = plural(findings.length, "finding");
   return `${total}: ${String(serious)} serious, ${String(findings.length - serious)} minor`;
 }
 

@@ -1,12 +1,12 @@
 import type { Session } from "@mastermind/core/contracts";
 import { useMemo } from "react";
 import { Link } from "react-router";
+import { capitalized } from "@mastermind/core/contracts";
 import { sessionActivity } from "../sessions/activity.js";
 import { Elapsed } from "../sessions/Elapsed.js";
 import { FileChanges } from "../sessions/FileChanges.js";
 import { FixerReason } from "../sessions/FixerReason.js";
 import { sessionDiffPath, sessionPath } from "../sessions/links.js";
-import { capitalized } from "../sessions/session-list.js";
 import { useSessionEvents } from "../sessions/use-session-events.js";
 import { useLive } from "../store/hooks.js";
 

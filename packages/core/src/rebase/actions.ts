@@ -1,13 +1,12 @@
 import { existsSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
-import { ActionError, defineAction } from "../actions/index.js";
+import { ActionError, defineAction, requireTask } from "../actions/index.js";
 import type { ContractedActions } from "../actions/index.js";
 import { fileStamp } from "../checks/runner.js";
 import type { Clock } from "../clock.js";
 import type { ResolvedConfig } from "../config/index.js";
 import { taskRefInputSchema } from "../contracts/index.js";
 import type { Task, TaskStatus } from "../contracts/index.js";
-import type { Db } from "../db/index.js";
 import { deleteClone, pathInside, taskRef } from "../git/index.js";
 import type { Git } from "../git/index.js";
 import { deleteRef } from "./main-ref.js";
@@ -20,12 +19,6 @@ export interface DiscardSources {
 }
 
 const discardable: readonly TaskStatus[] = ["review", "blocked"];
-
-function requireTask(db: Db, taskId: string): Task {
-  const task = db.tasks.get(taskId);
-  if (task === null) throw ActionError.fromMessage("not_found", `no task "${taskId}"`);
-  return task;
-}
 
 export const approve = defineAction({
   name: "approve",

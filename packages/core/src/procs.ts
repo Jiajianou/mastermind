@@ -2,6 +2,8 @@ import { execFileSync, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
+import { errorCode } from "./errno.js";
+import { errorMessage } from "./contracts/index.js";
 
 export const processKindSchema = z.enum([
   "session",
@@ -15,6 +17,18 @@ export type ProcessKind = z.infer<typeof processKindSchema>;
 
 export type ExitResult =
   { kind: "exited"; code: number } | { kind: "signaled"; signal: NodeJS.Signals };
+
+export const exitCode = (exit: ExitResult): number | null =>
+  exit.kind === "exited" ? exit.code : null;
+
+export const exitedCleanly = (exit: ExitResult): boolean =>
+  exit.kind === "exited" && exit.code === 0;
+
+export function describeExit(exit: ExitResult): string {
+  return exit.kind === "exited"
+    ? `exited with code ${String(exit.code)}`
+    : `was killed by ${exit.signal}`;
+}
 
 export interface ProcessGroup {
   pid: number;
@@ -85,7 +99,7 @@ export class SpawnError extends Error {
     readonly command: string,
     cause: unknown,
   ) {
-    super(`could not start ${command}: ${cause instanceof Error ? cause.message : String(cause)}`, {
+    super(`could not start ${command}: ${errorMessage(cause)}`, {
       cause,
     });
   }
@@ -357,8 +371,4 @@ function onlyZombiesLeft(pgid: number): boolean {
   } catch {
     return false;
   }
-}
-
-function errorCode(error: unknown): unknown {
-  return error instanceof Error && "code" in error ? error.code : undefined;
 }

@@ -244,7 +244,7 @@ describe("CLI subcommands against the running instance, through the built binary
     ).toEqual(expect.arrayContaining(["Sketched the alpha module", "Looking around the repo"]));
   });
 
-  it("hold, then release, a task, and refuses an unknown one", async () => {
+  it("hold, then release, a task, refuse an unknown one, and pause and resume the scheduler", async () => {
     const running = await runningMastermind(
       { turns: [workerScenario] },
       { yaml: seededTasks, held: ["alpha"] },
@@ -269,6 +269,15 @@ describe("CLI subcommands against the running instance, through the built binary
       stdout: "",
       stderr: 'no task "nope"\n',
     });
+
+    expect(await running.run(["pause"])).toMatchObject({
+      code: 0,
+      stdout: "Paused: no new sessions start.\n",
+    });
+    expect((await running.run(["status"])).stdout).toMatch(/^Scheduler +paused$/m);
+    const resumed = await running.run(["resume", "--json"]);
+    expect(resumed.code).toBe(0);
+    expect(JSON.parse(resumed.stdout)).toMatchObject({ paused: false });
   });
 
   it("import, then export, round-trips a tasks.yaml", async () => {

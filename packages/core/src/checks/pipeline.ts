@@ -4,12 +4,14 @@ import type { ClaudeCli } from "../claude.js";
 import { systemClock } from "../clock.js";
 import type { Clock } from "../clock.js";
 import type { ResolvedConfig } from "../config/index.js";
+import { errorMessage, plural } from "../contracts/index.js";
 import type { CheckKind, Task, TaskStatus } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { Environment } from "../env.js";
 import type { EventBus } from "../events.js";
 import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
+import { readMain } from "../rebase/main-ref.js";
 import type { UsageBackoff } from "../sessions/effects.js";
 import { createOneShotRunner } from "../sessions/one-shot.js";
 import { createSessionSpawner } from "../sessions/spawner.js";
@@ -20,7 +22,7 @@ import { statusAfterPassing } from "./outcome.js";
 import { findingsPrompt } from "./prompts.js";
 import { abortRebase, rebaseOntoMain } from "./rebase.js";
 import { createReviewer } from "./reviewer.js";
-import { errorMessage, runShellCheck } from "./runner.js";
+import { runShellCheck } from "./runner.js";
 import type { CheckContext } from "./runner.js";
 
 export interface CheckPipelineOptions {
@@ -201,7 +203,7 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
         return {
           kind: "fix",
           prompt: findingsPrompt(run.task, serious),
-          reason: `the reviewer reported ${String(serious.length)} serious finding${serious.length === 1 ? "" : "s"}`,
+          reason: `the reviewer reported ${plural(serious.length, "serious finding")}`,
           countsAttempt: true,
           conflict: false,
         };
@@ -309,14 +311,9 @@ export function createCheckPipeline(options: CheckPipelineOptions): CheckPipelin
     return checking;
   }
 
-  async function mainCommit(): Promise<string> {
-    const ref = `refs/heads/${options.config().mainBranch}`;
-    return (await git.run(options.repoRoot, ["rev-parse", "--verify", ref])).trim();
-  }
-
   // Staying current (PLAN 9.2): a finished branch waiting in review is rebased onto every new main and re-tested.
   async function stayCurrent(): Promise<void> {
-    const main = await mainCommit();
+    const main = await readMain(git, options.repoRoot, options.config().mainBranch);
     if (unsubscribe === null) return;
     for (const task of db.tasks.list())
       if (task.status === "review" && task.baseCommit !== main) moveToChecking(task, "current");
