@@ -685,3 +685,53 @@ points change or sharpen PLAN.md, and later tasks must follow them:
   database and the real action registry, with `stopSession` backed by a stand-in that ends the row. They fail on any
   error the API reports through `onError`. `test/e2e/web-server.test.ts` runs the built binary: printed link, lock
   port, bundled `index.html`, an authorised read, and `service.stopping` with close code 1001 on SIGTERM.
+
+## m2-mcp
+
+- **Where it lives.** `@mastermind/core/conductor` (`src/conductor/`: `mcp.ts` the transport and route, `tools.ts`
+  the tool table, `plan.ts` propose_plan) and `@mastermind/core/proposals` (`src/proposals.ts`, the gate and the
+  `confirmProposal` / `rejectProposal` actions). The read models moved out of `api/read-routes.ts` into
+  `src/reads.ts` (`createReadModels`), shared by the HTTP reads and the MCP read tools. `src/chat.ts` has
+  `postChatMessage` (append plus `chat.message`). Contracts: `contracts/conductor.ts` (`mcpPath`,
+  `awaitingConfirmationSchema`, `proposalOutcomeSchema`, `proposePlanInputSchema`, `planMetaSchema`,
+  `sessionEventsInputSchema`). SDK: `@modelcontextprotocol/sdk` 1.31 (1.32 was newer than pnpm's minimum release
+  age, which would have needed an exclusion in `pnpm-workspace.yaml`).
+- **Transport.** `POST /mcp` is stateless Streamable HTTP with plain JSON responses (`enableJsonResponse`), as
+  spike 6 asks; `GET` and `DELETE` answer 405. Every POST builds a fresh `McpServer` and transport, so the tool list
+  and descriptions always follow the current config, and nothing outlives the request. The route is registered in
+  the same Fastify context as the API routes, so it gets the same bearer-token hook and the Host and Origin checks.
+- **Tools.** Action tools are a table (`actionTools`) mapping a snake_case tool name to a registered action, with a
+  description written for the model and `describe(input)`, a short imperative phrase ("Hold sched-prio") used for
+  decision boxes and system messages. A tool is listed only when its action is registered, and its input schema is
+  the action's own zod schema, so later tasks add `message_session`, `request_changes`, `approve_rebase`,
+  `discard_task` and the rest by registering the action and adding one table entry. Read tools wrap the read
+  models; `get_session_events` adds `limit` (default 50, at most 200, the latest events) so a long timeline can't
+  flood the Conductor's context. Results are the JSON of the action or read result. `ActionError` and `ConfigError`
+  become tool errors (`isError`) with their message; invalid arguments are rejected by the SDK with the field path;
+  any other error is a tool error too and goes to `onError`.
+- **Gating.** Only action tools can be gated: names in `config.conductor.confirm` that aren't action tools (read
+  tools, `propose_plan`, tools not built yet) are ignored. The list is read on every call, so a `set_config` change
+  takes effect on the next call. A gated call validates its input first (nothing is stored for invalid input),
+  stores a `proposals` row with the action name and the parsed args, emits `proposal.updated`, appends a `proposal`
+  chat message (the question, `meta: { proposalId }`), and returns `{ status: "awaiting_confirmation", proposalId,
+  question }`. A gated tool's description says so.
+- **Deciding.** `confirmProposal` and `rejectProposal` are registered actions with routes
+  `POST /api/proposals/:proposalId/{confirm,reject}`; they are not tools, so the Conductor can't confirm its own
+  proposals. Confirm runs the action exactly once: a confirm that arrives while the action runs joins the same
+  promise, and a confirm or reject of a decided proposal returns it unchanged. A confirmed action that fails with an
+  `ActionError` or `ConfigError` is still `confirmed`, with `result: { ok: false, message }`; any other failure is
+  recorded the same way and rethrown. Success stores `result: { ok: true, value }`. Every decision emits
+  `proposal.updated` and appends a `system` chat message (`"Hold sched-prio: declined by the owner."`,
+  `meta: { proposalId, status }`); the ChatRunner (next task) feeds system messages newer than the Conductor's last
+  turn into its next turn.
+- **Expiry rule.** A proposal still pending **60 minutes** after it was made expires (`proposalLifetimeMs`): long
+  enough for the owner to step away, short enough that a stale decision doesn't run against a state that has moved
+  on. It is enforced when someone confirms or rejects it (it becomes `expired` instead) and by a sweep the runtime
+  runs at start and every minute, which posts the system message. A proposal whose action is running never expires.
+- **propose_plan** takes the `create_tasks` fields plus an optional `note` per task, checks the batch as a DAG
+  against existing tasks (`assertValidBatch`, now exported from the actions), and appends a `plan` chat message: a
+  numbered list `1. id: note` (the title when there is no note), with `meta: { tasks }` holding the exact
+  `create_tasks` input, so the UI's Start button can post it to `POST /api/tasks` as is. It creates nothing.
+- **Review.** `proposalMetaSchema` (`{ proposalId, status? }`) types the meta of `proposal` and `system` decision
+  messages, for the web decision box. A failure while recording a confirmed action's success no longer records it a
+  second time as a failure, and a rejected `McpServer.close()` goes to `onError` instead of being left unhandled.

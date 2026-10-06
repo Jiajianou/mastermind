@@ -5,7 +5,7 @@ import {
   updateTaskInputSchema,
 } from "../contracts/index.js";
 import type { Task } from "../contracts/index.js";
-import type { NewTask, TaskPatch } from "../db/index.js";
+import type { Db, NewTask, TaskPatch } from "../db/index.js";
 import { describeGraphIssue, findGraphIssues } from "./dag.js";
 import type { GraphIssue } from "./dag.js";
 import { ActionError } from "./errors.js";
@@ -34,14 +34,18 @@ function updateTaskRow(scope: TaskScope, taskId: string, patch: TaskPatch): Task
   return task;
 }
 
+export function assertValidBatch(db: Pick<Db, "tasks">, batch: readonly NewTask[]): void {
+  const issues = findGraphIssues(
+    batch.map((task) => ({ id: task.id, deps: task.deps ?? [] })),
+    db.tasks.list(),
+  );
+  if (issues.length > 0) throw graphError(issues);
+}
+
 export function insertTaskBatch(scope: TaskScope, batch: readonly NewTask[]): Task[] {
   const { db } = scope;
   const created = db.transaction(() => {
-    const issues = findGraphIssues(
-      batch.map((task) => ({ id: task.id, deps: task.deps ?? [] })),
-      db.tasks.list(),
-    );
-    if (issues.length > 0) throw graphError(issues);
+    assertValidBatch(db, batch);
     return batch.map((task) => db.tasks.create(task));
   });
   for (const task of created) scope.emit({ type: "task.updated", taskId: task.id, task });

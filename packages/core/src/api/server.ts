@@ -6,9 +6,12 @@ import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionRegistry } from "../actions/index.js";
+import { registerMcpRoutes } from "../conductor/mcp.js";
 import type { Summary } from "../contracts/index.js";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
+import type { ProposalGate } from "../proposals.js";
+import { createReadModels } from "../reads.js";
 import { registerActionRoutes } from "./action-routes.js";
 import { apiError, errorReply } from "./errors.js";
 import { bearerRejection, siteRejection } from "./local-request.js";
@@ -20,6 +23,7 @@ export interface ApiServerOptions {
   db: Db;
   bus: EventBus;
   actions: ActionRegistry;
+  gate: ProposalGate;
   summary: () => Summary;
   token: string;
   webRoot: string;
@@ -46,7 +50,7 @@ function sendRejection(reply: FastifyReply, rejection: Rejection | null) {
 }
 
 // The web app's own files carry no data, and a browser navigating to the link can't send the bearer token, so
-// only the API routes need it; the Host and Origin checks apply to everything. The token hook is bound to the routes,
+// only the API and MCP routes need it; the Host and Origin checks apply to everything. The token hook is bound to the routes,
 // not to a URL prefix, because the router matches the decoded path (/%61pi/summary reaches /api/summary).
 export async function createApiServer(options: ApiServerOptions): Promise<ApiServer> {
   const { token, onError } = options;
@@ -87,8 +91,11 @@ export async function createApiServer(options: ApiServerOptions): Promise<ApiSer
     api.addHook("onRequest", async (request, reply) =>
       sendRejection(reply, bearerRejection(request.headers.authorization, token)),
     );
-    registerReadRoutes(api, options);
-    registerActionRoutes(api, options.actions);
+    const { db, bus, actions, gate } = options;
+    const reads = createReadModels(options);
+    registerReadRoutes(api, reads);
+    registerActionRoutes(api, actions);
+    registerMcpRoutes(api, { actions, gate, reads, chat: { db, bus }, onError });
     done();
   });
   await app.ready();

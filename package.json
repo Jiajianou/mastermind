@@ -23,6 +23,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@mastermind/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "~1.31.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.20.5",
     "@types/ws": "^8.18.2",

@@ -20,6 +20,7 @@ export type {
 } from "./registry.js";
 export { setBackoff } from "./runtime.js";
 export type { SchedulerScope } from "./runtime.js";
+export { assertValidBatch } from "./tasks.js";
 export { readTasksFile, writeTasksFile } from "./tasks-file.js";
 export type { TasksFile } from "./tasks-file.js";
 export { assertTransition, canTransition } from "./transitions.js";
@@ -51,6 +52,8 @@ const builtins = {
   setConfig,
   importTasks,
   exportTasks,
-} satisfies ContractedActions<Exclude<ActionName, "stopSession">>;
+} satisfies ContractedActions<
+  Exclude<ActionName, "stopSession" | "confirmProposal" | "rejectProposal">
+>;
 
 export const builtinActions: readonly AnyActionDefinition[] = Object.values(builtins);

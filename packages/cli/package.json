@@ -16,6 +16,7 @@
   "dependencies": {
     "@fastify/static": "^10.1.5",
     "@mastermind/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "~1.31.0",
     "commander": "^15.0.0",
     "fastify": "^5.12.5",
     "ink": "^8.0.0",

@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { builtinActions, createActionRegistry } from "@mastermind/core/actions";
 import { serveApi } from "@mastermind/core/api";
 import type { PortChoice, ServedApi } from "@mastermind/core/api";
-import { setConfig } from "@mastermind/core/config";
+import { actionTools } from "@mastermind/core/conductor";
+import { loadConfig, setConfig } from "@mastermind/core/config";
 import { openDb, systemClock } from "@mastermind/core/db";
 import type { Db } from "@mastermind/core/db";
 import { createEventBus } from "@mastermind/core/events";
 import { acquireLock, tokenPath } from "@mastermind/core/lock";
+import { createProposalGate, proposalActions } from "@mastermind/core/proposals";
 import { createScheduler } from "@mastermind/core/scheduler";
 import { stopSessionAction } from "@mastermind/core/sessions";
 import { makeTempDir, onCleanup } from "../../support/cleanup.js";
@@ -89,8 +91,19 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     db.close();
   });
   const bus = createEventBus();
+  const configContext = { repoRoot: root, homeDir: root };
+  let config = await loadConfig(configContext);
   const actions = createActionRegistry(
-    { db, bus, config: { set: (change) => setConfig({ repoRoot: root, homeDir: root }, change) } },
+    {
+      db,
+      bus,
+      config: {
+        async set(change) {
+          config = await setConfig(configContext, change);
+          return config;
+        },
+      },
+    },
     builtinActions,
   );
   // The real session manager's stop is covered by the worker session tests; here it only has to end the row.
@@ -102,6 +115,15 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
       },
     }),
   );
+  const gate = createProposalGate({
+    db,
+    bus,
+    actions,
+    clock: systemClock,
+    tools: actionTools,
+    confirmList: () => config.conductor.confirm,
+  });
+  for (const action of proposalActions(gate)) actions.register(action);
   const errors: unknown[] = [];
   onCleanup(() => {
     if (errors.length > 0) throw new AggregateError(errors, "the API reported errors");
@@ -119,6 +141,7 @@ export async function serveTestApi({ port, staleToken }: TestApiOptions = {}): P
     db,
     bus,
     actions,
+    gate,
     summary: () => scheduler.summary(),
     webRoot,
     onError: (error) => errors.push(error),

@@ -5,6 +5,7 @@ import { builtinActions, createActionRegistry, pause, resume } from "./actions/i
 import type { ActionRegistry } from "./actions/index.js";
 import { systemClock } from "./clock.js";
 import type { Clock } from "./clock.js";
+import { actionTools } from "./conductor/index.js";
 import { projectPaths, resolveConfig, setConfig } from "./config/index.js";
 import type { ResolvedConfig } from "./config/index.js";
 import type { Config, RuntimeFlags } from "./contracts/index.js";
@@ -14,6 +15,7 @@ import { createEventBus } from "./events.js";
 import type { EventBus } from "./events.js";
 import { GitError } from "./git/index.js";
 import type { KillReport, ProcessRegistry } from "./procs.js";
+import { createProposalGate, proposalActions } from "./proposals.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
 import { createSessionManager, stopSessionAction } from "./sessions/index.js";
@@ -44,6 +46,8 @@ export interface Runtime {
   markKilledSync(): KilledCounts;
   closeSync(): void;
 }
+
+const proposalSweepMs = 60_000;
 
 async function shortCommit(startup: Startup, ref: string): Promise<string | null> {
   try {
@@ -112,12 +116,22 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     clock,
   });
   actions.register(stopSessionAction(manager));
+  const gate = createProposalGate({
+    db,
+    bus,
+    actions,
+    clock,
+    tools: actionTools,
+    confirmList: () => config.conductor.confirm,
+  });
+  for (const action of proposalActions(gate)) actions.register(action);
 
   const mainCommit = await shortCommit(startup, config.mainBranch);
   const api = await serveApi({
     db,
     bus,
     actions,
+    gate,
     summary: () => scheduler.summary(),
     webRoot: options.webRoot,
     onError,
@@ -144,6 +158,15 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     }),
   );
 
+  let proposalSweep: ReturnType<typeof setInterval> | null = null;
+  const expireProposals = () => {
+    try {
+      gate.expireStale();
+    } catch (error) {
+      onError(error);
+    }
+  };
+
   return {
     bus,
     actions,
@@ -152,6 +175,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     start() {
       scheduler.start();
+      expireProposals();
+      proposalSweep = setInterval(expireProposals, proposalSweepMs);
     },
 
     togglePause() {
@@ -163,6 +188,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     markKilledSync: () => db.killRunning(),
 
     closeSync() {
+      if (proposalSweep !== null) clearInterval(proposalSweep);
       api.closeSync();
       scheduler.stop();
       store.dispose();

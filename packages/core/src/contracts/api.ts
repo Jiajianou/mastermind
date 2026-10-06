@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { actionErrorCodeSchema, actionIssueSchema } from "./actions.js";
+import type { Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
 import type { Config } from "./config.js";
 import { busEventSchema } from "./events.js";
@@ -39,6 +40,8 @@ export interface ActionResults {
   pause: RuntimeFlags;
   resume: RuntimeFlags;
   setConfig: Config;
+  confirmProposal: Proposal;
+  rejectProposal: Proposal;
 }
 export type ActionName = keyof ActionResults;
 
@@ -67,6 +70,16 @@ export const actionRoutes = {
   pause: { method: "POST", path: "/api/pause" },
   resume: { method: "POST", path: "/api/resume" },
   setConfig: { method: "PATCH", path: "/api/config" },
+  confirmProposal: {
+    method: "POST",
+    path: "/api/proposals/:proposalId/confirm",
+    intParams: ["proposalId"],
+  },
+  rejectProposal: {
+    method: "POST",
+    path: "/api/proposals/:proposalId/reject",
+    intParams: ["proposalId"],
+  },
 } as const satisfies Record<ActionName, ActionRoute>;
 
 export function isActionName(name: string): name is ActionName {

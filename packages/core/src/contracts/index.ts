@@ -4,6 +4,7 @@ export * from "./actions.js";
 export * from "./api.js";
 export * from "./chat.js";
 export * from "./checks.js";
+export * from "./conductor.js";
 export * from "./common.js";
 export * from "./config.js";
 export * from "./events.js";
