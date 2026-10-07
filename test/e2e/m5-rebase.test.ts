@@ -162,9 +162,9 @@ describe("milestone 5: checks, fixers and the rebase queue, through the built bi
     );
 
     expect(await repo.git("symbolic-ref", "--short", "HEAD")).toBe("dev");
-    expect(await repo.git("for-each-ref", "refs/mastermind/")).toBe("");
     expect(task.worktree).toEqual(expect.any(String));
-    expect(existsSync(task.worktree ?? "")).toBe(false);
+    await waitFor(() => !existsSync(task.worktree ?? ""));
+    expect(await repo.git("for-each-ref", "refs/mastermind/")).toBe("");
     expect(task.attempts).toBe(0);
     expect(db.rebases.listForTask("credited").map((rebase) => rebase.status)).toEqual([
       "succeeded",

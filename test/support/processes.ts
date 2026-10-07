@@ -30,14 +30,20 @@ export function findPids(marker: string): number[] {
     .map((row) => row.pid);
 }
 
-export function isAlive(pid: number): boolean {
+function processState(pid: number): string | null {
   try {
-    process.kill(pid, 0);
-    return true;
+    return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "EPERM") return true;
-    return false;
+    if (error instanceof Error && "status" in error && error.status === 1) return null;
+    throw error;
   }
+}
+
+// A killed process stays in the table as a zombie until it is reaped, which, once its parent has exited, init does
+// in its own time. kill(pid, 0) still succeeds on a zombie, so the state decides.
+export function isAlive(pid: number): boolean {
+  const state = processState(pid);
+  return state !== null && !state.startsWith("Z");
 }
 
 function sendKill(target: number): void {

@@ -92,8 +92,8 @@ describe("rebase queue", () => {
     expect(await repo.git("show", "main:src/more.txt")).toBe("more");
     expect(await repo.git("symbolic-ref", "--short", "HEAD")).toBe("dev");
     expect(await repo.git("status", "--porcelain", "--untracked-files=no")).toBe("");
+    await waitFor(() => !existsSync(task.worktree ?? ""));
     expect(await repo.git("for-each-ref", "refs/mastermind/")).toBe("");
-    expect(existsSync(task.worktree ?? "")).toBe(false);
 
     const rebases = harness.db.rebases.listForTask("feature");
     expect(rebases.map((rebase) => rebase.status)).toEqual(["succeeded"]);
