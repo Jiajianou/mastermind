@@ -1,7 +1,25 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+*.tsbuildinfo
+
+# Test and coverage output
 coverage/
-.implement/
-.mastermind/
 test-results/
 playwright-report/
+blob-report/
+
+# Mastermind's own state when run against this repo
+.mastermind/
+
+# Local environment, logs and editor files
+.env
+.env.*
+*.log
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json
+./node_modules

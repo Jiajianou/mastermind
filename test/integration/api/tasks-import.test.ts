@@ -1,15 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import { findGraphIssues } from "@mastermind/core/actions";
 import { actionResultSchemas, apiErrorSchema } from "@mastermind/core/contracts";
 import type { Task } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { z } from "zod";
 import { serveTestApi } from "./harness.js";
 import type { TestApi } from "./harness.js";
-
-const repoTasksFile = fileURLToPath(new URL("../../../tasks.yaml", import.meta.url));
 
 function post(test: TestApi, url: string, body: unknown = {}) {
   return test.api.app.inject({
@@ -43,30 +37,44 @@ const taskYaml = (id: string, deps: string[]) =>
   `- id: ${id}\n  title: Build ${id}\n  goal: Make ${id} work.\n  acceptance: "true"\n  touches: [src/${id}/]\n  deps: [${deps.join(", ")}]\n`;
 
 describe("tasks.yaml import and export", () => {
-  it("imports this repository's own tasks.yaml as a valid graph with its deps, warning about the extra keys", async () => {
+  it("imports a file with a dependency graph, warning about the keys it ignores", async () => {
     const test = await serveTestApi();
-    const text = await readFile(repoTasksFile, "utf8");
-    const file = z
-      .object({ tasks: z.array(z.object({ id: z.string(), deps: z.array(z.string()) })) })
-      .parse(parse(text));
+    const yaml = [
+      "version: 1",
+      "gate: pnpm verify",
+      "tasks:",
+      ...[
+        { id: "lexer", deps: "" },
+        { id: "parser", deps: "lexer" },
+        { id: "checker", deps: "parser, lexer" },
+      ].flatMap(({ id, deps }) => [
+        `  - id: ${id}`,
+        `    title: Build ${id}`,
+        `    goal: Make ${id} work.`,
+        `    acceptance: "true"`,
+        `    touches: [src/${id}/]`,
+        `    deps: [${deps}]`,
+        "    milestone: m1",
+        "    tests: unit",
+      ]),
+    ].join("\n");
 
-    const result = await importYaml(test, text);
+    const result = await importYaml(test, yaml);
 
     const stored = test.db.tasks.list();
-    expect(stored).toHaveLength(file.tasks.length);
-    for (const { id, deps } of file.tasks)
-      expect(test.db.tasks.get(id)?.deps).toEqual([...deps].sort());
+    expect(stored.map((task) => task.id).sort()).toEqual(["checker", "lexer", "parser"]);
     expect(findGraphIssues(stored)).toEqual([]);
-    expect(test.db.tasks.get("m7-planning")).toMatchObject({
-      deps: ["m7-tasks-board"],
-      acceptance: "pnpm exec vitest run --project integration planning import",
+    expect(test.db.tasks.get("checker")).toMatchObject({
+      deps: ["lexer", "parser"],
+      acceptance: "true",
+      touches: ["src/checker/"],
       status: "pending",
     });
     expect(result.warnings).toEqual([
       'ignored unknown top-level key "version"',
       'ignored unknown top-level key "gate"',
-      `ignored unknown key "milestone" (${String(file.tasks.length)} tasks)`,
-      `ignored unknown key "tests" (${String(file.tasks.length)} tasks)`,
+      'ignored unknown key "milestone" (3 tasks)',
+      'ignored unknown key "tests" (3 tasks)',
     ]);
   });
 

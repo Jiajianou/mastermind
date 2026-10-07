@@ -1,6 +1,6 @@
 #!/bin/sh
-# Installs mastermind from a fresh clone of this repo's HEAD into a throwaway global prefix, then runs the
-# installed binary against fake-claude. Uncommitted changes are not part of the clone.
+# Runs install.sh from a fresh clone of this repo's HEAD into a throwaway global prefix, checks the installed
+# binary against fake-claude, then runs uninstall.sh. Uncommitted changes are not part of the clone.
 set -eu
 
 repo=$(git -C "$(dirname -- "$0")/.." rev-parse --show-toplevel)
@@ -30,18 +30,15 @@ fi
 step "Cloning $(git -C "$repo" rev-parse --short HEAD) into $clone"
 git clone --quiet "$repo" "$clone"
 
-step "Installing and building"
-(cd "$clone" && pnpm install --frozen-lockfile && pnpm build)
-for asset in web/index.html prompts/conductor.md prompts/worker.md; do
-  [ -f "$clone/packages/cli/dist/$asset" ] || fail "the CLI build is missing dist/$asset"
-done
-
-step "Linking into a temporary global prefix"
+step "Running install.sh with a temporary global prefix"
 # pnpm 10 puts global bins in PNPM_HOME and pnpm 11 and later in PNPM_HOME/bin.
 PATH="$pnpm_home/bin:$pnpm_home:$PATH"
 export PATH
-(cd "$work" && PNPM_HOME="$pnpm_home" pnpm add --global "link:$clone/packages/cli")
-installed=$(command -v mastermind) || fail "mastermind is not on PATH after linking"
+PNPM_HOME="$pnpm_home" sh "$clone/install.sh"
+for asset in web/index.html prompts/conductor.md prompts/worker.md; do
+  [ -f "$clone/packages/cli/dist/$asset" ] || fail "the CLI build is missing dist/$asset"
+done
+installed=$(command -v mastermind) || fail "mastermind is not on PATH after install.sh"
 case "$installed" in
   "$pnpm_home"/*) ;;
   *) fail "mastermind resolves to $installed, not the temporary prefix" ;;
@@ -84,5 +81,20 @@ printf '%s\n' "$version"
 
 step "mastermind doctor"
 run_installed doctor "$project" || fail "mastermind doctor exited with status $?"
+
+step "Running uninstall.sh --purge --yes"
+mkdir -p "$home/.mastermind/worktrees"
+PNPM_HOME="$pnpm_home" HOME="$home" sh "$clone/uninstall.sh" --purge --yes
+hash -r
+if leftover=$(command -v mastermind); then
+  fail "mastermind is still on PATH at $leftover after uninstall.sh"
+fi
+for path in node_modules packages/cli/dist packages/web/dist "$home/.mastermind"; do
+  case "$path" in
+    /*) target=$path ;;
+    *) target="$clone/$path" ;;
+  esac
+  [ ! -e "$target" ] || fail "uninstall.sh left $path behind"
+done
 
 step "smoke:install passed"

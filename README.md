@@ -27,14 +27,22 @@ Everything runs on your machine. One command starts it in a repo and serves a lo
 From a clone of this repository:
 
 ```sh
-pnpm install
-pnpm build
-pnpm add --global "link:$PWD/packages/cli"
+./install.sh
 ```
 
-The last line puts `mastermind` on your PATH. It does what `pnpm link --global` does on older pnpm versions;
-pnpm 12, which this repo pins, no longer has that form. If pnpm says its global bin directory is not on your
-PATH, run `pnpm setup` once and open a new terminal. After pulling new changes, run `pnpm install && pnpm build` again; the link stays in place.
+It checks the requirements above (installing pnpm with npm if it is missing), runs `pnpm install` and
+`pnpm build`, and links the CLI into pnpm's global bin directory so `mastermind` is on your PATH. If that
+directory is not on your PATH yet, it adds it to your shell profile and asks you to open a new terminal. Run
+`./install.sh` again after pulling new changes.
+
+To remove it:
+
+```sh
+./uninstall.sh            # unlink `mastermind` and delete node_modules and build output from this clone
+./uninstall.sh --purge    # also delete ~/.mastermind, the task clones of every project (asks first)
+```
+
+Each project's own `.mastermind/` folder (its database, chat and logs) stays until you delete it.
 
 Check the machine is ready:
 
@@ -83,14 +91,14 @@ the web app, `.mastermind/config.yaml` and an optional committed `mastermind.yam
 pnpm install
 pnpm verify          # format, lint, typecheck, unit/web/integration tests, build, end-to-end tests
 pnpm test:live       # opt-in: checks Conductor prompts against the real claude CLI; never runs in CI
-pnpm smoke:install   # clones the last commit, installs, builds, links into a temp prefix and runs doctor
+pnpm smoke:install   # runs install.sh and uninstall.sh on a clone of the last commit, with a temp prefix
 ```
 
 Tests never call the real `claude`; they use `test/fixtures/fake-claude`. `pnpm test:live` is the only exception,
 and it uses your real sign-in and subscription limit.
 
-`docs/PLAN.md` is the design and the source of truth. `docs/implementation-notes.md` records decisions made while
-building, and `docs/claude-cli-notes.md` records how the `claude` CLI actually behaves.
+`docs/PLAN.md` is the design and the source of truth. `docs/implementation-notes.md` records decisions and
+deviations from the plan, and `docs/claude-cli-notes.md` records how the `claude` CLI actually behaves.
 
 ## Architecture
 

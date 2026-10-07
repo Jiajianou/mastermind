@@ -31,10 +31,8 @@ Fewer, robust, meaningful tests beat many small trivial ones.
 - **End to end** (`test/e2e/`): the built `mastermind` binary, plus Playwright specs in `test/e2e/web/` for user-visible flows. Use these where a real user flow is at stake, not for every function.
 - Tests are deterministic and isolated: temp HOME and worktree folders, fake timers or wait-for-condition helpers instead of fixed sleeps, and every spawned process and temp dir is cleaned up.
 
-## How this repo is built
+## Working in this repo
 
-`./implement.sh` builds the project from `tasks.yaml`, one unattended Claude Code session per task, with no human input. Each task works on branch `impl/<id>`. The runner then runs a review session, checks the work with `gate` plus the task's `acceptance` command, squashes the branch into one commit (whose body ends with `Task: <id>`) and rebases it onto main. A task that keeps failing gets fresh rescue sessions that look for the root cause anywhere in the repo. If it is still blocked after those, the whole run stops.
-
-- When working inside a task session: stay on the task branch, commit with plain messages, never push, rebase, reset or switch branches, and don't edit `tasks.yaml`, `implement.sh` or `.implement/`.
-- Nobody answers questions during a run. Make sound decisions consistent with `docs/PLAN.md`, and record notable decisions and deviations in `docs/implementation-notes.md` so later sessions see them.
+- `./install.sh` builds the project and links `mastermind` onto the PATH; `./uninstall.sh` undoes it. `pnpm smoke:install` checks both on a clone of the last commit.
+- Record notable decisions and deviations from `docs/PLAN.md` in `docs/implementation-notes.md`.
 - Findings from the Claude CLI spikes live in `docs/claude-cli-notes.md`. Read it before touching anything that spawns or parses `claude`.
