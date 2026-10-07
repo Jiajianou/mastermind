@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "tsc -p tsconfig.json && tsc -p test/e2e/web/tsconfig.json && pnpm -r typecheck",
+    "typecheck": "tsc -p tsconfig.json && tsc -p test/e2e/web/tsconfig.json && tsc -p scripts/demo/tsconfig.json && pnpm -r typecheck",
     "lint": "NODE_OPTIONS=--max-old-space-size=4096 eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -19,6 +19,7 @@
     "test:live": "MASTERMIND_LIVE=1 vitest run --project live",
     "coverage": "vitest run --coverage --project unit --project web --project integration",
     "smoke:install": "sh scripts/smoke-install.sh",
+    "demo": "tsx scripts/demo/record.ts",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"
   },
   "devDependencies": {

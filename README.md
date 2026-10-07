@@ -1,119 +1,198 @@
 # Mastermind
 
-Mastermind runs many headless Claude Code sessions in parallel against one git repository, and you drive it
-through a chat.
+**Run a team of Claude Code sessions on one repository, and steer them from a single chat.**
 
-You describe what you want, and mastermind turns it into a graph of small tasks. Each task runs in its own
-Claude Code session and its own local clone of the repo, in parallel where the graph allows. Mastermind checks
-each result with your build and test commands, has it reviewed, lets you review it and request changes, and
-rebases finished work onto your main branch as one commit per task. It never pushes, fetches or opens pull
-requests, and never creates merge commits.
+[![CI](https://github.com/Jiajianou/mastermind/actions/workflows/ci.yml/badge.svg)](https://github.com/Jiajianou/mastermind/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platforms: macOS and Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 
-Everything runs on your machine. One command starts it in a repo and serves a local web app for that repo.
+<!-- demo:start -->
+<p align="center"><img src="assets/demo.gif" alt="Mastermind planning, running and landing three tasks from one chat message"></p>
+<!-- demo:end -->
+
+You describe what you want in plain words. Mastermind turns it into a plan of small tasks, runs each task in its
+own headless Claude Code session and its own clone of your repo, checks the result with your build and tests, has
+it reviewed, and lands finished work on your main branch as one clean commit per task.
+
+Everything runs on your machine, on your existing Claude Pro or Max subscription. Nothing is pushed anywhere.
+
+## Highlights
+
+- **Chat first.** A Conductor session plans with you, answers questions about what is running, and acts through a
+  small set of tools. Anything irreversible waits for your click.
+- **Parallel, but ordered.** Tasks form a dependency graph. Independent tasks run side by side, and dependent ones
+  wait for what they need.
+- **Isolated workers.** Each worker runs in its own clone inside Claude Code's sandbox, so it can't move your main
+  branch or touch your other branches.
+- **Checked and reviewed.** Every result runs your build and test commands, then gets an automatic review. Failing
+  checks go to a fixer session.
+- **You stay in control.** Watch sessions live, read diffs as they are written, comment on lines, request changes,
+  and choose which paths always need your approval.
+- **Clean history.** Approved work is rebased onto main as one commit per task. No merge commits, and no AI
+  attribution trailers.
+- **Local and safe to stop.** Mastermind never pushes, fetches or opens pull requests. Press Ctrl+C twice and every
+  session it started is gone. The next start picks up where it left off.
+
+## How it works
+
+1. **Plan.** Tell the Conductor your goal. It proposes a plan of tasks, each with a goal, an acceptance check, the
+   paths it touches and what it depends on. Press **Start** when it looks right.
+2. **Work.** Workers pick up ready tasks in parallel, up to your plan's limit, each in a fresh clone of the repo.
+3. **Check.** When a worker finishes, mastermind runs your build and test commands. If they fail, a fixer gets the
+   output and tries again, up to a set number of attempts.
+4. **Review.** A reviewer session reads the diff and leaves findings. Tasks that touch paths you protect wait in
+   **Review**, where you can approve them or request changes.
+5. **Land.** Approved tasks are rebased onto main one at a time, and the tasks that depend on them start next.
 
 ## Requirements
 
-- macOS or Linux (WSL counts as Linux). On Linux the sandbox needs `bubblewrap` and `socat`.
-- Node.js 22.13 or later.
-- pnpm (`npm install --global pnpm`, or `corepack enable`).
-- git.
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) 2.1.283 or later, on your PATH as `claude`.
-- A **Claude Pro or Max subscription**, signed in to Claude Code with your claude.ai account. API keys, Console
-  billing, Bedrock, Vertex and Team or Enterprise plans are not supported. Mastermind never stores credentials;
-  sign-in belongs to Claude Code.
+- **macOS or Linux.** WSL counts as Linux. On Linux the sandbox also needs `bubblewrap` and `socat`.
+- **Node.js 22.13 or later**, plus **git**.
+- **[Claude Code](https://docs.claude.com/en/docs/claude-code) 2.1.283 or later**, on your PATH as `claude`.
+- **A Claude Pro or Max subscription**, signed in to Claude Code with your claude.ai account.
+
+> [!IMPORTANT]
+> Mastermind only works with Claude Pro and Max subscriptions. API keys, Console billing, Bedrock, Vertex, and
+> Team or Enterprise plans are not supported. Mastermind never stores credentials; your sign-in stays with Claude
+> Code.
 
 ## Install
 
-From a clone of this repository:
-
 ```sh
+git clone https://github.com/Jiajianou/mastermind.git
+cd mastermind
 ./install.sh
 ```
 
-It checks the requirements above (installing pnpm with npm if it is missing), runs `pnpm install` and
-`pnpm build`, and links the CLI into pnpm's global bin directory so `mastermind` is on your PATH. If that
-directory is not on your PATH yet, it adds it to your shell profile and asks you to open a new terminal. Run
-`./install.sh` again after pulling new changes.
+The installer checks the requirements, installs pnpm if it is missing, builds the project, and links `mastermind`
+onto your PATH. If it had to add pnpm's bin directory to your shell profile, open a new terminal. Run
+`./install.sh` again after pulling updates.
 
-To remove it:
-
-```sh
-./uninstall.sh            # unlink `mastermind` and delete node_modules and build output from this clone
-./uninstall.sh --purge    # also delete ~/.mastermind, the task clones of every project (asks first)
-```
-
-Each project's own `.mastermind/` folder (its database, chat and logs) stays until you delete it.
-
-Check the machine is ready:
+Check that your machine is ready. This changes nothing:
 
 ```sh
 mastermind doctor ~/code/myproject
 ```
 
-Doctor checks git, the Claude Code version, the sign-in and plan, Claude's attribution setting, the project
-config, the disk used by task clones, the logs and the sandbox. It changes nothing.
+Doctor checks git, the Claude Code version, your sign-in and plan, Claude's attribution setting, the project
+config, disk used by task clones, logs and the sandbox.
 
-## Run
+## Quick start
 
 ```sh
 cd ~/code/myproject
-mastermind .
+git switch -c dev        # mastermind asks you to work off a branch other than main
+mastermind . --open
 ```
 
-Mastermind checks your Claude sign-in (and starts Claude Code's own login if needed), asks you to move off the
-main branch if you are on it, writes `.mastermind/config.yaml` on the first run, and prints a link such as
-`http://127.0.0.1:4700/#t=…`. Open it to reach the chat. Use `--port <n>` to pick the port and `--open` to open the
-browser for you.
+On first run, mastermind checks your Claude sign-in (and starts Claude Code's login if needed), detects your build
+and test commands, writes `.mastermind/config.yaml`, and serves the web app at a private link such as
+`http://127.0.0.1:4700/#t=…`. Confirm the detected commands, then tell the Conductor what to build.
 
-The terminal stays in the foreground and shows what is running. **Press Ctrl+C twice to stop mastermind and kill
-every session it started.** Closing the terminal does the same. The next start recovers anything that was
-interrupted.
+The terminal stays in the foreground and shows what is running. **Press Ctrl+C twice to stop mastermind and every
+session it started.** Closing the terminal does the same.
 
-While it runs, other terminals can talk to it:
+### The web app
+
+| Screen       | What it is for                                                                    |
+| ------------ | --------------------------------------------------------------------------------- |
+| **Chat**     | Talk to the Conductor: plan work, ask what is happening, confirm decisions.       |
+| **Overview** | Running sessions and their latest actions, what is up next, and task counts.      |
+| **Tasks**    | The task board and the dependency graph.                                          |
+| **Sessions** | The full timeline of any session, live.                                           |
+| **Review**   | Live diffs, reviewer findings, line comments, request changes, approve and land.  |
+| **Settings** | Models, build and test commands, and the rest of the configuration.               |
+
+### From another terminal
+
+While mastermind runs, you can drive it from the command line too:
 
 ```sh
-mastermind status
-mastermind tasks
-mastermind logs <task> -f
-mastermind chat "what's running?"
-mastermind hold|release|retry|approve|discard <task>
-mastermind pause|resume
-mastermind import|export tasks.yaml
+mastermind status                    # what is running right now
+mastermind tasks                     # list tasks
+mastermind logs <task> -f            # follow a task's session events
+mastermind chat "what's running?"    # ask the Conductor
+mastermind approve <task>            # approve a task in review and rebase it onto main
+mastermind hold|release|retry|discard <task>
+mastermind pause|resume              # stop or restart scheduling new sessions
+mastermind import|export tasks.yaml  # bring in or save a task list
 ```
 
-Mastermind keeps its state in `.mastermind/` in your repo (excluded from git) and task clones in
-`~/.mastermind/worktrees/`. Logs older than `logRetention` (30 days by default) are deleted at startup. Settings in
-the web app, `.mastermind/config.yaml` and an optional committed `mastermind.yaml` configure it.
+Run `mastermind --help` for every command and option.
+
+## Configuration
+
+Most settings can be changed in the web app's **Settings** screen. They are stored in two YAML files in your
+project:
+
+- **`mastermind.yaml`** (optional, committed) holds team-wide settings.
+- **`.mastermind/config.yaml`** (local, excluded from git) holds your own settings and wins over `mastermind.yaml`.
+
+```yaml
+# mastermind.yaml
+mainBranch: main
+maxWorkers: auto # 2 parallel workers on Max, 1 on Pro; or a number
+maxAttempts: 3 # fixer attempts before a task is blocked
+requireReviewFor: [src/payments/] # tasks touching these paths wait for your approval
+autoRebase: true # land other tasks automatically once checks and review pass
+models:
+  worker: opus
+  reviewer: sonnet
+commands:
+  build: pnpm run build
+  test: pnpm test
+```
+
+## Where things live
+
+| Path                         | Contents                                                            |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `.mastermind/` in your repo  | The project's database, chat history, logs and local config.        |
+| `~/.mastermind/worktrees/`   | One clone of your repo per task.                                    |
+
+Logs older than `logRetention` (30 days by default) are deleted at startup.
+
+## Uninstall
+
+```sh
+./uninstall.sh            # unlink mastermind and delete build output from this clone
+./uninstall.sh --purge    # also delete ~/.mastermind and every project's task clones (asks first)
+```
+
+Each project's `.mastermind/` folder stays until you delete it.
 
 ## Development
 
 ```sh
 pnpm install
-pnpm verify          # format, lint, typecheck, unit/web/integration tests, build, end-to-end tests
-pnpm test:live       # opt-in: checks Conductor prompts against the real claude CLI; never runs in CI
-pnpm smoke:install   # runs install.sh and uninstall.sh on a clone of the last commit, with a temp prefix
+pnpm verify          # format, lint, typecheck, unit, web and integration tests, build, end-to-end tests
+pnpm smoke:install   # run install.sh and uninstall.sh on a clean clone of the last commit
+pnpm demo            # re-record assets/demo.gif and update this README
+pnpm test:live       # opt-in: checks the Conductor prompts against the real claude CLI
 ```
 
-Tests never call the real `claude`; they use `test/fixtures/fake-claude`. `pnpm test:live` is the only exception,
-and it uses your real sign-in and subscription limit.
+Tests never call the real `claude`. They use a scripted stand-in, `test/fixtures/fake-claude`. `pnpm test:live` is
+the only exception, and it uses your real sign-in and subscription limit.
 
-`docs/PLAN.md` is the design and the source of truth. `docs/implementation-notes.md` records decisions and
-deviations from the plan, and `docs/claude-cli-notes.md` records how the `claude` CLI actually behaves.
+`pnpm demo` builds mastermind, runs it against a throwaway repo with fake-claude, drives the web app in headless
+Chromium, and encodes the recording as a GIF under 5 MB. It needs `ffmpeg` (`brew install ffmpeg`) and Playwright's
+Chromium (`pnpm exec playwright install chromium`). The tour lives in `scripts/demo/tour.ts`, and the scripted
+sessions in `scripts/demo/scenario.ts`.
 
-## Architecture
+### Architecture
 
-Mastermind is one Node process that supervises every child process. Each child runs in its own process group so
+Mastermind is one Node process that supervises every child process. Each child runs in its own process group, so
 Ctrl+C twice can kill it outright.
 
-- **`packages/core`**: the orchestrator. SQLite (`node:sqlite`) holds all state; git holds all work. A single
-  action layer is the only writer, and the HTTP API, the Conductor's MCP tools and the CLI all call it. Around it:
+- **`packages/core`** is the orchestrator. SQLite (`node:sqlite`) holds all state, and git holds all work. A single
+  action layer is the only writer; the HTTP API, the Conductor's MCP tools and the CLI all call it. Around it sit
   the scheduler, the session manager (`claude -p` with stream-json), the git service, the checks pipeline, the
   rebase queue, the auth guard and recovery. Shared zod contracts live in `@mastermind/core/contracts`.
-- **`packages/cli`**: the `mastermind` binary. It runs the startup sequence, the Ink terminal view and the Ctrl+C
-  kill path, and serves the web app. Its build bundles core, the web app and `prompts/` into `dist/`.
-- **`packages/web`**: the React web app: the chat home, overview, tasks board, sessions, review and settings.
-- **`prompts/`**: system prompts for the Conductor, workers, fixers, the reviewer and planning.
+- **`packages/cli`** is the `mastermind` binary. It runs the startup sequence, the Ink terminal view and the Ctrl+C
+  kill path, and serves the web app.
+- **`packages/web`** is the React web app.
+- **`prompts/`** holds the system prompts for the Conductor, workers, fixers, the reviewer and planning.
 
-The **Conductor** is a Claude Code session that drives the chat. It cannot edit files or run commands; it acts
-only through mastermind's MCP tools, and irreversible actions wait for your click. Workers and fixers run in their
-own clones inside Claude Code's sandbox, so they cannot move main or touch your branches.
+## License
+
+[MIT](LICENSE)

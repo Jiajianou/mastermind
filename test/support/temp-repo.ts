@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 export const owner = { name: "Owner", email: "owner@example.com" };
 
 export interface TempRepoOptions {
+  name?: string;
   mainBranch?: string;
   files?: Record<string, string>;
   branches?: Record<string, Record<string, string>>;
@@ -35,7 +36,9 @@ async function writeFiles(root: string, files: Record<string, string>): Promise<
 }
 
 export async function createTempRepo(options: TempRepoOptions = {}): Promise<TempRepo> {
-  const path = await makeTempDir("repo");
+  const tempDir = await makeTempDir("repo");
+  const path = options.name === undefined ? tempDir : join(tempDir, options.name);
+  await mkdir(path, { recursive: true });
   const mainBranch = options.mainBranch ?? "main";
   const git = async (...args: string[]): Promise<string> => {
     const { stdout } = await execFileAsync("git", args, { cwd: path, env: gitEnv });
