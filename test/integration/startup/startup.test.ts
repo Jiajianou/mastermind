@@ -179,6 +179,18 @@ describe("startup sequence", () => {
     expect(await repo.git("rev-parse", "main")).toBe(mainCommit);
   });
 
+  it("starts on a clean main without asking to switch branches", async () => {
+    const repo = await createTempRepo();
+    const env = await isolatedEnv();
+    const { prompts, transcript } = scriptedPrompts([]);
+
+    const startup = await startFor(repo.path, env, prompts);
+
+    expect(startup.branch).toBe("main");
+    expect(transcript).toContain(startupBanner);
+    expect(await repo.git("branch", "--show-current")).toBe("main");
+  });
+
   it("fails outside a git repository without creating anything there", async () => {
     const dir = await makeTempDir("not-a-repo");
     const env = await isolatedEnv();

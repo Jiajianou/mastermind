@@ -7,6 +7,7 @@ import type { Clock } from "../clock.js";
 import {
   ConfigError,
   durationMs,
+  excludeStateFromGit,
   hostPlatform,
   loadConfig,
   prepareProject,
@@ -105,6 +106,7 @@ export async function startMastermind(options: StartupOptions): Promise<Startup>
     const auth = await passAuthGate(cli, prompts);
     const context = { repoRoot, homeDir };
     const { mainBranch } = await loadProjectConfig(context);
+    await excludeStateFromGit(repoRoot);
     const branch = await guardBranch({ git, repoRoot, mainBranch, prompts });
     const setup = await prepareProject({ ...context, platform });
     if (setup.firstRun) sayAll(prompts, describeFirstRun(setup.detection));

@@ -66,13 +66,14 @@ export interface ProjectSetupContext extends ConfigContext {
 export type ProjectSetupResult =
   { firstRun: true; detection: ProjectDetection } | { firstRun: false };
 
+export async function excludeStateFromGit(repoRoot: string): Promise<void> {
+  await ensureExcluded(join(await gitCommonDir(repoRoot), "info", "exclude"), gitExcludePatterns);
+}
+
 export async function prepareProject(context: ProjectSetupContext): Promise<ProjectSetupResult> {
   const paths = projectPaths(context.repoRoot);
   await mkdir(paths.stateDir, { recursive: true });
-  await ensureExcluded(
-    join(await gitCommonDir(context.repoRoot), "info", "exclude"),
-    gitExcludePatterns,
-  );
+  await excludeStateFromGit(context.repoRoot);
   if ((await readOptionalFile(paths.localConfig)) !== null) return { firstRun: false };
   const detection = await detectProject(context.repoRoot);
   await setConfig(

@@ -10,5 +10,5 @@ export { hostPlatform, sandboxPreset } from "./presets.js";
 export type { HostPlatform, SandboxPreset } from "./presets.js";
 export { durationMs, resolveConfig, resolveConfigPath } from "./resolve.js";
 export type { ResolveContext, ResolvedConfig } from "./resolve.js";
-export { GitDirError, prepareProject } from "./setup.js";
+export { excludeStateFromGit, GitDirError, prepareProject } from "./setup.js";
 export type { ProjectSetupContext, ProjectSetupResult } from "./setup.js";

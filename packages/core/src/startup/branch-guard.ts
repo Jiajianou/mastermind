@@ -1,5 +1,6 @@
 import { GitError } from "../git/index.js";
 import type { Git } from "../git/index.js";
+import { checkoutIsClean } from "../rebase/owner-checkout.js";
 import { StartupError } from "./errors.js";
 import { currentBranch, localBranches } from "./repo.js";
 import type { Choice, StartupPrompts } from "./prompts.js";
@@ -63,7 +64,7 @@ export async function guardBranch(options: BranchGuardOptions): Promise<string |
   const { git, repoRoot, mainBranch, prompts } = options;
   for (;;) {
     const branch = await currentBranch(git, repoRoot);
-    if (branch !== mainBranch) return branch;
+    if (branch !== mainBranch || (await checkoutIsClean(git, repoRoot))) return branch;
     const branches = await localBranches(git, repoRoot);
     const others = branches.filter((name) => name !== mainBranch);
     const newBranch = unusedBranchName(branches);
