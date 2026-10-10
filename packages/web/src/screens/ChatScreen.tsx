@@ -20,8 +20,10 @@ export function ChatScreen() {
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
   const entries = useMemo(() => buildTranscript(chat, proposals), [chat, proposals]);
-  const waiting =
-    chat.replying && !entries.some((entry) => entry.kind === "reply" && entry.streaming);
+  const streaming = entries.some((entry) => entry.kind === "reply" && entry.streaming);
+  const progress = chat.replying
+    ? { label: chat.activity ?? (streaming ? null : "Thinking") }
+    : null;
 
   const planFromGoal = () => {
     setText(goalPrompt);
@@ -34,7 +36,7 @@ export function ChatScreen() {
       {live && isFirstRun(chat.messages) && (
         <FirstRun setupConfirmed={isSetupConfirmed(chat.messages)} onPlanFromGoal={planFromGoal} />
       )}
-      <Transcript entries={entries} waiting={waiting} />
+      <Transcript entries={entries} progress={progress} />
       <Composer text={text} onTextChange={setText} input={input} />
     </section>
   );

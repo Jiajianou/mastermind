@@ -41,6 +41,7 @@ export interface ChatState {
   replying: boolean;
   messages: readonly ChatMessage[];
   drafts: Readonly<Record<string, string>>;
+  activity: string | null;
 }
 
 export interface Workspace {
@@ -115,6 +116,6 @@ export const initialState: LiveState = {
   ownerBranch: null,
   terminals: {},
   proposals: {},
-  chat: { model: null, replying: false, messages: [], drafts: {} },
+  chat: { model: null, replying: false, messages: [], drafts: {}, activity: null },
   notification: null,
 };

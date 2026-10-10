@@ -141,7 +141,13 @@ function applySnapshot(
       ]),
     ),
     historyLoaded: {},
-    chat: { model: chat.model, replying: chat.replying, messages: chat.messages, drafts: {} },
+    chat: {
+      model: chat.model,
+      replying: chat.replying,
+      messages: chat.messages,
+      drafts: {},
+      activity: null,
+    },
   };
 }
 
@@ -260,11 +266,17 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     case "chat.delta": {
       if (hasReply(state.chat, action.turnId)) return state;
       const draft = `${state.chat.drafts[action.turnId] ?? ""}${action.text}`;
-      return withChat(state, { drafts: { ...state.chat.drafts, [action.turnId]: draft } });
+      return withChat(state, {
+        drafts: { ...state.chat.drafts, [action.turnId]: draft },
+        activity: null,
+      });
     }
+    case "chat.activity":
+      return withChat(state, { activity: action.text });
     case "chat.turn":
       return withChat(state, {
         replying: action.replying,
+        activity: null,
         drafts: action.replying
           ? state.chat.drafts
           : withoutDraft(state.chat.drafts, action.turnId),

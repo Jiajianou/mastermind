@@ -3,6 +3,7 @@ import { DecisionBox } from "./DecisionBox.js";
 import { EventLine } from "./EventLine.js";
 import { PlanList } from "./PlanList.js";
 import { Reply } from "./Reply.js";
+import { TurnProgress } from "./TurnProgress.js";
 import type { ChatEntry } from "./entries.js";
 
 function Entry({ entry }: { entry: ChatEntry }) {
@@ -37,26 +38,27 @@ function Entry({ entry }: { entry: ChatEntry }) {
   }
 }
 
-export function Transcript({ entries, waiting }: { entries: ChatEntry[]; waiting: boolean }) {
+export function Transcript({
+  entries,
+  progress,
+}: {
+  entries: ChatEntry[];
+  progress: { label: string | null } | null;
+}) {
   const end = useRef<HTMLDivElement>(null);
   const last = entries.at(-1);
   const lastText = last?.kind === "reply" ? last.text : null;
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [entries.length, lastText, waiting]);
+  }, [entries.length, lastText, progress?.label]);
 
   return (
     <div className="transcript" role="log" aria-label="Conversation">
       {entries.map((entry) => (
         <Entry key={entry.key} entry={entry} />
       ))}
-      {waiting && (
-        <p className="muted-line" role="status">
-          <span aria-hidden="true">…</span>
-          <span className="visually-hidden">mastermind is replying</span>
-        </p>
-      )}
+      {progress !== null && <TurnProgress label={progress.label} />}
       <div ref={end} />
     </div>
   );

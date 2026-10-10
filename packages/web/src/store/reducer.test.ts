@@ -379,11 +379,22 @@ const cases: Case[] = [
     },
   },
   {
-    name: "chat.delta extends the draft of its turn",
-    before: stateWith({ chat: { ...stateWith({}).chat, drafts: { "turn-1": "Hel" } } }),
+    name: "chat.activity shows what the running reply is doing",
+    before: stateWith({ chat: { ...stateWith({}).chat, replying: true } }),
+    action: { type: "chat.activity", turnId: "turn-1", text: "Reading src/app.ts" },
+    after: (next) => {
+      expect(next.chat.activity).toBe("Reading src/app.ts");
+    },
+  },
+  {
+    name: "chat.delta extends the draft of its turn and clears the activity",
+    before: stateWith({
+      chat: { ...stateWith({}).chat, drafts: { "turn-1": "Hel" }, activity: "Searching the code" },
+    }),
     action: { type: "chat.delta", turnId: "turn-1", text: "lo" },
     after: (next) => {
       expect(next.chat.drafts["turn-1"]).toBe("Hello");
+      expect(next.chat.activity).toBeNull();
     },
   },
   {
@@ -489,6 +500,7 @@ const cases: Case[] = [
         replying: true,
         messages: [message(1)],
         drafts: {},
+        activity: null,
       });
     },
   },

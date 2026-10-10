@@ -25,6 +25,7 @@ import {
 } from "../sessions/index.js";
 import type { EventDetails, ParsedEvent, StreamParser, UsageBackoff } from "../sessions/index.js";
 import { summariseActions } from "./action-line.js";
+import { toolActivity } from "./activity.js";
 import { turnPrompt, wakeText, withSummary } from "./prompt.js";
 import { conductorRolloverTokens } from "./rollover.js";
 import type { ConductorSummariser } from "./rollover.js";
@@ -391,6 +392,10 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
       if (details.line === "user" && details.isReplay) current.delivered += 1;
       const delta = current.recorder.record(event);
       if (delta !== null) bus.emit({ type: "chat.delta", turnId: current.ref.turnId, text: delta });
+      if (details.line === "tool_use") {
+        const text = toolActivity(details.toolName, details.filePath, options.repoRoot);
+        bus.emit({ type: "chat.activity", turnId: current.ref.turnId, text });
+      }
       if (details.line === "result") finish(current, { kind: "result", event });
     } catch (error) {
       onError(error);

@@ -7,9 +7,9 @@ export function chatActions(runner: Pick<ChatRunner, "send" | "stop" | "status">
   const sendChat = defineAction({
     name: "sendChat",
     description:
-      "Send the owner's message to the chat. The reply streams as chat.delta and is stored as chat messages; a message sent while a reply is running joins that turn. A model given here becomes the project's chat model.",
+      "Send the owner's message to the chat. The reply streams as chat.delta, with chat.activity naming each tool it uses, and is stored as chat messages; a message sent while a reply is running joins that turn. A model given here becomes the project's chat model.",
     input: sendChatInputSchema,
-    emits: ["chat.message", "chat.turn", "config.updated"],
+    emits: ["chat.message", "chat.turn", "chat.activity", "config.updated"],
     handler: async ({ text, model }, { config, emit }) => {
       if (model !== undefined && model !== runner.status().model) {
         const merged = await config.set({ models: { conductor: model } });

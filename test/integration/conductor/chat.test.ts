@@ -69,6 +69,7 @@ describe("Conductor chat", () => {
       scenario: {
         turns: [
           conductorTurn("add the parser tasks", [
+            { kind: "read", path: "README.md" },
             reply("Adding them now."),
             {
               kind: "mcp",
@@ -94,6 +95,11 @@ describe("Conductor chat", () => {
     expect(harness.db.tasks.get("parser")).toMatchObject({ status: "pending", deps: ["lexer"] });
     expect(deltas(harness.events, turnId).length).toBeGreaterThan(2);
     expect(deltas(harness.events, turnId).join("")).toBe(replyText);
+    expect(
+      harness.events.flatMap((event) =>
+        event.type === "chat.activity" && event.turnId === turnId ? [event.text] : [],
+      ),
+    ).toEqual(["Reading README.md", "Making changes"]);
     expect(
       harness.events.flatMap((event) =>
         event.type === "chat.message" && event.message.turnId === turnId

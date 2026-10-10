@@ -69,6 +69,7 @@ const chatWith = (messages: ChatMessage[], replying = false): LiveState["chat"] 
   replying,
   messages,
   drafts: {},
+  activity: null,
 });
 
 beforeAll(() => {
@@ -116,6 +117,31 @@ describe("chat screen", () => {
     expect(screen.getAllByText("two tasks")).toHaveLength(1);
     expect(screen.getByText("✓ Added 2 tasks").className).toBe("action-line");
     expect(screen.getByRole("button", { name: "Send" })).toBeDefined();
+  });
+
+  it("shows what a running reply is doing until its text streams in, and clears it when the turn ends", () => {
+    const store = renderChat({ chat: chatWith([message(1, { turnId: "turn-1" })]) });
+    const progress = () => screen.queryByRole("status")?.textContent ?? null;
+
+    act(() => {
+      store.dispatch({ type: "chat.turn", turnId: "turn-1", replying: true });
+    });
+    expect(progress()).toBe("Thinking…");
+
+    act(() => {
+      store.dispatch({ type: "chat.activity", turnId: "turn-1", text: "Reading src/app.ts" });
+    });
+    expect(progress()).toBe("Reading src/app.ts…");
+
+    act(() => {
+      store.dispatch({ type: "chat.delta", turnId: "turn-1", text: "Found it." });
+    });
+    expect(progress()).toBe("mastermind is replying");
+
+    act(() => {
+      store.dispatch({ type: "chat.turn", turnId: "turn-1", replying: false });
+    });
+    expect(progress()).toBeNull();
   });
 
   it("adds a newline on Shift+Enter and sends the whole message on Enter", async () => {
