@@ -95,8 +95,68 @@ body:has(.chat-layout) {
   list-style: none;
 }
 
+.conversation-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-control);
+}
+
+.conversation-row:hover,
+.conversation-row:has([aria-current="true"]) {
+  background: var(--color-raised);
+}
+
+.conversation-delete {
+  flex: none;
+  min-height: 32px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  opacity: 0;
+}
+
+.conversation-row:hover .conversation-delete,
+.conversation-row:focus-within .conversation-delete {
+  opacity: 1;
+}
+
+.conversation-delete:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-danger);
+}
+
+@media (hover: none) {
+  .conversation-delete {
+    opacity: 1;
+  }
+}
+
+.conversation-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-control);
+  background: var(--color-page);
+  font-size: 14px;
+}
+
+.conversation-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.conversation-confirm-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+}
+
 .conversation-item {
   display: block;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   min-height: 36px;
   padding: 6px 10px;
@@ -112,11 +172,10 @@ body:has(.chat-layout) {
 }
 
 .conversation-item:hover:not(:disabled) {
-  background: var(--color-raised);
+  background: transparent;
 }
 
 .conversation-item[aria-current="true"] {
-  background: var(--color-raised);
   font-weight: 600;
 }
 

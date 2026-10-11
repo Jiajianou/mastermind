@@ -71,6 +71,7 @@ export interface ConductorHarness {
   systemPromptFile: string;
   config(): Config;
   post(path: string, body?: unknown): Promise<unknown>;
+  delete(path: string): Promise<unknown>;
   get(path: string): Promise<unknown>;
   waitForTurnEnd(turnId: string): Promise<ChatMessage[]>;
   messages(turnId?: string): ChatMessage[];
@@ -183,7 +184,7 @@ export async function conductorHarness(
     ...(options.idleMs === undefined ? {} : { idleMs: options.idleMs }),
     ...(options.rolloverTokens === undefined ? {} : { rolloverTokens: options.rolloverTokens }),
   });
-  for (const action of chatActions(runner)) actions.register(action);
+  for (const action of chatActions(runner, gate)) actions.register(action);
   const stopEventLines = postEventLines({ db, bus, mainBranch: () => config.mainBranch });
   const stopWaking = wakeOnEventLines({
     bus,
@@ -226,14 +227,19 @@ export async function conductorHarness(
     if (errors.length > 0) throw new AggregateError(errors, "the chat reported errors");
   });
 
-  async function request(method: "GET" | "POST", path: string, body?: unknown): Promise<unknown> {
+  async function request(
+    method: "GET" | "POST" | "DELETE",
+    path: string,
+    body?: unknown,
+  ): Promise<unknown> {
+    const sendsBody = method !== "GET";
     const response = await fetch(`http://127.0.0.1:${String(api.port)}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${api.token}`,
-        ...(method === "POST" ? { "content-type": "application/json" } : {}),
+        ...(sendsBody ? { "content-type": "application/json" } : {}),
       },
-      ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
+      ...(sendsBody ? { body: JSON.stringify(body ?? {}) } : {}),
     });
     const json: unknown = await response.json();
     if (!response.ok) throw new Error(`${method} ${path}: ${apiErrorSchema.parse(json).message}`);
@@ -257,6 +263,7 @@ export async function conductorHarness(
     systemPromptFile,
     config: () => config,
     post: (path, body) => request("POST", path, body),
+    delete: (path) => request("DELETE", path),
     get: (path) => request("GET", path),
     async waitForTurnEnd(turnId) {
       await waitFor(

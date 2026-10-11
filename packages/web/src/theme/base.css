@@ -77,6 +77,16 @@ button.primary:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
+button.danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: var(--color-page);
+}
+
 button.primary:disabled {
   border-color: var(--color-control-border);
   background: var(--color-panel);

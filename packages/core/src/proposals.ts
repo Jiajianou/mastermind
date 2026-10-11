@@ -45,6 +45,7 @@ export interface ProposalGate {
   confirm(proposalId: number): Promise<Proposal>;
   reject(proposalId: number): Proposal;
   expireStale(): Proposal[];
+  expireQuietly(proposalIds: readonly number[]): Proposal[];
 }
 
 export interface ProposalGateOptions {
@@ -194,6 +195,18 @@ export function createProposalGate(options: ProposalGateOptions): ProposalGate {
       const proposal = requireProposal(proposalId);
       if (proposal.status !== "pending" || running.has(proposalId)) return proposal;
       return settle(proposal, isStale(proposal) ? "expired" : "rejected");
+    },
+
+    // A proposal whose question was deleted with its conversation can no longer be answered; it expires without a
+    // chat line, since the conversation it belonged to is gone.
+    expireQuietly(proposalIds) {
+      return proposalIds.flatMap((proposalId) => {
+        const proposal = db.proposals.get(proposalId);
+        if (proposal?.status !== "pending" || running.has(proposalId)) return [];
+        const expired = db.proposals.decide(proposalId, "expired");
+        options.bus.emit({ type: "proposal.updated", proposal: expired });
+        return [expired];
+      });
     },
 
     expireStale() {

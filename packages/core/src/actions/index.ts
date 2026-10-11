@@ -76,6 +76,7 @@ const builtins = {
     | "stopChat"
     | "newConversation"
     | "openConversation"
+    | "deleteConversation"
     | "allowSandboxHost"
   >
 >;

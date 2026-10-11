@@ -101,4 +101,26 @@ CREATE INDEX chat_messages_conversation ON chat_messages (conversation_id, id);
 CREATE INDEX conductor_sessions_conversation ON conductor_sessions (conversation_id);
 `;
 
-export const migrations: readonly string[] = [initialSchema, reviewRounds, conversations];
+// Conversations can be deleted, so their ids and their messages' ids must never be handed out again.
+const neverReuseChatIds = `
+CREATE TABLE conversations_next (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT,
+  started_at TEXT NOT NULL, opened INTEGER NOT NULL);
+INSERT INTO conversations_next (id, title, started_at, opened)
+  SELECT id, title, started_at, opened FROM conversations;
+DROP TABLE conversations;
+ALTER TABLE conversations_next RENAME TO conversations;
+CREATE TABLE chat_messages_next (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, kind TEXT,
+  content TEXT, meta TEXT, conductor_session TEXT, turn_id TEXT, conversation_id INTEGER);
+INSERT INTO chat_messages_next (id, ts, kind, content, meta, conductor_session, turn_id, conversation_id)
+  SELECT id, ts, kind, content, meta, conductor_session, turn_id, conversation_id FROM chat_messages;
+DROP TABLE chat_messages;
+ALTER TABLE chat_messages_next RENAME TO chat_messages;
+CREATE INDEX chat_messages_conversation ON chat_messages (conversation_id, id);
+`;
+
+export const migrations: readonly string[] = [
+  initialSchema,
+  reviewRounds,
+  conversations,
+  neverReuseChatIds,
+];

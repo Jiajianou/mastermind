@@ -589,6 +589,16 @@ const cases: Case[] = [
     },
   },
   {
+    name: "conversation.deleted takes the conversation off the list",
+    before: stateWith({
+      chat: { ...stateWith({}).chat, conversations: [conversation(2), conversation(1)] },
+    }),
+    action: { type: "conversation.deleted", conversationId: 2 },
+    after: (next) => {
+      expect(next.chat.conversations).toEqual([conversation(1)]);
+    },
+  },
+  {
     name: "conversation.updated renames a conversation in the list",
     before: stateWith({
       chat: { ...stateWith({}).chat, conversations: [conversation(2), conversation(1)] },

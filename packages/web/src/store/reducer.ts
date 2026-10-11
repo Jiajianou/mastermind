@@ -301,6 +301,10 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
           : [conversation, ...state.chat.conversations],
       });
     }
+    case "conversation.deleted":
+      return withChat(state, {
+        conversations: state.chat.conversations.filter(({ id }) => id !== action.conversationId),
+      });
     case "chat.delta": {
       const draft = `${state.chat.drafts[action.turnId] ?? ""}${action.text}`;
       return withChat(state, {

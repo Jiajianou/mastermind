@@ -282,7 +282,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     }),
     onError,
   });
-  for (const action of chatActions(runner)) actions.register(action);
+  for (const action of chatActions(runner, gate)) actions.register(action);
   const terminals = createTerminals({ db, bus, registry, env });
 
   const mainCommit = await shortCommit(startup, config.mainBranch);

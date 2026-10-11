@@ -12,6 +12,7 @@ export interface ConversationRepository {
   get(id: number): Conversation | null;
   list(): Conversation[];
   setTitle(id: number, title: string): Conversation;
+  delete(id: number): void;
 }
 
 const conversationRowSchema = z
@@ -38,6 +39,7 @@ const selectColumns = `SELECT c.id, c.title, c.started_at,
 export function createConversationRepository({
   database,
   clock,
+  transaction,
 }: DbContext): ConversationRepository {
   const selectOne = database.prepare(`${selectColumns} WHERE c.id = ?`);
   const selectAll = database.prepare(`${selectColumns} ORDER BY last_activity_at DESC, c.id DESC`);
@@ -49,6 +51,11 @@ export function createConversationRepository({
     `UPDATE conversations SET opened = ${nextOpened} WHERE id = ?`,
   );
   const activeRowSchema = z.object({ id: z.int() });
+  const deleteMessages = database.prepare("DELETE FROM chat_messages WHERE conversation_id = ?");
+  const deleteSessions = database.prepare(
+    "DELETE FROM conductor_sessions WHERE conversation_id = ?",
+  );
+  const deleteConversation = database.prepare("DELETE FROM conversations WHERE id = ?");
 
   function getExisting(id: number): Conversation {
     const row = selectOne.get(id);
@@ -84,6 +91,15 @@ export function createConversationRepository({
     },
 
     list: () => readRows("conversations", conversationRowSchema, selectAll.all()),
+
+    delete(id) {
+      transaction(() => {
+        deleteMessages.run(id);
+        deleteSessions.run(id);
+        if (Number(deleteConversation.run(id).changes) === 0)
+          throw new RecordNotFoundError("conversations", id);
+      });
+    },
 
     setTitle(id, title) {
       if (!updateRow(database, "conversations", id, { title }))

@@ -249,17 +249,24 @@ test.describe("conversations", () => {
     await expect(log).toContainText("Sync later.");
 
     await expect(titles).toHaveText(["Plan the sync", "Plan the vault"]);
-    await sidebar.getByRole("button", { name: "Plan the vault" }).click();
+    await sidebar.getByRole("button", { name: "Plan the vault", exact: true }).click();
 
     await expect(log).toContainText("Vault first.");
     await expect(log).not.toContainText("Sync later.");
-    await expect(sidebar.getByRole("button", { name: "Plan the vault" })).toHaveAttribute(
-      "aria-current",
-      "true",
-    );
+    await expect(
+      sidebar.getByRole("button", { name: "Plan the vault", exact: true }),
+    ).toHaveAttribute("aria-current", "true");
     const view = await mastermind.readApi("/api/chat", chatViewSchema);
     expect(view.conversations.find(({ id }) => id === view.conversationId)?.title).toBe(
       "Plan the vault",
     );
+
+    await sidebar.getByRole("button", { name: "Plan the vault", exact: true }).hover();
+    await sidebar.getByRole("button", { name: "Delete Plan the vault" }).click();
+    await sidebar.getByRole("button", { name: "Delete", exact: true }).click();
+
+    await expect(titles).toHaveText(["Untitled conversation", "Plan the sync"]);
+    await expect(log).not.toContainText("Vault first.");
+    await expect(input).toBeEnabled();
   });
 });

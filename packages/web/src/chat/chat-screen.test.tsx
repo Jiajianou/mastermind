@@ -56,6 +56,16 @@ function serveActions(): void {
           messages: [],
         }),
       );
+    if (path === "/api/conversations/3" && init.method === "DELETE")
+      return Promise.resolve(
+        Response.json({
+          model: "opus",
+          replying: false,
+          conversationId: 1,
+          conversations: conversations.filter(({ id }) => id !== 3),
+          messages: [message(1, { content: "plan a password manager" })],
+        }),
+      );
     if (path === "/api/conversations/3/open")
       return Promise.resolve(
         Response.json({
@@ -345,6 +355,7 @@ describe("chat screen", () => {
     expect(
       within(sidebar)
         .getAllByRole("button")
+        .filter((button) => button.getAttribute("aria-label")?.startsWith("Delete") !== true)
         .map((button) => [button.textContent, button.getAttribute("aria-current")]),
     ).toEqual([
       ["＋ New conversation", null],
@@ -367,6 +378,26 @@ describe("chat screen", () => {
     expect(screen.getByRole("log").textContent).toBe("");
     expect(screen.getByRole("heading", { name: /What should we build in/ })).toBeDefined();
     expect(screen.queryByRole("region", { name: "Build and test commands" })).toBeNull();
+  });
+
+  it("deletes a conversation from the sidebar only once the owner confirms", async () => {
+    serveActions();
+    renderChat({ chat: chatWith([message(1, { content: "plan a password manager" })]) });
+    const user = userEvent.setup();
+    const sidebar = screen.getByRole("navigation", { name: "Conversations" });
+
+    await user.click(within(sidebar).getByRole("button", { name: "Delete Sync design" }));
+    expect(within(sidebar).getByText("Delete “Sync design”?")).toBeDefined();
+    await user.click(within(sidebar).getByRole("button", { name: "Cancel" }));
+    expect(requests).toEqual([]);
+
+    await user.click(within(sidebar).getByRole("button", { name: "Delete Sync design" }));
+    await user.click(within(sidebar).getByRole("button", { name: "Delete" }));
+
+    expect(requests).toEqual([{ method: "DELETE", path: "/api/conversations/3", body: {} }]);
+    expect(within(sidebar).queryByText("Sync design")).toBeNull();
+    expect(within(sidebar).getByRole("button", { name: "Plan a password manager" })).toBeDefined();
+    expect(screen.getByRole("log").textContent).toContain("plan a password manager");
   });
 
   it("adds a newline on Shift+Enter and sends the whole message on Enter", async () => {

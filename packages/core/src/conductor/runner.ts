@@ -76,6 +76,7 @@ export interface ChatRunner {
   stop(): boolean;
   newConversation(): Conversation;
   openConversation(conversationId: number): Conversation;
+  deleteConversation(conversationId: number): void;
   status(): ChatStatus;
   activeTurn(): ChatTurnRef | null;
   dispose(): void;
@@ -628,6 +629,14 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
         return db.conversations.open(conversationId);
       leave();
       return enter(db.conversations.create());
+    },
+
+    deleteConversation(id) {
+      if (db.conversations.get(id) === null) throw new RecordNotFoundError("conversations", id);
+      const open = id === conversationId;
+      if (open) leave();
+      db.conversations.delete(id);
+      if (open) enter(db.conversations.create());
     },
 
     openConversation(id) {

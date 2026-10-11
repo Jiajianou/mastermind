@@ -413,6 +413,59 @@ describe("Conductor chat", () => {
     expect(second.conversations).toHaveLength(1);
   });
 
+  it("deletes an earlier conversation with its messages and Claude sessions, leaving the open one as it was", async () => {
+    const harness = await conductorHarness({ scenario: { turns: [fallbackTurn] } });
+    const first = await send(harness, "plan the lexer");
+    await harness.waitForTurnEnd(first.turnId);
+    const earlier = harness.db.conversations.active().id;
+    chatViewSchema.parse(await harness.post("/api/conversations"));
+    const second = await send(harness, "plan the parser");
+    await harness.waitForTurnEnd(second.turnId);
+
+    const view = chatViewSchema.parse(
+      await harness.delete(`/api/conversations/${String(earlier)}`),
+    );
+
+    expect(view.conversationId).not.toBe(earlier);
+    expect(view.conversations.map(({ title }) => title)).toEqual(["plan the parser"]);
+    expect(view.messages.map(({ content }) => content)).toEqual(["plan the parser", "Noted."]);
+    expect(harness.db.chat.listConversation(earlier)).toEqual([]);
+    expect(harness.db.conductorSessions.latest(earlier)).toBeNull();
+    expect(harness.events).toContainEqual({
+      type: "conversation.deleted",
+      conversationId: earlier,
+    });
+  });
+
+  it("deleting the open conversation stops its reply, expires what it asked and opens an empty one", async () => {
+    const harness = await conductorHarness({
+      scenario: {
+        turns: [
+          conductorTurn("use sonnet", [
+            { kind: "mcp", tool: "set_config", arguments: { models: { worker: "sonnet" } } },
+            { kind: "thinking", tokens: 5000, streamMs: 50 },
+          ]),
+        ],
+      },
+    });
+    const deleted = harness.db.conversations.active().id;
+
+    await send(harness, "use sonnet");
+    const [pending] = await waitFor(() => {
+      const proposals = harness.db.proposals.listPending();
+      return proposals.length > 0 ? proposals : undefined;
+    }, 15_000);
+    const view = chatViewSchema.parse(
+      await harness.delete(`/api/conversations/${String(deleted)}`),
+    );
+
+    expect(view).toMatchObject({ replying: false, messages: [] });
+    expect(view.conversationId).not.toBe(deleted);
+    expect(harness.db.proposals.get(pending?.id ?? 0)?.status).toBe("expired");
+    expect(harness.db.chat.list()).toEqual([]);
+    expect(harness.config().models.worker).not.toBe("sonnet");
+  });
+
   it("carries on in an earlier conversation by resuming its own Claude session", async () => {
     const harness = await conductorHarness({ scenario: { turns: [fallbackTurn] } });
 

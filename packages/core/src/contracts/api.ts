@@ -103,6 +103,7 @@ export interface ActionResults {
   stopChat: { stopped: boolean };
   newConversation: ChatView;
   openConversation: ChatView;
+  deleteConversation: ChatView;
 }
 export type ActionName = keyof ActionResults;
 
@@ -178,6 +179,11 @@ export const actionRoutes = {
     path: "/api/conversations/:conversationId/open",
     intParams: ["conversationId"],
   },
+  deleteConversation: {
+    method: "DELETE",
+    path: "/api/conversations/:conversationId",
+    intParams: ["conversationId"],
+  },
 } as const satisfies Record<ActionName, ActionRoute>;
 
 export interface ActionRequest {
@@ -233,6 +239,7 @@ export const actionInputSchemas = {
   stopChat: noInputSchema,
   newConversation: noInputSchema,
   openConversation: conversationRefInputSchema,
+  deleteConversation: conversationRefInputSchema,
 } satisfies Record<ActionName, z.ZodType>;
 export type ActionInputs = { [Name in ActionName]: z.input<(typeof actionInputSchemas)[Name]> };
 
@@ -271,6 +278,7 @@ export const actionResultSchemas = {
   stopChat: z.object({ stopped: z.boolean() }),
   newConversation: chatViewSchema,
   openConversation: chatViewSchema,
+  deleteConversation: chatViewSchema,
 } satisfies { [Name in ActionName]: z.ZodType<ActionResults[Name]> };
 
 export function isActionName(name: string): name is ActionName {

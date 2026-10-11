@@ -78,6 +78,7 @@ describe("openDb", () => {
       "runtime_flags",
       "schema_version",
       "sessions",
+      "sqlite_sequence",
       "task_deps",
       "tasks",
     ]);
@@ -85,7 +86,7 @@ describe("openDb", () => {
 
     const reopened = useDb(path);
     expect(reopened.tasks.get("lexer")?.title).toBe("Lexer");
-    expect(rawQuery(path, "SELECT version FROM schema_version")).toEqual([{ version: 3 }]);
+    expect(rawQuery(path, "SELECT version FROM schema_version")).toEqual([{ version: 4 }]);
   });
 
   it("splits a chat that was cut by New conversation dividers into conversations", async () => {
@@ -138,6 +139,20 @@ describe("openDb", () => {
     ]);
     expect(db.conductorSessions.latest(1)?.id).toBe("a");
     expect(db.conductorSessions.latest(2)?.id).toBe("b");
+  });
+
+  it("never hands out the id of a deleted conversation or message again", async () => {
+    const db = useDb(await tempDbPath());
+    const deleted = db.conversations.active();
+    const message = db.chat.append({ kind: "user", content: "hello" });
+
+    db.conversations.delete(deleted.id);
+    const next = db.conversations.create();
+    const reply = db.chat.append({ kind: "user", content: "again" });
+
+    expect(next.id).toBeGreaterThan(deleted.id);
+    expect(reply.id).toBeGreaterThan(message.id);
+    expect(reply.conversationId).toBe(next.id);
   });
 
   it("refuses a database written by a newer schema", async () => {
