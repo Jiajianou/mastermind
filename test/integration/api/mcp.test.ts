@@ -26,6 +26,7 @@ describe("MCP server", () => {
 
     expect(tools.map((tool) => tool.name).sort()).toEqual(
       [
+        "ask_owner",
         "get_summary",
         "list_tasks",
         "get_task",

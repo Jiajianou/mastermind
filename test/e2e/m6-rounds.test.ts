@@ -111,7 +111,7 @@ describe("milestone 6: a review round from the chat", () => {
     expect(added).toMatchObject({
       code: 0,
       stderr: "",
-      stdout: "I added notes.\n✓ Added 1 task\n",
+      stdout: "✓ Added 1 task\nI added notes.\n",
     });
     await waitForReview(1);
     const comment = await api("/api/tasks/notes/comments", commentSchema, {
@@ -127,7 +127,7 @@ describe("milestone 6: a review round from the chat", () => {
     expect(sent).toMatchObject({
       code: 0,
       stderr: "",
-      stdout: "I sent notes back.\n✓ Requested changes on notes (round 2)\n",
+      stdout: "✓ Requested changes on notes (round 2)\nI sent notes back.\n",
     });
     const reviewed = await waitForReview(2);
 

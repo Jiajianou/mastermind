@@ -17,7 +17,7 @@ export interface ConductorSummariserOptions {
 }
 
 export interface ConductorSummariser {
-  summarise(conversationId: string): Promise<string | null>;
+  summarise(claudeSessionId: string, conversationId: number): Promise<string | null>;
 }
 
 const speakers: Record<ChatMessage["kind"], string> = {
@@ -27,10 +27,14 @@ const speakers: Record<ChatMessage["kind"], string> = {
   proposal: "Mastermind asked the owner to confirm",
   plan: "Mastermind proposed a plan",
   system: "Mastermind noted",
+  step: "Mastermind",
+  question: "Mastermind asked the owner",
 };
 
 function transcript(messages: readonly ChatMessage[]): string {
-  const lines = messages.map(({ ts, kind, content }) => `[${ts}] ${speakers[kind]}: ${content}`);
+  const lines = messages
+    .filter(({ kind }) => kind !== "step")
+    .map(({ ts, kind, content }) => `[${ts}] ${speakers[kind]}: ${content}`);
   let kept = 0;
   let length = 0;
   for (const line of lines.toReversed()) {
@@ -60,7 +64,7 @@ export function createConductorSummariser(
 ): ConductorSummariser {
   const { db, oneShot } = options;
   return {
-    async summarise(conversationId) {
+    async summarise(claudeSessionId, conversationId) {
       if (db.flags.get().authRequired) return null;
       const result = await oneShot.run({
         role: "judge",
@@ -68,8 +72,8 @@ export function createConductorSummariser(
         round: null,
         cwd: options.repoRoot,
         prompt: summaryPrompt(
-          db.conductorSessions.latestSummary(),
-          db.chat.listForConversation(conversationId),
+          db.conductorSessions.latestSummary(conversationId),
+          db.chat.listForConversation(claudeSessionId),
         ),
         schema: conductorSummarySchema,
         print: {

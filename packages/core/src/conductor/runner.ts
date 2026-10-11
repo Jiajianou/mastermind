@@ -4,15 +4,22 @@ import type { WriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { errorMessage } from "../contracts/index.js";
-import { postChatMessage } from "../chat.js";
+import { conversationTitle, postChatMessage, updateChatMessage } from "../chat.js";
 import type { ClaudeCli, PrintOptions } from "../claude.js";
+import { systemClock } from "../clock.js";
+import type { Clock } from "../clock.js";
 import type {
+  AnswersMeta,
+  ChatMessage,
   ChatStatus,
   ChatTurn,
   ChatTurnRef,
+  Conversation,
   ExitOutcome,
+  QuestionAnswer,
   Session,
 } from "../contracts/index.js";
+import { RecordNotFoundError } from "../db/index.js";
 import type { Db, NewChatMessage } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import { exitCode, stopGroup } from "../procs.js";
@@ -24,11 +31,13 @@ import {
   userMessageLine,
 } from "../sessions/index.js";
 import type { EventDetails, ParsedEvent, StreamParser, UsageBackoff } from "../sessions/index.js";
-import { summariseActions } from "./action-line.js";
-import { toolActivity } from "./activity.js";
+import { createActivityTracker } from "./activity.js";
+import type { ActivityTracker } from "./activity.js";
 import { turnPrompt, wakeText, withSummary } from "./prompt.js";
 import { conductorRolloverTokens } from "./rollover.js";
 import type { ConductorSummariser } from "./rollover.js";
+import { createStepRecorder } from "./steps.js";
+import type { StepRecorder } from "./steps.js";
 import { createTurnRecorder } from "./turn.js";
 import type { TurnRecorder } from "./turn.js";
 
@@ -58,18 +67,21 @@ export interface ChatRunnerOptions {
   onError: (error: unknown) => void;
   idleMs?: number;
   rolloverTokens?: number;
+  clock?: Clock;
 }
 
 export interface ChatRunner {
-  send(text: string): ChatTurn;
+  send(text: string, answers?: QuestionAnswer[]): ChatTurn;
   wake(): void;
   stop(): boolean;
+  newConversation(): Conversation;
+  openConversation(conversationId: number): Conversation;
   status(): ChatStatus;
   activeTurn(): ChatTurnRef | null;
   dispose(): void;
 }
 
-interface Conversation {
+interface ClaudeSession {
   id: string;
   stored: boolean;
 }
@@ -81,7 +93,7 @@ interface DeferredTurn {
 
 interface ConductorProcess {
   session: Session;
-  conversationId: string;
+  claudeSessionId: string;
   model: string;
   resumed: boolean;
   prompted: boolean;
@@ -99,6 +111,8 @@ interface ConductorProcess {
 interface Turn {
   ref: ChatTurnRef;
   recorder: TurnRecorder;
+  activity: ActivityTracker;
+  steps: StepRecorder;
   process: ConductorProcess | null;
   queued: string[];
   written: number;
@@ -139,61 +153,76 @@ function failureText(outcome: ExitOutcome): string | null {
 // mid-turn joins the running turn, Stop is a control_request interrupt, and an idle process is stopped and later
 // resumed by its session id.
 export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
-  const { db, bus, cli, onError, idleMs = conductorIdleMs } = options;
+  const { db, bus, cli, onError, idleMs = conductorIdleMs, clock = systemClock } = options;
   const rolloverTokens = options.rolloverTokens ?? conductorRolloverTokens;
   const sessionLogsDir = join(options.logsDir, "sessions");
-  const post = (message: NewChatMessage) => postChatMessage({ db, bus }, message);
+  const post = (message: NewChatMessage) =>
+    postChatMessage({ db, bus }, { conversationId, ...message });
+  const stepSink = {
+    post,
+    update: (id: number, change: Pick<NewChatMessage, "content" | "meta">) =>
+      updateChatMessage({ db, bus }, id, change),
+  };
 
-  let conversation = currentConversation();
-  let cursor = db.chat.list().findLast((message) => message.kind === "user")?.id ?? 0;
+  let conversationId = db.conversations.active().id;
+  let claude = claudeSessionOf(conversationId);
+  let cursor = lastOwnerMessage(conversationId);
   let live: ConductorProcess | null = null;
   let previousExit: Promise<void> = Promise.resolve();
   let turn: Turn | null = null;
   let deferred: DeferredTurn | null = null;
   let rollover: Promise<void> | null = null;
-  let rolloverTried: { conversationId: string; tokens: number } | null = null;
+  let rolloverTried: { claudeSessionId: string; tokens: number } | null = null;
   let wakeQueued = false;
   let wakeTimer: ReturnType<typeof setTimeout> | undefined;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let interruptTimer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
 
-  function currentConversation(): Conversation {
-    const stored = db.conductorSessions.current();
-    return stored === null ? { id: randomUUID(), stored: false } : { id: stored.id, stored: true };
+  // A conversation continues its latest Claude session, unless that one was rolled over into a summary.
+  function claudeSessionOf(conversation: number): ClaudeSession {
+    const latest = db.conductorSessions.latest(conversation);
+    return latest?.summary === null
+      ? { id: latest.id, stored: true }
+      : { id: randomUUID(), stored: false };
   }
 
-  function forgetConversation(conversationId: string): void {
-    if (conversation.id !== conversationId) return;
-    if (conversation.stored) db.conductorSessions.end(conversation.id);
-    conversation = { id: randomUUID(), stored: false };
+  function lastOwnerMessage(conversation: number): number {
+    return (
+      db.chat.listConversation(conversation).findLast((message) => message.kind === "user")?.id ?? 0
+    );
+  }
+
+  function forgetClaudeSession(claudeSessionId: string): void {
+    if (claude.id !== claudeSessionId) return;
+    if (claude.stored) db.conductorSessions.end(claude.id);
+    claude = { id: randomUUID(), stored: false };
   }
 
   function rolloverDue(): number | null {
-    if (!conversation.stored) return null;
-    const stored = db.conductorSessions.current();
-    const tokens = stored?.id === conversation.id ? stored.tokens : null;
+    if (!claude.stored) return null;
+    const stored = db.conductorSessions.latest(conversationId);
+    const tokens = stored?.id === claude.id ? stored.tokens : null;
     if (tokens === null || tokens < rolloverTokens) return null;
-    const tried =
-      rolloverTried?.conversationId === conversation.id && rolloverTried.tokens === tokens;
+    const tried = rolloverTried?.claudeSessionId === claude.id && rolloverTried.tokens === tokens;
     return tried ? null : tokens;
   }
 
-  // The conversation is replaced only once its summary exists, so a judge call that fails leaves the chat where it
+  // The Claude session is replaced only once its summary exists, so a judge call that fails leaves the chat where it
   // was, and the rollover is tried again after the next turn.
-  async function rollOver(conversationId: string, tokens: number): Promise<void> {
-    rolloverTried = { conversationId, tokens };
-    const summary = await options.summariser.summarise(conversationId);
-    if (summary === null || disposed || conversation.id !== conversationId) return;
+  async function rollOver(claudeSessionId: string, tokens: number): Promise<void> {
+    rolloverTried = { claudeSessionId, tokens };
+    const summary = await options.summariser.summarise(claudeSessionId, conversationId);
+    if (summary === null || disposed || claude.id !== claudeSessionId) return;
     if (live !== null) await endProcess(live);
-    db.conductorSessions.end(conversationId, summary);
-    conversation = { id: randomUUID(), stored: false };
+    db.conductorSessions.end(claudeSessionId, summary);
+    claude = { id: randomUUID(), stored: false };
   }
 
   function rollOverIfDue(): Promise<void> {
     const tokens = rollover === null ? rolloverDue() : null;
     if (tokens !== null)
-      rollover = rollOver(conversation.id, tokens)
+      rollover = rollOver(claude.id, tokens)
         .catch(onError)
         .finally(() => {
           rollover = null;
@@ -205,14 +234,14 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   function wakeAllowed(): boolean {
     const { authRequired, backoffResumeAt } = db.flags.get();
     const backingOff = backoffResumeAt !== null && Date.parse(backoffResumeAt) > Date.now();
-    const news = db.chat.list(cursor).some((message) => message.kind === "system");
+    const news = db.chat
+      .listConversation(conversationId, cursor)
+      .some((message) => message.kind === "system");
     return news && !disposed && !authRequired && !backingOff;
   }
 
   function printOptions(model: string): PrintOptions {
-    const session = conversation.stored
-      ? { resume: conversation.id }
-      : { sessionId: conversation.id };
+    const session = claude.stored ? { resume: claude.id } : { sessionId: claude.id };
     return {
       model,
       inputFormat: "stream-json",
@@ -238,13 +267,20 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
 
   const newTurnRef = (): ChatTurnRef => ({
     turnId: randomUUID(),
-    conductorSession: conversation.id,
+    conductorSession: claude.id,
   });
 
   function startTurn(process: ConductorProcess | null, written = 0, ref = newTurnRef()): Turn {
     const started: Turn = {
       ref,
       recorder: createTurnRecorder(),
+      activity: createActivityTracker(options.repoRoot),
+      steps: createStepRecorder({
+        sink: stepSink,
+        ref: () => started.ref,
+        repoRoot: options.repoRoot,
+        clock,
+      }),
       process,
       queued: [],
       written,
@@ -274,9 +310,9 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   function checkInit(proc: ConductorProcess, details: InitDetails): void {
     if (!proc.initSeen) {
       proc.initSeen = true;
-      if (!conversation.stored && conversation.id === proc.conversationId) {
-        db.conductorSessions.open(conversation.id);
-        conversation = { id: conversation.id, stored: true };
+      if (!claude.stored && claude.id === proc.claudeSessionId) {
+        db.conductorSessions.open(claude.id, conversationId);
+        claude = { id: claude.id, stored: true };
       }
     }
     const server = details.mcpServers.find(({ name }) => name === "mastermind");
@@ -306,21 +342,20 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     clearTimeout(interruptTimer);
     try {
       const stopped = end.kind === "stopped" || current.stopRequested;
-      const reply = current.recorder.reply();
-      if (reply !== "")
+      current.steps.stop();
+      const unfinished = current.recorder.unfinished();
+      if (unfinished !== "" || stopped)
         post({
           kind: "conductor",
-          content: reply,
+          content: unfinished,
           meta: stopped ? { stopped } : null,
           ...current.ref,
         });
-      const actions = summariseActions(current.recorder.toolCalls());
-      if (actions !== null) post({ kind: "action", content: actions, ...current.ref });
       const failure = turnFailure(current, end);
       if (failure !== null) post({ kind: "system", content: failure, ...current.ref });
       const tokens = current.recorder.contextTokens();
       if (tokens !== null && current.process?.initSeen === true)
-        db.conductorSessions.setTokens(current.process.conversationId, tokens);
+        db.conductorSessions.setTokens(current.process.claudeSessionId, tokens);
     } catch (error) {
       onError(error);
     }
@@ -344,7 +379,7 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   }
 
   function promptFor(text: string): string {
-    const recent = db.chat.list(cursor);
+    const recent = db.chat.listConversation(conversationId, cursor);
     cursor = recent.at(-1)?.id ?? cursor;
     const updates = recent.filter((message) => message.kind === "system");
     return turnPrompt({ digest: options.digest(), updates, text });
@@ -390,12 +425,14 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
       if (details.line === "init") checkInit(proc, details);
       if (current === null || turn !== current) return;
       if (details.line === "user" && details.isReplay) current.delivered += 1;
-      const delta = current.recorder.record(event);
-      if (delta !== null) bus.emit({ type: "chat.delta", turnId: current.ref.turnId, text: delta });
-      if (details.line === "tool_use") {
-        const text = toolActivity(details.toolName, details.filePath, options.repoRoot);
-        bus.emit({ type: "chat.activity", turnId: current.ref.turnId, text });
-      }
+      const text = current.recorder.record(event);
+      if (text?.kind === "delta")
+        bus.emit({ type: "chat.delta", turnId: current.ref.turnId, text: text.text });
+      if (text?.kind === "block") post({ kind: "conductor", content: text.text, ...current.ref });
+      current.steps.record(details);
+      const activity = current.activity.record(details);
+      if (activity !== null)
+        bus.emit({ type: "chat.activity", turnId: current.ref.turnId, text: activity });
       if (details.line === "result") finish(current, { kind: "result", event });
     } catch (error) {
       onError(error);
@@ -417,14 +454,14 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     });
     bus.emit({ type: "session.ended", sessionId: ended.id, taskId: null, session: ended });
     // A process that failed without printing a single init or result was refused by the CLI (an id already in use,
-    // or a resume of a conversation it can't find), so the next turn starts a fresh conversation instead of failing
-    // forever. Sign-in and usage-limit failures keep the conversation.
+    // or a resume of a session it can't find), so the next turn starts a fresh Claude session instead of failing
+    // forever. Sign-in and usage-limit failures keep the session.
     const refused =
       !proc.initSeen &&
       proc.lastResult === null &&
       !proc.endedByMastermind &&
       outcome.status === "failed";
-    if (refused) forgetConversation(proc.conversationId);
+    if (refused) forgetClaudeSession(proc.claudeSessionId);
     if (turn?.process !== proc) return;
     const reason =
       outcome.status === "failed" ? outcome.reason : (failureText(outcome) ?? "the chat ended");
@@ -436,14 +473,14 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     const print = printOptions(model);
     const session = db.sessions.create({
       role: "conductor",
-      claudeSessionId: conversation.id,
+      claudeSessionId: claude.id,
       model,
     });
     const proc: ConductorProcess = {
       session,
-      conversationId: conversation.id,
+      claudeSessionId: claude.id,
       model,
-      resumed: conversation.stored,
+      resumed: claude.stored,
       prompted: false,
       parser: createStreamParser(),
       rawLog: createWriteStream(join(sessionLogsDir, `${String(session.id)}.jsonl`)),
@@ -494,17 +531,53 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
 
   async function ensureProcess(): Promise<ConductorProcess> {
     const model = options.model();
-    if (live !== null && live.model !== model) await endProcess(live);
+    if (live !== null && (live.model !== model || live.claudeSessionId !== claude.id))
+      await endProcess(live);
     if (live !== null) return live;
     await previousExit;
     live = await spawnProcess(model);
     return live;
   }
 
+  function postOwnerMessage(
+    text: string,
+    answers: QuestionAnswer[] | undefined,
+    ref: ChatTurnRef,
+  ): ChatMessage {
+    const meta = answers === undefined ? null : ({ answers } satisfies AnswersMeta);
+    const message = post({ kind: "user", content: text, meta, ...ref });
+    if (db.conversations.get(conversationId)?.title === null) {
+      const conversation = db.conversations.setTitle(conversationId, conversationTitle(text));
+      bus.emit({ type: "conversation.updated", conversation });
+    }
+    return message;
+  }
+
+  // Leaving a conversation stops its reply and its process, but not its Claude session, so coming back resumes it.
+  function leave(): void {
+    deferred = null;
+    wakeQueued = false;
+    const current = turn;
+    if (current !== null) {
+      current.stopRequested = true;
+      finish(current, { kind: "stopped" });
+    }
+    clearTimeout(idleTimer);
+    if (live !== null) void endProcess(live);
+  }
+
+  function enter(conversation: Conversation): Conversation {
+    conversationId = conversation.id;
+    claude = claudeSessionOf(conversation.id);
+    cursor = lastOwnerMessage(conversation.id);
+    rolloverTried = null;
+    return conversation;
+  }
+
   async function begin(current: Turn, prompt: string): Promise<void> {
     try {
       await rollOverIfDue();
-      current.ref = { ...current.ref, conductorSession: conversation.id };
+      current.ref = { ...current.ref, conductorSession: claude.id };
       const proc = await ensureProcess();
       if (disposed || turn !== current) return;
       if (current.stopRequested) {
@@ -512,11 +585,11 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
         return;
       }
       current.process = proc;
-      // A new conversation starts from the summary of the ones before it (PLAN 6.2).
+      // A conversation's new Claude session starts from the summary of the ones before it (PLAN 6.2).
       const opening =
         proc.resumed || proc.prompted
           ? prompt
-          : withSummary(db.conductorSessions.latestSummary(), prompt);
+          : withSummary(db.conductorSessions.latestSummary(conversationId), prompt);
       proc.prompted = true;
       for (const text of [opening, ...current.queued.splice(0)]) deliver(current, proc, text);
     } catch (error) {
@@ -526,28 +599,43 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
   }
 
   return {
-    send(text) {
+    send(text, answers) {
       clearTimeout(idleTimer);
       const running = turn;
       // After Stop the running turn is ending, so a new message waits for it and starts the next turn.
       if (running?.stopRequested === true) {
         deferred ??= { ref: newTurnRef(), texts: [] };
         deferred.texts.push(text);
-        const message = post({ kind: "user", content: text, ...deferred.ref });
+        const message = postOwnerMessage(text, answers, deferred.ref);
         return { turnId: deferred.ref.turnId, message };
       }
       if (running !== null) {
-        const message = post({ kind: "user", content: text, ...running.ref });
+        const message = postOwnerMessage(text, answers, running.ref);
         if (running.process === null) running.queued.push(text);
         else deliver(running, running.process, text);
         return { turnId: running.ref.turnId, message };
       }
       const prompt = promptFor(text);
       const started = startTurn(null);
-      const message = post({ kind: "user", content: text, ...started.ref });
+      const message = postOwnerMessage(text, answers, started.ref);
       cursor = message.id;
       void begin(started, prompt);
       return { turnId: started.ref.turnId, message };
+    },
+
+    newConversation() {
+      if (turn === null && db.chat.listConversation(conversationId).length === 0)
+        return db.conversations.open(conversationId);
+      leave();
+      return enter(db.conversations.create());
+    },
+
+    openConversation(id) {
+      if (id === conversationId) return db.conversations.open(id);
+      const conversation = db.conversations.get(id);
+      if (conversation === null) throw new RecordNotFoundError("conversations", id);
+      leave();
+      return enter(db.conversations.open(id));
     },
 
     stop() {

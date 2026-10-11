@@ -1,5 +1,5 @@
 import type { SessionEvent } from "@mastermind/core/contracts";
-import { useFollowScroll } from "./use-follow-scroll.js";
+import { useFollowScroll } from "../components/use-follow-scroll.js";
 
 const timeOfDay = (iso: string): string =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -18,7 +18,7 @@ export function Timeline({
   running: boolean;
   failure: string | null;
 }) {
-  const { ref, following, onScroll, follow } = useFollowScroll<HTMLDivElement>(events);
+  const { ref, following, onScroll, follow } = useFollowScroll<HTMLDivElement>();
   const liveId = running ? (events.at(-1)?.id ?? null) : null;
 
   return (

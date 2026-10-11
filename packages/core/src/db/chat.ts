@@ -21,10 +21,12 @@ import {
   readRows,
   timestamp,
   toJsonText,
+  updateRow,
 } from "./rows.js";
 import type { DbContext } from "./rows.js";
 
 export interface NewChatMessage {
+  conversationId?: number;
   kind: ChatMessageKind;
   content: string;
   meta?: JsonValue;
@@ -39,8 +41,10 @@ export interface NewProposal {
 
 export interface ChatRepository {
   append(message: NewChatMessage): ChatMessage;
+  update(id: number, change: Pick<NewChatMessage, "content" | "meta">): ChatMessage;
   get(id: number): ChatMessage | null;
   list(afterId?: number): ChatMessage[];
+  listConversation(conversationId: number, afterId?: number): ChatMessage[];
   listForConversation(conductorSession: string): ChatMessage[];
 }
 
@@ -57,6 +61,7 @@ const optionalJsonColumn = jsonColumn(jsonValueSchema).nullable();
 const chatMessageRowSchema = z
   .object({
     id: z.int(),
+    conversation_id: z.int(),
     ts: isoTimestampSchema,
     kind: chatMessageKindSchema,
     content: z.string(),
@@ -66,6 +71,7 @@ const chatMessageRowSchema = z
   })
   .transform((row): ChatMessage => ({
     id: row.id,
+    conversationId: row.conversation_id,
     ts: row.ts,
     kind: row.kind,
     content: row.content,
@@ -94,9 +100,16 @@ const proposalRowSchema = z
     result: row.result,
   }));
 
-export function createChatRepository({ database, clock }: DbContext): ChatRepository {
+// A message without a conversation goes to the active one, so event lines and decisions follow the owner.
+export function createChatRepository(
+  { database, clock }: DbContext,
+  activeConversation: () => number,
+): ChatRepository {
   const selectMessage = database.prepare("SELECT * FROM chat_messages WHERE id = ?");
   const selectMessages = database.prepare("SELECT * FROM chat_messages WHERE id > ? ORDER BY id");
+  const selectConversationMessages = database.prepare(
+    "SELECT * FROM chat_messages WHERE conversation_id = ? AND id > ? ORDER BY id",
+  );
   // A message sent while a rollover runs is stored under the old conversation, but its turn belongs to the new one.
   const selectConversation = database.prepare(
     `SELECT * FROM chat_messages
@@ -108,6 +121,7 @@ export function createChatRepository({ database, clock }: DbContext): ChatReposi
   return {
     append(message) {
       const id = insertRow(database, "chat_messages", {
+        conversation_id: message.conversationId ?? activeConversation(),
         ts: timestamp(clock),
         kind: message.kind,
         content: message.content,
@@ -118,6 +132,13 @@ export function createChatRepository({ database, clock }: DbContext): ChatReposi
       return readRow("chat_messages", chatMessageRowSchema, selectMessage.get(id));
     },
 
+    update(id, { content, meta }) {
+      const columns = { content, meta: toJsonText(meta ?? null) };
+      if (!updateRow(database, "chat_messages", id, columns))
+        throw new RecordNotFoundError("chat_messages", id);
+      return readRow("chat_messages", chatMessageRowSchema, selectMessage.get(id));
+    },
+
     get(id) {
       const row = selectMessage.get(id);
       return row === undefined ? null : readRow("chat_messages", chatMessageRowSchema, row);
@@ -125,6 +146,14 @@ export function createChatRepository({ database, clock }: DbContext): ChatReposi
 
     list(afterId = 0) {
       return readRows("chat_messages", chatMessageRowSchema, selectMessages.all(afterId));
+    },
+
+    listConversation(conversationId, afterId = 0) {
+      return readRows(
+        "chat_messages",
+        chatMessageRowSchema,
+        selectConversationMessages.all(conversationId, afterId),
+      );
     },
 
     listForConversation(conductorSession) {

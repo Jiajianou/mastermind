@@ -104,7 +104,7 @@ describe("CLI subcommands against the running instance, through the built binary
     expect(status.output.stdout).toBe("");
   });
 
-  it("chat streams the Conductor's reply and action line, and the task it added exists", async () => {
+  it("chat streams the Conductor's reply with the steps it took, and the task it added exists", async () => {
     const running = await runningMastermind({
       turns: [
         {
@@ -146,9 +146,8 @@ describe("CLI subcommands against the running instance, through the built binary
     expect(chat.output.stdout).toBe(
       [
         "Adding a task for hello.txt now.",
-        "",
-        "Added hello; a worker will pick it up.",
         "✓ Added 1 task",
+        "Added hello; a worker will pick it up.",
         "",
       ].join("\n"),
     );

@@ -56,7 +56,7 @@ describe("milestone 2: chatting with mastermind from the terminal", () => {
     expect(added).toMatchObject({
       code: 0,
       stderr: "",
-      stdout: "I added hello.\n✓ Added 1 task\n",
+      stdout: "✓ Added 1 task\nI added hello.\n",
     });
     expect(db.tasks.get("hello")).toMatchObject({ title: "Create hello.txt" });
 
@@ -76,7 +76,11 @@ describe("milestone 2: chatting with mastermind from the terminal", () => {
     );
 
     const status = await running.run(["chat", "what's running?"]);
-    expect(status).toMatchObject({ code: 0, stderr: "", stdout: "A worker is on hello.\n" });
+    expect(status).toMatchObject({
+      code: 0,
+      stderr: "",
+      stdout: "✓ Listed the sessions\nA worker is on hello.\n",
+    });
 
     expect(conductorToolCalls(db)).toEqual([
       "mcp__mastermind__create_tasks",

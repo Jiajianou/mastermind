@@ -16,8 +16,14 @@ import { branchRebaseSchema, ownerBranchSchema, rebaseOwnerBranchInputSchema } f
 import type { BranchRebase } from "./branch.js";
 import { fileContentSchema, taskChangesSchema, taskTreeSchema } from "./changes.js";
 import { checkLogSchema, checkSchema } from "./checks.js";
-import { chatTurnSchema, chatViewSchema, proposalSchema, sendChatInputSchema } from "./chat.js";
-import type { ChatTurn, Proposal } from "./chat.js";
+import {
+  chatTurnSchema,
+  conversationRefInputSchema,
+  chatViewSchema,
+  proposalSchema,
+  sendChatInputSchema,
+} from "./chat.js";
+import type { ChatTurn, ChatView, Proposal } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
 import { proposalRefInputSchema, startPlanInputSchema } from "./conductor.js";
 import {
@@ -95,6 +101,8 @@ export interface ActionResults {
   rejectProposal: Proposal;
   sendChat: ChatTurn;
   stopChat: { stopped: boolean };
+  newConversation: ChatView;
+  openConversation: ChatView;
 }
 export type ActionName = keyof ActionResults;
 
@@ -164,6 +172,12 @@ export const actionRoutes = {
   },
   sendChat: { method: "POST", path: "/api/chat" },
   stopChat: { method: "POST", path: "/api/chat/stop" },
+  newConversation: { method: "POST", path: "/api/conversations" },
+  openConversation: {
+    method: "POST",
+    path: "/api/conversations/:conversationId/open",
+    intParams: ["conversationId"],
+  },
 } as const satisfies Record<ActionName, ActionRoute>;
 
 export interface ActionRequest {
@@ -217,6 +231,8 @@ export const actionInputSchemas = {
   rejectProposal: proposalRefInputSchema,
   sendChat: sendChatInputSchema,
   stopChat: noInputSchema,
+  newConversation: noInputSchema,
+  openConversation: conversationRefInputSchema,
 } satisfies Record<ActionName, z.ZodType>;
 export type ActionInputs = { [Name in ActionName]: z.input<(typeof actionInputSchemas)[Name]> };
 
@@ -253,6 +269,8 @@ export const actionResultSchemas = {
   rejectProposal: proposalSchema,
   sendChat: chatTurnSchema,
   stopChat: z.object({ stopped: z.boolean() }),
+  newConversation: chatViewSchema,
+  openConversation: chatViewSchema,
 } satisfies { [Name in ActionName]: z.ZodType<ActionResults[Name]> };
 
 export function isActionName(name: string): name is ActionName {

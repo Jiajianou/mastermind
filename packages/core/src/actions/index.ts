@@ -74,6 +74,8 @@ const builtins = {
     | "rejectProposal"
     | "sendChat"
     | "stopChat"
+    | "newConversation"
+    | "openConversation"
     | "allowSandboxHost"
   >
 >;

@@ -4,6 +4,7 @@ import type {
   Check,
   Comment,
   Config,
+  Conversation,
   Finding,
   ReviewNotes,
   Session,
@@ -71,9 +72,14 @@ export function sessionEvent(id: number, sessionId = 1): SessionEvent {
   };
 }
 
+export function conversation(id: number, change: Partial<Conversation> = {}): Conversation {
+  return { id, title: null, startedAt: at(1), lastActivityAt: at(1), ...change };
+}
+
 export function message(id: number, change: Partial<ChatMessage> = {}): ChatMessage {
   return {
     id,
+    conversationId: 1,
     ts: at(3),
     kind: "user",
     content: `message ${String(id)}`,
@@ -160,14 +166,25 @@ export function snapshot(change: Partial<Snapshot> = {}): Snapshot {
     summary: summary(),
     tasks: [],
     sessions: [],
-    chat: { model: "opus", replying: false, messages: [] },
+    chat: {
+      model: "opus",
+      replying: false,
+      conversationId: 1,
+      conversations: [conversation(1)],
+      messages: [],
+    },
     config: config("opus"),
     ...change,
   };
 }
 
 export function stateWith(change: Partial<LiveState>): LiveState {
-  return { ...initialState, connection: "live", ...change };
+  return {
+    ...initialState,
+    connection: "live",
+    chat: { ...initialState.chat, conversationId: 1 },
+    ...change,
+  };
 }
 
 export function config(conductorModel: string): Config {

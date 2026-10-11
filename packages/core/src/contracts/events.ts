@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ownerBranchSchema } from "./branch.js";
-import { chatMessageSchema, proposalSchema } from "./chat.js";
+import { chatMessageSchema, chatViewSchema, conversationSchema, proposalSchema } from "./chat.js";
 import { checkSchema, rebaseSchema } from "./checks.js";
 import { isoTimestampSchema } from "./common.js";
 import { configSchema } from "./config.js";
@@ -62,6 +62,8 @@ export const busEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("chat.delta"), turnId: z.string(), text: z.string() }),
   z.object({ type: z.literal("chat.turn"), turnId: z.string(), replying: z.boolean() }),
   z.object({ type: z.literal("chat.activity"), turnId: z.string(), text: z.string() }),
+  z.object({ type: z.literal("chat.opened"), view: chatViewSchema }),
+  z.object({ type: z.literal("conversation.updated"), conversation: conversationSchema }),
   z.object({ type: z.literal("proposal.updated"), proposal: proposalSchema }),
   z.object({ type: z.literal("auth.updated"), authRequired: z.boolean() }),
   z.object({

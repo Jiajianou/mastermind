@@ -5,6 +5,8 @@ import { createChatRepository, createProposalRepository } from "./chat.js";
 import type { ChatRepository, ProposalRepository } from "./chat.js";
 import { createCheckRepository } from "./checks.js";
 import { createConductorSessionRepository } from "./conductor-sessions.js";
+import { createConversationRepository } from "./conversations.js";
+import type { ConversationRepository } from "./conversations.js";
 import type { ConductorSessionRepository } from "./conductor-sessions.js";
 import type { CheckRepository } from "./checks.js";
 import { createEventRepository } from "./events.js";
@@ -39,6 +41,7 @@ export interface Db {
   findings: FindingRepository;
   comments: CommentRepository;
   rounds: RoundRepository;
+  conversations: ConversationRepository;
   chat: ChatRepository;
   proposals: ProposalRepository;
   conductorSessions: ConductorSessionRepository;
@@ -59,6 +62,7 @@ export function openDb(path: string, options: OpenDbOptions = {}): Db {
     const transaction = createTransaction(database);
     migrate(database, transaction, migrations);
     const context = { database, clock: options.clock ?? systemClock, transaction };
+    const conversations = createConversationRepository(context);
     return {
       tasks: createTaskRepository(context),
       sessions: createSessionRepository(context),
@@ -68,7 +72,8 @@ export function openDb(path: string, options: OpenDbOptions = {}): Db {
       findings: createFindingRepository(context),
       comments: createCommentRepository(context),
       rounds: createRoundRepository(context),
-      chat: createChatRepository(context),
+      conversations,
+      chat: createChatRepository(context, () => conversations.active().id),
       proposals: createProposalRepository(context),
       conductorSessions: createConductorSessionRepository(context),
       flags: createFlagRepository(context),

@@ -1,8 +1,10 @@
 import type { z } from "zod";
 import { parseInput } from "../actions/index.js";
 import type { ActionRegistry } from "../actions/index.js";
+import { postConductorMessage } from "../chat.js";
 import type { ConductorChatSink } from "../chat.js";
 import {
+  askOwnerInputSchema,
   branchRebaseSchema,
   changesInputSchema,
   checkLogInputSchema,
@@ -25,11 +27,13 @@ import {
   taskRefInputSchema,
   updateTaskInputSchema,
 } from "../contracts/index.js";
-import type { ActionName, AwaitingConfirmation } from "../contracts/index.js";
+import type { ActionName, AwaitingConfirmation, QuestionMeta } from "../contracts/index.js";
 import type { GateableTool, GateOutcome, ProposalGate } from "../proposals.js";
 import type { ReadModels } from "../reads.js";
 import { proposePlan } from "./plan.js";
 import { describeSettingChanges } from "./setting-changes.js";
+
+export const askOwnerTool = "ask_owner";
 
 export interface ToolSources {
   actions: ActionRegistry;
@@ -51,11 +55,12 @@ export interface ActionTool extends GateableTool {
   done(input: unknown, result: unknown): string;
 }
 
-interface ReadTool {
+export interface ReadTool {
   name: string;
   description: string;
   input: z.ZodType;
   read(reads: ReadModels, input: unknown): unknown;
+  step(input: unknown): string;
 }
 
 function actionTool<Schema extends z.ZodType>(tool: {
@@ -81,6 +86,7 @@ function readTool<Schema extends z.ZodType>(tool: {
   input: Schema;
   description: string;
   read: (reads: ReadModels, input: z.output<Schema>) => unknown;
+  step: (input: z.output<Schema>) => string;
 }): ReadTool {
   const { name, input, description } = tool;
   return {
@@ -88,6 +94,7 @@ function readTool<Schema extends z.ZodType>(tool: {
     input,
     description,
     read: (reads, raw) => tool.read(reads, parseInput(input, raw)),
+    step: (raw) => tool.step(parseInput(input, raw)),
   };
 }
 
@@ -254,13 +261,14 @@ export const actionTools: readonly ActionTool[] = [
   }),
 ];
 
-const readTools: readonly ReadTool[] = [
+export const readTools: readonly ReadTool[] = [
   readTool({
     name: "get_summary",
     input: noInputSchema,
     description:
       "The state at a glance: task counts by status, running sessions, what starts next, blocked tasks, the rebase queue, and whether work is paused, waiting for sign-in or backing off after a usage limit.",
     read: (reads) => reads.summary(),
+    step: () => "Checked the state of the project",
   }),
   readTool({
     name: "list_tasks",
@@ -268,6 +276,7 @@ const readTools: readonly ReadTool[] = [
     description:
       "Every task with its status, priority, held flag, attempts, deps and the tasks it unblocks.",
     read: (reads) => reads.tasks(),
+    step: () => "Listed the tasks",
   }),
   readTool({
     name: "get_task",
@@ -275,6 +284,7 @@ const readTools: readonly ReadTool[] = [
     description:
       "One task in full: title, goal, acceptance command, touches, deps, what it unblocks, status, attempts and review round.",
     read: (reads, { taskId }) => reads.task(taskId),
+    step: ({ taskId }) => `Looked at ${taskId}`,
   }),
   readTool({
     name: "list_sessions",
@@ -282,6 +292,8 @@ const readTools: readonly ReadTool[] = [
     description:
       "Claude sessions, oldest first, with role, status, model and tokens. Filter by taskId; since (an ISO time) keeps sessions started at or after it plus every running one.",
     read: (reads, query) => reads.sessions(query),
+    step: ({ taskId }) =>
+      taskId === undefined ? "Listed the sessions" : `Listed the sessions of ${taskId}`,
   }),
   readTool({
     name: "get_session_events",
@@ -290,6 +302,7 @@ const readTools: readonly ReadTool[] = [
       "A session's timeline: reads, edits, commands, commits, notes, steering and the result. Returns the latest `limit` events (default 50) whose id is above `after`; pass the last id you saw as `after` to get only newer ones.",
     read: (reads, { sessionId, after, limit }) =>
       reads.sessionEvents(sessionId, after).slice(-limit),
+    step: ({ sessionId }) => `Read the timeline of session ${String(sessionId)}`,
   }),
   readTool({
     name: "get_changes",
@@ -297,6 +310,7 @@ const readTools: readonly ReadTool[] = [
     description:
       "The files a task has changed in its workspace, committed or not, including new untracked files: path, status (added, modified, deleted, or renamed with oldPath), added and deleted line counts (null for binary files), and whether the change is still uncommitted. since is base (the default: everything since the task branched off main) or round:N (only what changed after review round N ended).",
     read: (reads, input) => reads.changes(input),
+    step: ({ taskId }) => `Looked at the changes in ${taskId}`,
   }),
   readTool({
     name: "get_review_notes",
@@ -304,6 +318,7 @@ const readTools: readonly ReadTool[] = [
     description:
       "A task's review notes: the owner's line comments and the reviewer's findings, each with the round it belongs to (dismissed findings are marked), the task's current round, and the earlier request_changes rounds with the message each one sent.",
     read: (reads, { taskId }) => reads.reviewNotes(taskId),
+    step: ({ taskId }) => `Read the review notes on ${taskId}`,
   }),
   readTool({
     name: "get_check_log",
@@ -311,6 +326,7 @@ const readTools: readonly ReadTool[] = [
     description:
       "The log of one of a task's checks (setup, build, acceptance, rebase onto main, the full suite, or the reviewer's findings), with the check's kind, status, summary and duration. Without checkId it is the latest failed check, else the latest one. Returns the last `lines` lines (default 100); truncated says whether earlier output was left out.",
     read: (reads, input) => reads.taskCheckLog(input),
+    step: ({ taskId }) => `Read a check log of ${taskId}`,
   }),
 ];
 
@@ -360,5 +376,22 @@ export function conductorTools({ actions, gate, reads, chat }: ToolSources): Con
       return Promise.resolve({ status: "shown", planId: message.id });
     },
   };
-  return [...fromReads, ...fromActions, plan];
+  const question: ConductorTool = {
+    name: askOwnerTool,
+    description:
+      "Ask the owner to choose: they see the question with a button for each option and can also type their own answer. Give 2 to 6 options, each a short label with an optional one-line description; put your recommendation first and end its label with ' (recommended)'. multiSelect lets them pick several. After asking, end your reply; their answer arrives as their next message.",
+    input: askOwnerInputSchema,
+    call: (input) => {
+      const {
+        question: text,
+        header,
+        options,
+        multiSelect,
+      } = parseInput(askOwnerInputSchema, input);
+      const meta: QuestionMeta = { header: header ?? null, options, multiSelect };
+      postConductorMessage(chat, { kind: "question", content: text, meta });
+      return Promise.resolve({ status: "asked" });
+    },
+  };
+  return [...fromReads, ...fromActions, plan, question];
 }

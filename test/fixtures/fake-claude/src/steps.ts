@@ -73,7 +73,7 @@ async function emitAssistant(
   }
   output.line(assistantLine(context, messageId, block, contextTokens));
   if (partial) {
-    const stopReason = block.type === "text" ? "end_turn" : "tool_use";
+    const stopReason = block.type === "tool_use" ? "tool_use" : "end_turn";
     for (const line of partialClosingLines(context, stopReason)) output.line(line);
   }
   if (!progress.rateLimitReported) {
@@ -225,6 +225,9 @@ async function runStep(runtime: TurnRuntime, step: Step, progress: TurnProgress)
     case "text":
       await emitAssistant(runtime, progress, { type: "text", text: step.text }, step);
       progress.lastText = step.text;
+      return;
+    case "thinking":
+      await emitAssistant(runtime, progress, { type: "thinking", tokens: step.tokens }, step);
       return;
     case "read":
       return useTool(runtime, progress, "Read", { file_path: inCwd(step.path) }, () =>

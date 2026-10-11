@@ -125,7 +125,14 @@ const streamEventLineSchema = z.object({
   session_id: sessionIdField,
   event: z.object({
     type: z.string(),
-    delta: z.object({ type: z.string().optional(), text: z.string().optional() }).optional(),
+    delta: z
+      .object({
+        type: z.string().optional(),
+        text: z.string().optional(),
+        estimated_tokens: z.number().nullish(),
+      })
+      .optional(),
+    content_block: z.object({ type: z.string(), name: z.string().optional() }).optional(),
   }),
 });
 

@@ -11,6 +11,7 @@ import {
   SchemaVersionError,
   openDb,
 } from "./index.js";
+import { migrations } from "./schema.js";
 import type { Db, NewTask } from "./index.js";
 
 const noon = "2026-10-06T12:00:00.000Z";
@@ -68,6 +69,7 @@ describe("openDb", () => {
       "checks",
       "comments",
       "conductor_sessions",
+      "conversations",
       "events",
       "findings",
       "proposals",
@@ -83,7 +85,59 @@ describe("openDb", () => {
 
     const reopened = useDb(path);
     expect(reopened.tasks.get("lexer")?.title).toBe("Lexer");
-    expect(rawQuery(path, "SELECT version FROM schema_version")).toEqual([{ version: 2 }]);
+    expect(rawQuery(path, "SELECT version FROM schema_version")).toEqual([{ version: 3 }]);
+  });
+
+  it("splits a chat that was cut by New conversation dividers into conversations", async () => {
+    const path = await tempDbPath();
+    const legacy = new DatabaseSync(path);
+    legacy.exec("CREATE TABLE schema_version (version INTEGER NOT NULL)");
+    for (const sql of migrations.slice(0, 2)) legacy.exec(sql);
+    legacy.exec("INSERT INTO schema_version (version) VALUES (2)");
+    const insert = legacy.prepare(
+      "INSERT INTO chat_messages (ts, kind, content, meta, conductor_session) VALUES (?, ?, ?, ?, ?)",
+    );
+    insert.run("2026-10-06T10:00:00.000Z", "user", "plan a password manager\nfor me", null, "a");
+    insert.run("2026-10-06T10:01:00.000Z", "conductor", "Here is a plan.", null, "a");
+    insert.run(
+      "2026-10-06T11:00:00.000Z",
+      "system",
+      "New conversation",
+      '{"conversation":"new"}',
+      null,
+    );
+    insert.run("2026-10-06T11:01:00.000Z", "user", "what about sync?", null, "b");
+    legacy.exec(
+      "INSERT INTO conductor_sessions (id, started_at) VALUES ('a', '2026-10-06T10:00:00.000Z'), ('b', '2026-10-06T11:00:00.000Z')",
+    );
+    legacy.close();
+
+    const db = useDb(path);
+
+    expect(db.conversations.list()).toEqual([
+      {
+        id: 2,
+        title: "what about sync?",
+        startedAt: "2026-10-06T11:00:00.000Z",
+        lastActivityAt: "2026-10-06T11:01:00.000Z",
+      },
+      {
+        id: 1,
+        title: "plan a password manager",
+        startedAt: "2026-10-06T10:00:00.000Z",
+        lastActivityAt: "2026-10-06T10:01:00.000Z",
+      },
+    ]);
+    expect(db.conversations.active().id).toBe(2);
+    expect(db.chat.listConversation(1).map((message) => message.content)).toEqual([
+      "plan a password manager\nfor me",
+      "Here is a plan.",
+    ]);
+    expect(db.chat.listConversation(2).map((message) => message.content)).toEqual([
+      "what about sync?",
+    ]);
+    expect(db.conductorSessions.latest(1)?.id).toBe("a");
+    expect(db.conductorSessions.latest(2)?.id).toBe("b");
   });
 
   it("refuses a database written by a newer schema", async () => {

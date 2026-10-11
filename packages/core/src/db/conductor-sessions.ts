@@ -6,9 +6,9 @@ import { insertRow, readRow, timestamp, updateRow } from "./rows.js";
 import type { Columns, DbContext } from "./rows.js";
 
 export interface ConductorSessionRepository {
-  open(id: string): ConductorSession;
-  current(): ConductorSession | null;
-  latestSummary(): string | null;
+  open(id: string, conversationId: number): ConductorSession;
+  latest(conversationId: number): ConductorSession | null;
+  latestSummary(conversationId: number): string | null;
   setTokens(id: string, tokens: number): ConductorSession;
   end(id: string, summary?: string): ConductorSession;
 }
@@ -16,6 +16,7 @@ export interface ConductorSessionRepository {
 const conductorSessionRowSchema = z
   .object({
     id: z.string(),
+    conversation_id: z.int().nullable(),
     started_at: isoTimestampSchema,
     ended_at: isoTimestampSchema.nullable(),
     summary: z.string().nullable(),
@@ -23,6 +24,7 @@ const conductorSessionRowSchema = z
   })
   .transform((row): ConductorSession => ({
     id: row.id,
+    conversationId: row.conversation_id,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     summary: row.summary,
@@ -34,11 +36,11 @@ export function createConductorSessionRepository({
   clock,
 }: DbContext): ConductorSessionRepository {
   const selectSession = database.prepare("SELECT * FROM conductor_sessions WHERE id = ?");
-  const selectCurrent = database.prepare(
-    "SELECT * FROM conductor_sessions WHERE ended_at IS NULL ORDER BY started_at DESC, rowid DESC LIMIT 1",
+  const selectLatest = database.prepare(
+    "SELECT * FROM conductor_sessions WHERE conversation_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1",
   );
   const selectLatestSummary = database.prepare(
-    "SELECT * FROM conductor_sessions WHERE summary IS NOT NULL ORDER BY ended_at DESC, rowid DESC LIMIT 1",
+    "SELECT * FROM conductor_sessions WHERE conversation_id = ? AND summary IS NOT NULL ORDER BY ended_at DESC, rowid DESC LIMIT 1",
   );
 
   function getExisting(id: string): ConductorSession {
@@ -54,20 +56,24 @@ export function createConductorSessionRepository({
   }
 
   return {
-    open(id) {
-      insertRow(database, "conductor_sessions", { id, started_at: timestamp(clock) });
+    open(id, conversationId) {
+      insertRow(database, "conductor_sessions", {
+        id,
+        conversation_id: conversationId,
+        started_at: timestamp(clock),
+      });
       return getExisting(id);
     },
 
-    current() {
-      const row = selectCurrent.get();
+    latest(conversationId) {
+      const row = selectLatest.get(conversationId);
       return row === undefined
         ? null
         : readRow("conductor_sessions", conductorSessionRowSchema, row);
     },
 
-    latestSummary() {
-      const row = selectLatestSummary.get();
+    latestSummary(conversationId) {
+      const row = selectLatestSummary.get(conversationId);
       return row === undefined
         ? null
         : readRow("conductor_sessions", conductorSessionRowSchema, row).summary;

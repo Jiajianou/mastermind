@@ -20,6 +20,7 @@ const message = (
   type: "chat.message",
   message: {
     id: 1,
+    conversationId: 1,
     ts: "2026-10-06T10:00:00.000Z",
     kind,
     content,
@@ -38,16 +39,33 @@ const turnEnded = (turn = turnId): StreamMessage => ({
 describe("following one chat turn", () => {
   it.each<[string, StreamMessage[], string, TurnEnd | null, boolean]>([
     [
-      "streams the reply once, then prints the action line",
+      "streams each text block once, with finished steps between them",
       [
         message("user", "add a task"),
         delta("Adding "),
         delta("it."),
         message("conductor", "Adding it."),
-        message("action", "✓ Added 1 task"),
+        message("step", "Making changes", { step: "tool", status: "running", detail: null }),
+        message("step", "Added 1 task", { step: "tool", status: "done", detail: null }),
+        delta("Done."),
+        message("conductor", "Done."),
         turnEnded(),
       ],
-      "Adding it.\n✓ Added 1 task\n",
+      "Adding it.\n✓ Added 1 task\nDone.\n",
+      "finished",
+      false,
+    ],
+    [
+      "lists a question's options",
+      [
+        message("question", "Which store?", {
+          header: null,
+          options: [{ label: "SQLite", description: "One file" }, { label: "Postgres" }],
+          multiSelect: false,
+        }),
+        turnEnded(),
+      ],
+      "Which store?\n  1. SQLite – One file\n  2. Postgres\nReply with your choice, or answer it in the web app.\n",
       "finished",
       false,
     ],

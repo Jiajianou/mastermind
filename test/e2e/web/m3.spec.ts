@@ -99,7 +99,7 @@ test("tasks are created, watched and one is stopped through the chat without a p
   await expect(statusPill(page, "2 working · 0 needs you · 0 of 2 done")).toBeVisible(
     workerStartup,
   );
-  await expect(log.locator(".action-line")).toHaveText(["✓ Added 1 task", "✓ Added 1 task"]);
+  await expect(log.locator(".step", { hasText: "Added 1 task" })).toHaveCount(2);
 
   await say(page, "what's running?");
   await expect(log).toContainText("Workers are on alpha and beta.");
@@ -126,8 +126,8 @@ test("tasks are created, watched and one is stopped through the chat without a p
   await say(page, "Please stop alpha");
 
   await expect(log).toContainText("I stopped alpha. beta carries on.");
-  await expect(log.locator(".action-line").last()).toHaveText(
-    `✓ Stopped session ${String(alphaSessionId)}`,
+  await expect(log.locator(".step").last()).toContainText(
+    `Stopped session ${String(alphaSessionId)}`,
   );
   await expect(statusPill(page, "1 working · 0 needs you · 0 of 2 done")).toBeVisible();
 

@@ -6,6 +6,7 @@ import {
   check,
   comment,
   config,
+  conversation,
   finding,
   message,
   notes,
@@ -398,16 +399,16 @@ const cases: Case[] = [
     },
   },
   {
-    name: "chat.delta is ignored once the turn's reply is stored",
+    name: "chat.delta after a stored text block starts the draft of the next block",
     before: stateWith({
       chat: {
         ...stateWith({}).chat,
-        messages: [message(5, { kind: "conductor", turnId: "turn-1" })],
+        messages: [message(5, { kind: "conductor", content: "First.", turnId: "turn-1" })],
       },
     }),
-    action: { type: "chat.delta", turnId: "turn-1", text: "late" },
-    after: (next, before) => {
-      expect(next).toBe(before);
+    action: { type: "chat.delta", turnId: "turn-1", text: "Second" },
+    after: (next) => {
+      expect(next.chat.drafts).toEqual({ "turn-1": "Second" });
     },
   },
   {
@@ -485,7 +486,13 @@ const cases: Case[] = [
         summary: summary({ paused: true, activeSessions: [session(3)] }),
         tasks: [task("alpha"), task("beta", { status: "running", updatedAt: at(2) })],
         sessions: [session(1, { status: "succeeded" })],
-        chat: { model: "opus", replying: true, messages: [message(1)] },
+        chat: {
+          model: "opus",
+          replying: true,
+          conversationId: 1,
+          conversations: [conversation(1, { title: "plan" })],
+          messages: [message(1)],
+        },
       }),
     },
     after: (next, before) => {
@@ -498,10 +505,97 @@ const cases: Case[] = [
       expect(next.chat).toEqual({
         model: "opus",
         replying: true,
+        conversationId: 1,
+        conversations: [conversation(1, { title: "plan" })],
         messages: [message(1)],
         drafts: {},
         activity: null,
       });
+    },
+  },
+  {
+    name: "chat.message from a conversation that isn't open is left out",
+    before: stateWith({}),
+    action: { type: "chat.message", message: message(9, { conversationId: 2 }) },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "chat.message moves its conversation's last activity forward",
+    before: stateWith({
+      chat: { ...stateWith({}).chat, conversationId: 1, conversations: [conversation(1)] },
+    }),
+    action: { type: "chat.message", message: message(9, { ts: at(30) }) },
+    after: (next) => {
+      expect(next.chat.conversations).toEqual([conversation(1, { lastActivityAt: at(30) })]);
+    },
+  },
+  {
+    name: "chat.opened replaces the chat with the conversation that was opened",
+    before: stateWith({
+      chat: {
+        ...stateWith({}).chat,
+        conversationId: 1,
+        messages: [message(1)],
+        drafts: { t: "x" },
+        activity: "Thinking",
+      },
+    }),
+    action: {
+      type: "chat.opened",
+      view: {
+        model: "opus",
+        replying: false,
+        conversationId: 2,
+        conversations: [conversation(2), conversation(1)],
+        messages: [message(5, { conversationId: 2 })],
+      },
+    },
+    after: (next) => {
+      expect(next.chat).toEqual({
+        model: "opus",
+        replying: false,
+        conversationId: 2,
+        conversations: [conversation(2), conversation(1)],
+        messages: [message(5, { conversationId: 2 })],
+        drafts: {},
+        activity: null,
+      });
+    },
+  },
+  {
+    name: "chat.opened for the conversation already open keeps what the stream applied since",
+    before: stateWith({
+      chat: {
+        ...stateWith({}).chat,
+        conversationId: 2,
+        conversations: [conversation(2, { title: "Sync" })],
+        messages: [message(5, { conversationId: 2 })],
+      },
+    }),
+    action: {
+      type: "chat.opened",
+      view: {
+        model: "opus",
+        replying: false,
+        conversationId: 2,
+        conversations: [conversation(2)],
+        messages: [],
+      },
+    },
+    after: (next, before) => {
+      expect(next).toBe(before);
+    },
+  },
+  {
+    name: "conversation.updated renames a conversation in the list",
+    before: stateWith({
+      chat: { ...stateWith({}).chat, conversations: [conversation(2), conversation(1)] },
+    }),
+    action: { type: "conversation.updated", conversation: conversation(2, { title: "Sync" }) },
+    after: (next) => {
+      expect(next.chat.conversations.map(({ title }) => title)).toEqual(["Sync", null]);
     },
   },
   {

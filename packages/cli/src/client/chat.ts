@@ -1,4 +1,4 @@
-import { chatTurnSchema } from "@mastermind/core/contracts";
+import { chatTurnSchema, questionMetaSchema, stepMetaSchema } from "@mastermind/core/contracts";
 import type { ChatMessage, StreamMessage } from "@mastermind/core/contracts";
 import { z } from "zod";
 import { createApiClient } from "./api.js";
@@ -44,9 +44,30 @@ export function createTurnFollower(turnId: string, write: (text: string) => void
         return;
       case "conductor":
         if (message.content.startsWith(streamed)) print(message.content.slice(streamed.length));
+        streamed = "";
         if (stoppedMetaSchema.safeParse(message.meta).success) line("(stopped)");
         else if (!atLineStart) print("\n");
         return;
+      case "step": {
+        const step = stepMetaSchema.safeParse(message.meta);
+        if (!step.success || step.data.status === "running") return;
+        const mark =
+          step.data.status === "failed" ? "✗" : step.data.step === "thinking" ? "✻" : "✓";
+        line(`${mark} ${message.content}`);
+        return;
+      }
+      case "question": {
+        line(message.content);
+        const question = questionMetaSchema.safeParse(message.meta);
+        if (question.success)
+          question.data.options.forEach(({ label, description }, index) => {
+            line(
+              `  ${String(index + 1)}. ${label}${description === undefined ? "" : ` – ${description}`}`,
+            );
+          });
+        line("Reply with your choice, or answer it in the web app.");
+        return;
+      }
       case "action":
       case "system":
       case "proposal":

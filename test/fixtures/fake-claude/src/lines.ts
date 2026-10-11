@@ -114,6 +114,7 @@ export interface ToolUseMeta {
 
 export type AssistantBlock =
   | { type: "text"; text: string }
+  | { type: "thinking"; tokens: number }
   | {
       type: "tool_use";
       id: string;
@@ -139,16 +140,42 @@ function toolUseExtras(
   return { wire_tool_inputs: { [id]: wireInput }, ...metaField };
 }
 
+// Claude Code redacts thinking text in its stream and reports only token estimates, in steps of about 100.
+const thinkingStepTokens = 100;
+
+function thinkingDeltas(tokens: number): object[] {
+  const steps = Math.ceil(tokens / thinkingStepTokens);
+  return Array.from({ length: steps }, (_, index) => ({
+    type: "thinking_delta",
+    thinking: "",
+    estimated_tokens: Math.min(thinkingStepTokens, tokens - index * thinkingStepTokens),
+  }));
+}
+
+function assistantContent(block: AssistantBlock): object {
+  switch (block.type) {
+    case "text":
+      return block;
+    case "thinking":
+      return { type: "thinking", thinking: "", signature: "fake-signature" };
+    case "tool_use":
+      return {
+        type: "tool_use",
+        id: block.id,
+        name: block.name,
+        input: block.input,
+        caller: direct,
+      };
+  }
+}
+
 export function assistantLine(
   context: SessionContext,
   messageId: string,
   block: AssistantBlock,
   contextTokens?: number,
 ): object {
-  const content =
-    block.type === "tool_use"
-      ? { type: "tool_use", id: block.id, name: block.name, input: block.input, caller: direct }
-      : block;
+  const content = assistantContent(block);
   return {
     type: "assistant",
     message: apiMessage(context.model, messageId, [content], contextTokens),
@@ -175,22 +202,35 @@ export function streamEventLine(
   };
 }
 
+function partialBlock(block: AssistantBlock): { started: object; deltas: object[] } {
+  switch (block.type) {
+    case "text":
+      return {
+        started: { type: "text", text: "" },
+        deltas: chunk(block.text).map((text) => ({ type: "text_delta", text })),
+      };
+    case "thinking":
+      return {
+        started: { type: "thinking", thinking: "", signature: "" },
+        deltas: thinkingDeltas(block.tokens),
+      };
+    case "tool_use":
+      return {
+        started: { type: "tool_use", id: block.id, name: block.name, input: {}, caller: direct },
+        deltas: chunk(JSON.stringify(block.wireInput)).map((partial_json) => ({
+          type: "input_json_delta",
+          partial_json,
+        })),
+      };
+  }
+}
+
 export function partialOpeningLines(
   context: SessionContext,
   messageId: string,
   block: AssistantBlock,
 ): object[] {
-  const started =
-    block.type === "text"
-      ? { type: "text", text: "" }
-      : { type: "tool_use", id: block.id, name: block.name, input: {}, caller: direct };
-  const deltas =
-    block.type === "text"
-      ? chunk(block.text).map((text) => ({ type: "text_delta", text }))
-      : chunk(JSON.stringify(block.wireInput)).map((partial_json) => ({
-          type: "input_json_delta",
-          partial_json,
-        }));
+  const { started, deltas } = partialBlock(block);
   const messageStart = { type: "message_start", message: apiMessage(context.model, messageId, []) };
   return [
     streamEventLine(context, messageStart, { ttft_ms: 420, thinking_display: "updates" }),

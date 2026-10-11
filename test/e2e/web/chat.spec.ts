@@ -1,3 +1,4 @@
+import { chatViewSchema } from "@mastermind/core/contracts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test } from "./harness.js";
@@ -68,7 +69,7 @@ test.describe("a reply", () => {
     },
   });
 
-  test("streams in while Stop shows, then ends with the action line", async ({
+  test("streams in while Stop shows, with a row for the step it took", async ({
     page,
     mastermind,
   }) => {
@@ -85,7 +86,7 @@ test.describe("a reply", () => {
     await expect(log.locator(".reply strong")).toHaveText("hello");
     await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
     await expect(log).toContainText("A worker picks it up as soon as one is free.");
-    await expect(log.locator(".action-line")).toHaveText("✓ Added 1 task");
+    await expect(log.locator(".step")).toContainText("Added 1 task");
     await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
     await expect(
       page.getByRole("link", { name: /1 working · 0 needs you · 0 of 1 done/ }),
@@ -141,5 +142,116 @@ test.describe("a decision", () => {
     await expect(page.getByRole("link", { name: "No tasks yet" })).toBeVisible();
     const config = await readFile(join(mastermind.repoPath, ".mastermind", "config.yaml"), "utf8");
     expect(config).toMatch(/worker: sonnet/);
+  });
+});
+
+test.describe("a long reply", () => {
+  const paragraphs = Array.from(
+    { length: 60 },
+    (_, index) => `Paragraph ${String(index + 1)} of a long streamed reply.`,
+  );
+  test.use({
+    scenario: {
+      turns: [
+        {
+          match: { role: "conductor", prompt: "write a long reply" },
+          steps: [{ kind: "text", text: paragraphs.join("\n\n"), streamMs: 15 }],
+        },
+      ],
+    },
+  });
+
+  test("scrolls only the conversation: it follows the stream, stays put once the owner scrolls up, and Jump to latest follows again", async ({
+    page,
+    mastermind,
+  }) => {
+    const input = page.getByRole("textbox", { name: "Message", exact: true });
+    await expect(input).toBeEnabled();
+    await input.fill("write a long reply");
+    await input.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: `What should we build in ${mastermind.project}?` }),
+    ).toBeHidden();
+
+    const log = page.getByRole("log");
+    const paragraph = (n: number) => log.getByText(`Paragraph ${String(n)} of`);
+    const scrolled = () => page.locator(".chat-scroll").evaluate((pane) => pane.scrollTop);
+    const fixedInPlace = async () => {
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      await expect(page.getByRole("navigation", { name: "Screens" })).toBeInViewport();
+      await expect(page.getByRole("navigation", { name: "Conversations" })).toBeInViewport();
+    };
+    await expect(paragraph(20)).toBeInViewport();
+    await expect(paragraph(1)).not.toBeInViewport();
+    await fixedInPlace();
+
+    await log.hover();
+    await page.mouse.wheel(0, -20_000);
+    await expect(page.getByRole("button", { name: "Jump to latest" })).toBeVisible();
+    await expect(paragraph(1)).toBeInViewport();
+    const parked = await scrolled();
+    await expect(paragraph(35)).toBeAttached();
+    expect(await scrolled()).toBe(parked);
+    await expect(paragraph(1)).toBeInViewport();
+    await fixedInPlace();
+
+    await page.getByRole("button", { name: "Jump to latest" }).click();
+
+    await expect(page.getByRole("button", { name: "Jump to latest" })).toBeHidden();
+    await expect(paragraph(50)).toBeInViewport();
+    await expect(paragraph(60)).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+    await fixedInPlace();
+  });
+});
+
+test.describe("conversations", () => {
+  test.use({
+    scenario: {
+      turns: [
+        {
+          match: { role: "conductor", prompt: "vault" },
+          steps: [{ kind: "text", text: "Vault first." }],
+        },
+        {
+          match: { role: "conductor", prompt: "sync" },
+          steps: [{ kind: "text", text: "Sync later." }],
+        },
+        { match: { role: "conductor" }, steps: [{ kind: "text", text: "Noted." }] },
+      ],
+    },
+  });
+
+  test("each new conversation is named by its first message, and an earlier one opens with its own messages", async ({
+    page,
+    mastermind,
+  }) => {
+    const input = page.getByRole("textbox", { name: "Message", exact: true });
+    const log = page.getByRole("log");
+    const sidebar = page.getByRole("navigation", { name: "Conversations" });
+    const titles = sidebar.locator(".conversation-item");
+    await expect(input).toBeEnabled();
+
+    await input.fill("Plan the vault");
+    await input.press("Enter");
+    await expect(log).toContainText("Vault first.");
+    await sidebar.getByRole("button", { name: "New conversation", exact: true }).click();
+    await input.fill("Plan the sync");
+    await input.press("Enter");
+    await expect(log).toContainText("Sync later.");
+
+    await expect(titles).toHaveText(["Plan the sync", "Plan the vault"]);
+    await sidebar.getByRole("button", { name: "Plan the vault" }).click();
+
+    await expect(log).toContainText("Vault first.");
+    await expect(log).not.toContainText("Sync later.");
+    await expect(sidebar.getByRole("button", { name: "Plan the vault" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    const view = await mastermind.readApi("/api/chat", chatViewSchema);
+    expect(view.conversations.find(({ id }) => id === view.conversationId)?.title).toBe(
+      "Plan the vault",
+    );
   });
 });

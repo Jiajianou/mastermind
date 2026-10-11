@@ -117,8 +117,8 @@ describe("planning through the chat", () => {
 
     expect(turn.map(({ kind, content }) => ({ kind, content }))).toEqual([
       { kind: "user", content: "go ahead" },
+      { kind: "step", content: "Added 3 tasks" },
       { kind: "conductor", content: "Started." },
-      { kind: "action", content: "✓ Added 3 tasks" },
     ]);
     expect(graph(harness)).toEqual(parserGraph);
 

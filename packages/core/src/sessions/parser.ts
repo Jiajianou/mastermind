@@ -74,7 +74,13 @@ export type EventDetails =
       structuredOutput: unknown;
     }
   | { line: "rate_limit"; sessionId: string | null; rateLimit: RateLimit }
-  | { line: "partial"; sessionId: string | null; textDelta: string | null }
+  | {
+      line: "partial";
+      sessionId: string | null;
+      textDelta: string | null;
+      thinkingTokens: number | null;
+      blockStart: { type: string; name: string | null } | null;
+    }
   | {
       line: "permission_denied";
       sessionId: string | null;
@@ -357,12 +363,21 @@ export function createStreamParser(): StreamParser {
         return event("note", summary, { line: "rate_limit", sessionId, rateLimit }, false);
       }
       case "stream_event": {
-        const delta = line.event.delta;
+        const { delta, content_block: block } = line.event;
         const textDelta = delta?.type === "text_delta" ? (delta.text ?? null) : null;
+        const thinkingTokens =
+          delta?.type === "thinking_delta" ? (delta.estimated_tokens ?? null) : null;
+        const blockStart =
+          block === undefined ? null : { type: block.type, name: block.name ?? null };
         const summary = [line.event.type, delta?.type]
           .filter((part) => part !== undefined)
           .join(" ");
-        return event("note", summary, { line: "partial", sessionId, textDelta }, false);
+        return event(
+          "note",
+          summary,
+          { line: "partial", sessionId, textDelta, thinkingTokens, blockStart },
+          false,
+        );
       }
     }
   }

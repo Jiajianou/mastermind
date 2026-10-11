@@ -2,8 +2,13 @@ import { readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { projectPaths } from "@mastermind/core/config";
 import { ConductorToolsUnavailableError } from "@mastermind/core/conductor";
-import { chatTurnSchema, chatViewSchema, eventLineMetaSchema } from "@mastermind/core/contracts";
-import type { BusEvent, EventLineMeta, TaskStatus } from "@mastermind/core/contracts";
+import {
+  chatTurnSchema,
+  chatViewSchema,
+  eventLineMetaSchema,
+  stepMetaSchema,
+} from "@mastermind/core/contracts";
+import type { BusEvent, ChatMessage, EventLineMeta, TaskStatus } from "@mastermind/core/contracts";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { Scenario, Step } from "../../support/fake-claude.js";
@@ -52,6 +57,19 @@ function deltas(events: readonly BusEvent[], turnId: string): string[] {
   );
 }
 
+// How long the fake took to think varies from run to run, so only the shape of the label is compared.
+const shown = ({ kind, content, meta }: ChatMessage) => ({
+  kind,
+  content: content.replace(/^Thought for \d+s$/, "Thought for Ns"),
+  meta,
+});
+
+function activities(events: readonly BusEvent[], turnId: string): string[] {
+  return events.flatMap((event) =>
+    event.type === "chat.activity" && event.turnId === turnId ? [event.text] : [],
+  );
+}
+
 function flagValue(argv: readonly string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
   return index === -1 ? undefined : argv[index + 1];
@@ -64,11 +82,12 @@ async function receivedPrompts(harness: ConductorHarness): Promise<string[]> {
 }
 
 describe("Conductor chat", () => {
-  it("runs a turn that creates tasks through MCP, and stores and streams its reply and action line", async () => {
+  it("runs a turn that creates tasks through MCP, storing each text block and a row for each step it took", async () => {
     const harness = await conductorHarness({
       scenario: {
         turns: [
           conductorTurn("add the parser tasks", [
+            { kind: "thinking", tokens: 1200 },
             { kind: "read", path: "README.md" },
             reply("Adding them now."),
             {
@@ -85,28 +104,69 @@ describe("Conductor chat", () => {
     const { turnId, message } = await send(harness, "add the parser tasks");
     const turn = await harness.waitForTurnEnd(turnId);
 
-    const replyText = "Adding them now.\n\nI added lexer and parser; parser waits for lexer.";
+    const blocks = ["Adding them now.", "I added lexer and parser; parser waits for lexer."];
     expect(message).toMatchObject({ kind: "user", content: "add the parser tasks", turnId });
-    expect(turn.map(({ kind, content }) => ({ kind, content }))).toEqual([
-      { kind: "user", content: "add the parser tasks" },
-      { kind: "conductor", content: replyText },
-      { kind: "action", content: "✓ Added 2 tasks" },
+    expect(turn.map(shown)).toEqual([
+      { kind: "user", content: "add the parser tasks", meta: null },
+      {
+        kind: "step",
+        content: "Thought for Ns",
+        meta: { step: "thinking", status: "done", detail: null },
+      },
+      {
+        kind: "step",
+        content: "Read README.md",
+        meta: { step: "tool", status: "done", detail: "1\t# Demo\n2\t" },
+      },
+      { kind: "conductor", content: blocks[0], meta: null },
+      {
+        kind: "step",
+        content: "Added 2 tasks",
+        meta: { step: "tool", status: "done", detail: null },
+      },
+      { kind: "conductor", content: blocks[1], meta: null },
     ]);
     expect(harness.db.tasks.get("parser")).toMatchObject({ status: "pending", deps: ["lexer"] });
     expect(deltas(harness.events, turnId).length).toBeGreaterThan(2);
-    expect(deltas(harness.events, turnId).join("")).toBe(replyText);
-    expect(
-      harness.events.flatMap((event) =>
-        event.type === "chat.activity" && event.turnId === turnId ? [event.text] : [],
-      ),
-    ).toEqual(["Reading README.md", "Making changes"]);
+    expect(deltas(harness.events, turnId).join("")).toBe(blocks.join(""));
+    expect(activities(harness.events, turnId)).toEqual([
+      ...[
+        "100",
+        "200",
+        "300",
+        "400",
+        "500",
+        "600",
+        "700",
+        "800",
+        "900",
+        "1.0k",
+        "1.1k",
+        "1.2k",
+      ].map((amount) => `Thinking (${amount} tokens)`),
+      "Reading a file",
+      "Reading README.md",
+      "Making changes",
+    ]);
     expect(
       harness.events.flatMap((event) =>
         event.type === "chat.message" && event.message.turnId === turnId
-          ? [event.message.kind]
+          ? [
+              `${event.message.kind}:${stepMetaSchema.safeParse(event.message.meta).data?.status ?? ""}`,
+            ]
           : [],
       ),
-    ).toEqual(["user", "conductor", "action"]);
+    ).toEqual([
+      "user:",
+      "step:running",
+      "step:done",
+      "step:running",
+      "step:done",
+      "conductor:",
+      "step:running",
+      "step:done",
+      "conductor:",
+    ]);
 
     const [invocation] = await harness.env.invocations();
     const sessionId = flagValue(invocation?.argv ?? [], "--session-id");
@@ -213,6 +273,183 @@ describe("Conductor chat", () => {
     expect(await harness.env.invocations()).toHaveLength(1);
   });
 
+  it("asks the owner a multiple-choice question as its own card, without a step row", async () => {
+    const options = [
+      {
+        label: "Browser extension (recommended)",
+        description: "Fill passwords where you use them.",
+      },
+      { label: "Desktop app", description: "A separate window for your vault." },
+    ];
+    const harness = await conductorHarness({
+      scenario: {
+        turns: [
+          conductorTurn("plan a password manager", [
+            reply("One decision first."),
+            {
+              kind: "mcp",
+              tool: "ask_owner",
+              arguments: { question: "What should we build first?", header: "First", options },
+            },
+          ]),
+        ],
+      },
+    });
+
+    const { turnId } = await send(harness, "plan a password manager");
+    const turn = await harness.waitForTurnEnd(turnId);
+
+    expect(turn.map(({ kind, content, meta }) => ({ kind, content, meta }))).toEqual([
+      { kind: "user", content: "plan a password manager", meta: null },
+      { kind: "conductor", content: "One decision first.", meta: null },
+      {
+        kind: "question",
+        content: "What should we build first?",
+        meta: { header: "First", options, multiSelect: false },
+      },
+    ]);
+  });
+
+  it("keeps which question each answer belongs to on the owner's message", async () => {
+    const harness = await conductorHarness({ scenario: { turns: [fallbackTurn] } });
+    const answers = [
+      { questionId: 4, answer: "TypeScript" },
+      { questionId: 5, answer: "Chrome, Firefox" },
+    ];
+
+    const { message } = chatTurnSchema.parse(
+      await harness.post("/api/chat", {
+        text: "Tech stack: TypeScript\nBrowsers: Chrome, Firefox",
+        answers,
+      }),
+    );
+
+    expect(message.meta).toEqual({ answers });
+    expect(harness.db.chat.get(message.id)?.meta).toEqual({ answers });
+  });
+
+  it("records a stop that comes before the reply has said anything", async () => {
+    const harness = await conductorHarness({
+      scenario: {
+        turns: [conductorTurn("think it over", [{ kind: "thinking", tokens: 5000, streamMs: 50 }])],
+      },
+    });
+
+    const { turnId } = await send(harness, "think it over");
+    await waitFor(() => activities(harness.events, turnId).length >= 2, 15_000);
+    expect(stoppedSchema.parse(await harness.post("/api/chat/stop"))).toEqual({ stopped: true });
+    const turn = await harness.waitForTurnEnd(turnId);
+
+    expect(turn.map(shown)).toEqual([
+      { kind: "user", content: "think it over", meta: null },
+      {
+        kind: "step",
+        content: "Thought for Ns",
+        meta: { step: "thinking", status: "done", detail: null },
+      },
+      { kind: "conductor", content: "", meta: { stopped: true } },
+    ]);
+  });
+
+  it("starts a new conversation that stops the running reply and carries nothing from the old one", async () => {
+    const harness = await conductorHarness({
+      scenario: {
+        turns: [
+          conductorTurn("think it over", [{ kind: "thinking", tokens: 5000, streamMs: 50 }]),
+          fallbackTurn,
+        ],
+      },
+    });
+    const old = harness.db.conversations.active().id;
+    harness.db.conductorSessions.open("rolled-over", old);
+    harness.db.conductorSessions.end("rolled-over", "The owner wants a lexer first.");
+
+    const first = await send(harness, "think it over");
+    await waitFor(() => activities(harness.events, first.turnId).length >= 2, 15_000);
+    const view = chatViewSchema.parse(await harness.post("/api/conversations"));
+    const stopped = await harness.waitForTurnEnd(first.turnId);
+    const next = await send(harness, "hello again");
+    const answered = await harness.waitForTurnEnd(next.turnId);
+
+    expect(view).toMatchObject({ replying: false, messages: [] });
+    expect(view.conversationId).not.toBe(old);
+    expect(view.conversations.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: view.conversationId, title: null },
+      { id: old, title: "think it over" },
+    ]);
+    expect(stopped.map(({ kind, conversationId }) => [kind, conversationId])).toEqual([
+      ["user", old],
+      ["step", old],
+      ["conductor", old],
+    ]);
+    expect(stopped.at(-1)?.meta).toEqual({ stopped: true });
+    expect(
+      answered.map(({ kind, content, conversationId }) => [kind, content, conversationId]),
+    ).toEqual([
+      ["user", "hello again", view.conversationId],
+      ["conductor", "Noted.", view.conversationId],
+    ]);
+    expect(harness.db.conversations.get(view.conversationId)?.title).toBe("hello again");
+
+    const [oldProcess, newProcess] = await harness.env.invocations();
+    const oldSession = flagValue(oldProcess?.argv ?? [], "--session-id");
+    const newSession = flagValue(newProcess?.argv ?? [], "--session-id");
+    expect(newSession).toBeDefined();
+    expect(newSession).not.toBe(oldSession);
+    expect(newProcess?.argv).not.toContain("--resume");
+    expect(harness.db.conductorSessions.latest(view.conversationId)?.id).toBe(newSession);
+    const [oldPrompt, newPrompt] = await receivedPrompts(harness);
+    expect(oldPrompt).toContain("The owner wants a lexer first.");
+    expect(newPrompt).not.toContain("<summary>");
+  });
+
+  it("keeps one empty conversation however often a new one is asked for", async () => {
+    const harness = await conductorHarness({ scenario: { turns: [fallbackTurn] } });
+
+    const first = chatViewSchema.parse(await harness.post("/api/conversations"));
+    const second = chatViewSchema.parse(await harness.post("/api/conversations"));
+
+    expect(second.conversationId).toBe(first.conversationId);
+    expect(second.conversations).toHaveLength(1);
+  });
+
+  it("carries on in an earlier conversation by resuming its own Claude session", async () => {
+    const harness = await conductorHarness({ scenario: { turns: [fallbackTurn] } });
+
+    const first = await send(harness, "plan the lexer");
+    await harness.waitForTurnEnd(first.turnId);
+    const earlier = harness.db.conversations.active().id;
+    chatViewSchema.parse(await harness.post("/api/conversations"));
+    const other = await send(harness, "something else");
+    await harness.waitForTurnEnd(other.turnId);
+    const view = chatViewSchema.parse(
+      await harness.post(`/api/conversations/${String(earlier)}/open`),
+    );
+    const back = await send(harness, "where were we?");
+    await harness.waitForTurnEnd(back.turnId);
+
+    expect(view.conversationId).toBe(earlier);
+    expect(view.messages.map(({ kind, content }) => `${kind}: ${content}`)).toEqual([
+      "user: plan the lexer",
+      "conductor: Noted.",
+    ]);
+    const [firstRun, otherRun, backRun] = await harness.env.invocations();
+    const earlierSession = flagValue(firstRun?.argv ?? [], "--session-id");
+    expect(flagValue(otherRun?.argv ?? [], "--session-id")).not.toBe(earlierSession);
+    expect(flagValue(backRun?.argv ?? [], "--resume")).toBe(earlierSession);
+    expect(
+      harness
+        .messages(back.turnId)
+        .map(({ conversationId, conductorSession }) => [conversationId, conductorSession]),
+    ).toEqual([
+      [earlier, earlierSession],
+      [earlier, earlierSession],
+    ]);
+    expect(
+      chatViewSchema.parse(await harness.get("/api/chat")).conversations.map(({ title }) => title),
+    ).toEqual(["plan the lexer", "something else"]);
+  });
+
   it("starts a new turn for a message sent while a stopped turn is ending", async () => {
     const harness = await conductorHarness({ scenario: { turns: [fallbackTurn] } });
 
@@ -251,7 +488,7 @@ describe("Conductor chat", () => {
 
     const first = await send(harness, "plan the release");
     await waitFor(
-      () => deltas(harness.events, first.turnId).join("") === "Looking at the release now.",
+      () => harness.messages(first.turnId).some((message) => message.kind === "conductor"),
       15_000,
     );
     const second = await send(harness, "skip the docs");
@@ -260,8 +497,9 @@ describe("Conductor chat", () => {
     expect(second.turnId).toBe(first.turnId);
     expect(turn.map(({ kind, content }) => ({ kind, content }))).toEqual([
       { kind: "user", content: "plan the release" },
+      { kind: "conductor", content: "Looking at the release now." },
       { kind: "user", content: "skip the docs" },
-      { kind: "conductor", content: "Looking at the release now.\n\nOK, leaving the docs out." },
+      { kind: "conductor", content: "OK, leaving the docs out." },
     ]);
     expect((await receivedPrompts(harness)).at(-1)).toBe("skip the docs");
   });
@@ -319,7 +557,7 @@ describe("Conductor chat", () => {
     expect(resumed?.argv).not.toContain("--session-id");
     expect(flagValue(resumed?.argv ?? [], "--model")).toBe("sonnet");
     expect(turn.map((stored) => stored.conductorSession)).toEqual([sessionId, sessionId]);
-    const conversation = harness.db.conductorSessions.current();
+    const conversation = harness.db.conductorSessions.latest(harness.db.conversations.active().id);
     expect(conversation).toMatchObject({ id: sessionId, endedAt: null });
     expect(conversation?.tokens).toBeGreaterThan(0);
     expect(harness.config().models.conductor).toBe("sonnet");

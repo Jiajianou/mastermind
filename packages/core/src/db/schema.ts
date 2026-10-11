@@ -69,4 +69,36 @@ CREATE TABLE rounds (
 );
 `;
 
-export const migrations: readonly string[] = [initialSchema, reviewRounds];
+// Chats used to be one stream cut by "New conversation" dividers; each stretch between them becomes a conversation,
+// titled by its first owner message, and each Claude session belongs to the conversation its messages are in.
+const conversations = `
+CREATE TABLE conversations (id INTEGER PRIMARY KEY, title TEXT, started_at TEXT NOT NULL,
+  opened INTEGER NOT NULL);
+ALTER TABLE chat_messages ADD COLUMN conversation_id INTEGER;
+ALTER TABLE conductor_sessions ADD COLUMN conversation_id INTEGER;
+UPDATE chat_messages SET conversation_id = 1 + (
+  SELECT COUNT(*) FROM chat_messages AS divider
+   WHERE divider.kind = 'system' AND divider.meta = '{"conversation":"new"}'
+     AND divider.id <= chat_messages.id);
+INSERT INTO conversations (id, title, started_at, opened)
+  SELECT grouped.conversation_id,
+         (SELECT substr(first.content, 1,
+                   CASE WHEN instr(first.content, char(10)) > 0
+                        THEN min(instr(first.content, char(10)) - 1, 80) ELSE 80 END)
+            FROM chat_messages AS first
+           WHERE first.conversation_id = grouped.conversation_id AND first.kind = 'user'
+           ORDER BY first.id LIMIT 1),
+         MIN(grouped.ts), grouped.conversation_id
+    FROM chat_messages AS grouped GROUP BY grouped.conversation_id;
+DELETE FROM chat_messages WHERE kind = 'system' AND meta = '{"conversation":"new"}';
+INSERT INTO conversations (title, started_at, opened)
+  SELECT NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 1
+   WHERE NOT EXISTS (SELECT 1 FROM conversations);
+UPDATE conductor_sessions SET conversation_id = (
+  SELECT MAX(conversation_id) FROM chat_messages
+   WHERE chat_messages.conductor_session = conductor_sessions.id);
+CREATE INDEX chat_messages_conversation ON chat_messages (conversation_id, id);
+CREATE INDEX conductor_sessions_conversation ON conductor_sessions (conversation_id);
+`;
+
+export const migrations: readonly string[] = [initialSchema, reviewRounds, conversations];

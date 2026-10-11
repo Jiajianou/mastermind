@@ -1,21 +1,26 @@
 import { actionRoutes } from "@mastermind/core/contracts";
-import type { ChatMessage, Proposal } from "@mastermind/core/contracts";
+import type { ChatMessage, Proposal, QuestionOption, StepMeta } from "@mastermind/core/contracts";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "../api/client.js";
 import { ChatScreen } from "../screens/ChatScreen.js";
 import { LiveProvider } from "../store/hooks.js";
 import type { LiveState } from "../store/state.js";
 import { createStore } from "../store/store.js";
-import { at, config, message, stateWith, task } from "../testing/fixtures.js";
+import { at, config, conversation, message, stateWith, task } from "../testing/fixtures.js";
 
 interface Request {
   method: string;
   path: string;
   body: unknown;
 }
+
+vi.mock("./highlight.js", () => ({
+  colorize: (code: string, fence: string) =>
+    Promise.resolve(`<span class="token-${fence}">${code.replaceAll("<", "&lt;")}</span>`),
+}));
 
 const requests: Request[] = [];
 
@@ -41,6 +46,26 @@ function serveActions(): void {
       return Promise.resolve(Response.json(holdProposal("rejected")));
     if (path === "/api/plans/3/start")
       return Promise.resolve(Response.json([task("lexer"), task("parser", { deps: ["lexer"] })]));
+    if (path === "/api/conversations")
+      return Promise.resolve(
+        Response.json({
+          model: "opus",
+          replying: false,
+          conversationId: 4,
+          conversations: [conversation(4), ...conversations],
+          messages: [],
+        }),
+      );
+    if (path === "/api/conversations/3/open")
+      return Promise.resolve(
+        Response.json({
+          model: "opus",
+          replying: false,
+          conversationId: 3,
+          conversations,
+          messages: [message(7, { conversationId: 3, content: "how should sync work?" })],
+        }),
+      );
     if (path === "/api/chat")
       return Promise.resolve(
         Response.json({
@@ -64,16 +89,32 @@ function renderChat(state: Partial<LiveState> = {}) {
   return store;
 }
 
+const question = (
+  id: number,
+  text: string,
+  options: QuestionOption[],
+  { header = null, multiSelect = false }: { header?: string | null; multiSelect?: boolean } = {},
+): ChatMessage =>
+  message(id, {
+    kind: "question",
+    content: text,
+    meta: { header, options, multiSelect },
+    turnId: "t",
+  });
+
+const conversations = [
+  conversation(1, { title: "Plan a password manager", lastActivityAt: at(20) }),
+  conversation(3, { title: "Sync design", lastActivityAt: at(10) }),
+];
+
 const chatWith = (messages: ChatMessage[], replying = false): LiveState["chat"] => ({
   model: "opus",
   replying,
+  conversationId: 1,
+  conversations,
   messages,
   drafts: {},
   activity: null,
-});
-
-beforeAll(() => {
-  Element.prototype.scrollIntoView = () => undefined;
 });
 
 afterEach(() => {
@@ -126,22 +167,206 @@ describe("chat screen", () => {
     act(() => {
       store.dispatch({ type: "chat.turn", turnId: "turn-1", replying: true });
     });
-    expect(progress()).toBe("Thinking…");
+    expect(progress()).toMatch(/^✻Thinking…\(\d+s\)$/);
 
     act(() => {
       store.dispatch({ type: "chat.activity", turnId: "turn-1", text: "Reading src/app.ts" });
     });
-    expect(progress()).toBe("Reading src/app.ts…");
+    expect(progress()).toMatch(/^✻Reading src\/app\.ts…/);
 
     act(() => {
       store.dispatch({ type: "chat.delta", turnId: "turn-1", text: "Found it." });
     });
-    expect(progress()).toBe("mastermind is replying");
+    expect(progress()).toMatch(/^✻Writing…/);
 
     act(() => {
       store.dispatch({ type: "chat.turn", turnId: "turn-1", replying: false });
     });
     expect(progress()).toBeNull();
+  });
+
+  it("shows each step mastermind took with its outcome, and the detail behind it on demand", () => {
+    const step = (id: number, content: string, meta: StepMeta) =>
+      message(id, { kind: "step", content, meta, turnId: "t" });
+    renderChat({
+      chat: chatWith([
+        message(1, { content: "what's in a.ts?", turnId: "t" }),
+        step(2, "Thought for 4s", { step: "thinking", status: "done", detail: null }),
+        step(3, "Read src/a.ts", { step: "tool", status: "done", detail: "1\tconst a = 1;" }),
+        step(4, "Hold lexer", { step: "tool", status: "failed", detail: "no such task" }),
+        step(5, "Checking the project", { step: "tool", status: "running", detail: null }),
+      ]),
+    });
+
+    const log = screen.getByRole("log");
+    expect(within(log).getByText("Thought for 4s")).toBeDefined();
+    expect(within(log).getByText("Read src/a.ts").closest("details")?.textContent).toContain(
+      "const a = 1;",
+    );
+    expect(within(log).getByText("Hold lexer").closest("details")?.textContent).toContain(
+      "(failed)",
+    );
+    expect(within(log).getByText("Checking the project").parentElement?.textContent).toContain(
+      "(in progress)",
+    );
+  });
+
+  it("answers a question with one click, then shows the answer instead of the choices", async () => {
+    serveActions();
+    const store = renderChat({
+      chat: chatWith([
+        message(1, { turnId: "t" }),
+        question(2, "What should we build first?", [
+          { label: "Browser extension (recommended)", description: "Fill passwords in place." },
+          { label: "Desktop app" },
+        ]),
+      ]),
+    });
+    const card = screen.getByRole("region", { name: "Question" });
+    expect(within(card).getByText("Recommended")).toBeDefined();
+
+    await userEvent.setup().click(within(card).getByRole("button", { name: /Browser extension/ }));
+
+    const answers = [{ questionId: 2, answer: "Browser extension" }];
+    expect(requests).toEqual([
+      { method: "POST", path: "/api/chat", body: { text: "Browser extension", answers } },
+    ]);
+    act(() => {
+      store.dispatch({
+        type: "chat.message",
+        message: message(3, { content: "Browser extension", meta: { answers }, turnId: "t2" }),
+      });
+    });
+    expect(within(card).getByText("You answered: Browser extension")).toBeDefined();
+    expect(
+      within(card)
+        .getAllByRole("button")
+        .every((button) => button.matches(":disabled")),
+    ).toBe(true);
+  });
+
+  it("answers several questions asked together in one message, whatever else is said meanwhile", async () => {
+    serveActions();
+    renderChat({
+      chat: chatWith([
+        message(1, { turnId: "t" }),
+        question(2, "What should it be written in?", [{ label: "TypeScript" }, { label: "Rust" }], {
+          header: "Tech stack",
+        }),
+        question(
+          3,
+          "Which browsers?",
+          [{ label: "Chrome" }, { label: "Firefox" }, { label: "Safari" }],
+          {
+            header: "Browsers",
+            multiSelect: true,
+          },
+        ),
+        message(4, { content: "what does sync cost?", turnId: "t2" }),
+      ]),
+    });
+    const user = userEvent.setup();
+    const card = screen.getByRole("region", { name: "Questions" });
+    const submit = within(card).getByRole("button", { name: "Submit answers" });
+
+    await user.click(within(card).getByRole("button", { name: /TypeScript/ }));
+    expect(requests).toEqual([]);
+    expect(submit.matches(":disabled")).toBe(true);
+    expect(card.textContent).toContain("1 of 2 answered");
+
+    await user.click(within(card).getByRole("checkbox", { name: /Chrome/ }));
+    await user.click(within(card).getByRole("checkbox", { name: /Safari/ }));
+    await user.click(submit);
+
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        path: "/api/chat",
+        body: {
+          text: "Tech stack: TypeScript\nBrowsers: Chrome, Safari",
+          answers: [
+            { questionId: 2, answer: "TypeScript" },
+            { questionId: 3, answer: "Chrome, Safari" },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("sends the owner's own words instead of an option", async () => {
+    serveActions();
+    renderChat({
+      chat: chatWith([
+        message(1, { turnId: "t" }),
+        question(2, "Which store?", [{ label: "SQLite" }, { label: "Postgres" }]),
+      ]),
+    });
+    const user = userEvent.setup();
+    const card = screen.getByRole("region", { name: "Question" });
+
+    await user.type(
+      within(card).getByRole("textbox", { name: "Your own answer" }),
+      "Neither, use S3",
+    );
+    await user.click(within(card).getByRole("button", { name: "Send" }));
+
+    expect(requests.at(-1)?.body).toEqual({
+      text: "Neither, use S3",
+      answers: [{ questionId: 2, answer: "Neither, use S3" }],
+    });
+  });
+
+  it("shows fenced code as a labelled, highlighted block with a copy button", async () => {
+    renderChat({
+      chat: chatWith([
+        message(1, { content: "show me", turnId: "t" }),
+        message(2, {
+          kind: "conductor",
+          content: "Here:\n\n```ts\nconst a: number = 1;\n```\n\nand `inline` code.",
+          turnId: "t",
+        }),
+      ]),
+    });
+
+    const block = screen.getByRole("figure");
+    expect(within(block).getByText("ts")).toBeDefined();
+    expect(within(block).getByRole("button", { name: "Copy" })).toBeDefined();
+    expect(
+      await within(block).findByText("const a: number = 1;", { selector: ".token-ts" }),
+    ).toBeDefined();
+    expect(screen.getByText("inline").tagName).toBe("CODE");
+  });
+
+  it("lists the conversations in the sidebar, opens an earlier one and starts a new one", async () => {
+    serveActions();
+    renderChat({ chat: chatWith([message(1, { content: "plan a password manager" })]) });
+    const user = userEvent.setup();
+    const sidebar = screen.getByRole("navigation", { name: "Conversations" });
+    expect(
+      within(sidebar)
+        .getAllByRole("button")
+        .map((button) => [button.textContent, button.getAttribute("aria-current")]),
+    ).toEqual([
+      ["＋ New conversation", null],
+      ["Plan a password manager", "true"],
+      ["Sync design", null],
+    ]);
+
+    await user.click(within(sidebar).getByRole("button", { name: "Sync design" }));
+
+    expect(requests.at(-1)).toMatchObject({ path: "/api/conversations/3/open" });
+    expect(screen.getByRole("log").textContent).toContain("how should sync work?");
+    expect(screen.getByRole("log").textContent).not.toContain("plan a password manager");
+    expect(
+      within(sidebar).getByRole("button", { name: "Sync design" }).getAttribute("aria-current"),
+    ).toBe("true");
+
+    await user.click(within(sidebar).getByRole("button", { name: /New conversation/ }));
+
+    expect(requests.at(-1)).toMatchObject({ method: "POST", path: "/api/conversations" });
+    expect(screen.getByRole("log").textContent).toBe("");
+    expect(screen.getByRole("heading", { name: /What should we build in/ })).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Build and test commands" })).toBeNull();
   });
 
   it("adds a newline on Shift+Enter and sends the whole message on Enter", async () => {

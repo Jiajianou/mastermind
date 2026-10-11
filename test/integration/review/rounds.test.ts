@@ -250,7 +250,7 @@ describe("review rounds", () => {
     expect(harness.errors).toEqual([]);
   });
 
-  it("reaches the same action from the chat's request_changes tool, with an action line naming the round", async () => {
+  it("reaches the same action from the chat's request_changes tool, with a step row naming the round", async () => {
     const requests: RoundRequest[] = [];
     const harness = await conductorHarness({
       scenario: {
@@ -318,10 +318,9 @@ describe("review rounds", () => {
     );
     const turn = await harness.waitForTurnEnd(turnId);
 
-    expect(turn.at(-1)).toMatchObject({
-      kind: "action",
-      content: "✓ Requested changes on parser (round 2)",
-    });
+    expect(turn.find((message) => message.kind === "step")?.content).toBe(
+      "Requested changes on parser (round 2)",
+    );
     expect(requests).toMatchObject([
       {
         taskId: "parser",

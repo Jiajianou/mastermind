@@ -180,7 +180,7 @@ describe("steering sessions", () => {
     expect(harness.db.tasks.get("blocked-task")?.status).toBe("blocked");
   });
 
-  it("reaches the manager from the chat's message_session tool and the HTTP route, and the action line names the task", async () => {
+  it("reaches the manager from the chat's message_session tool and the HTTP route, and the step row names the task", async () => {
     const calls: { sessionId: number; text: string }[] = [];
     const harness = await conductorHarness({
       scenario: {
@@ -215,7 +215,7 @@ describe("steering sessions", () => {
       await harness.post("/api/sessions/1/message", { text: "  Also add tests.\n" }),
     );
 
-    expect(turn.at(-1)).toMatchObject({ kind: "action", content: "✓ Sent to parser" });
+    expect(turn.find((message) => message.kind === "step")?.content).toBe("Sent to parser");
     expect(routed).toMatchObject({ delivery: "live", session: { id: 1, taskId: "parser" } });
     expect(calls).toEqual([
       { sessionId: 1, text: "Use the new token type." },

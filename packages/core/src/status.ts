@@ -290,6 +290,8 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "chat.delta":
       case "chat.turn":
       case "chat.activity":
+      case "chat.opened":
+      case "conversation.updated":
       case "proposal.updated":
       case "notification":
       case "service.stopping":

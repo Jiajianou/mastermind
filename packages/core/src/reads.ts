@@ -1,4 +1,5 @@
 import { ActionError, requireTask } from "./actions/index.js";
+import { chatView } from "./chat.js";
 import type { ChatState } from "./chat.js";
 import { checkLogMaxBytes, readLogTail } from "./checks/log.js";
 import { isMissingFileError } from "./errno.js";
@@ -175,7 +176,7 @@ export function createReadModels({
       return readCheckLog(check, lines);
     },
 
-    chat: (afterId) => ({ ...chat.status(), messages: db.chat.list(afterId) }),
+    chat: (afterId) => chatView(db, chat.status(), afterId),
 
     config,
 

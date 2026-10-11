@@ -5,6 +5,7 @@ import type {
   ChatView,
   Check,
   Config,
+  Conversation,
   InstanceInfo,
   IsoTimestamp,
   OwnerBranch,
@@ -39,6 +40,8 @@ export interface TerminalState {
 export interface ChatState {
   model: string | null;
   replying: boolean;
+  conversationId: number | null;
+  conversations: readonly Conversation[];
   messages: readonly ChatMessage[];
   drafts: Readonly<Record<string, string>>;
   activity: string | null;
@@ -116,6 +119,14 @@ export const initialState: LiveState = {
   ownerBranch: null,
   terminals: {},
   proposals: {},
-  chat: { model: null, replying: false, messages: [], drafts: {}, activity: null },
+  chat: {
+    model: null,
+    replying: false,
+    conversationId: null,
+    conversations: [],
+    messages: [],
+    drafts: {},
+    activity: null,
+  },
   notification: null,
 };

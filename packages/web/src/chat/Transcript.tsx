@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
 import { DecisionBox } from "./DecisionBox.js";
 import { EventLine } from "./EventLine.js";
 import { PlanList } from "./PlanList.js";
+import { QuestionCard } from "./QuestionCard.js";
 import { Reply } from "./Reply.js";
+import { StepRow } from "./StepRow.js";
 import { TurnProgress } from "./TurnProgress.js";
 import type { ChatEntry } from "./entries.js";
 
@@ -16,6 +17,17 @@ function Entry({ entry }: { entry: ChatEntry }) {
       return <p className="action-line">{entry.text}</p>;
     case "event":
       return <EventLine ts={entry.ts} text={entry.text} />;
+    case "step":
+      return (
+        <StepRow
+          label={entry.label}
+          status={entry.status}
+          thinking={entry.thinking}
+          detail={entry.detail}
+        />
+      );
+    case "questions":
+      return <QuestionCard items={entry.items} open={entry.open} />;
     case "decision":
       return (
         <DecisionBox
@@ -43,23 +55,14 @@ export function Transcript({
   progress,
 }: {
   entries: ChatEntry[];
-  progress: { label: string | null } | null;
+  progress: { label: string } | null;
 }) {
-  const end = useRef<HTMLDivElement>(null);
-  const last = entries.at(-1);
-  const lastText = last?.kind === "reply" ? last.text : null;
-
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [entries.length, lastText, progress?.label]);
-
   return (
     <div className="transcript" role="log" aria-label="Conversation">
       {entries.map((entry) => (
         <Entry key={entry.key} entry={entry} />
       ))}
       {progress !== null && <TurnProgress label={progress.label} />}
-      <div ref={end} />
     </div>
   );
 }

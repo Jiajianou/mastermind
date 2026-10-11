@@ -70,7 +70,7 @@ describe("milestone 4: steering a live worker from the chat", () => {
     const db = openProjectDb(repo);
 
     const added = await running.run(["chat", "add a greeting task"]);
-    expect(added).toMatchObject({ code: 0, stdout: "I added greeting.\n✓ Added 1 task\n" });
+    expect(added).toMatchObject({ code: 0, stdout: "✓ Added 1 task\nI added greeting.\n" });
     const worker = await waitFor(() => {
       const session = db.sessions.get(workerSessionId);
       return (
@@ -87,7 +87,7 @@ describe("milestone 4: steering a live worker from the chat", () => {
     expect(steered).toMatchObject({
       code: 0,
       stderr: "",
-      stdout: "I told the greeting worker.\n✓ Sent to greeting\n",
+      stdout: "✓ Sent to greeting\nI told the greeting worker.\n",
     });
 
     const events = await waitFor(() => {

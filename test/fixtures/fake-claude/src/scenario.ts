@@ -23,6 +23,7 @@ export type Step =
       streamMs?: number | undefined;
       contextTokens?: number | undefined;
     }
+  | { kind: "thinking"; tokens: number; streamMs?: number | undefined }
   | { kind: "read"; path: string }
   | { kind: "write"; path: string; content: string }
   | {
@@ -66,6 +67,11 @@ export const stepSchema: z.ZodType<Step> = z.lazy(() =>
       text: z.string(),
       streamMs: z.number().int().positive().optional(),
       contextTokens: z.number().int().positive().optional(),
+    }),
+    z.strictObject({
+      kind: z.literal("thinking"),
+      tokens: z.number().int().positive(),
+      streamMs: z.number().int().positive().optional(),
     }),
     z.strictObject({ kind: z.literal("read"), path: z.string() }),
     z.strictObject({ kind: z.literal("write"), path: z.string(), content: z.string() }),

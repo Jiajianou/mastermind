@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  ChatView,
   Check,
   ReviewNotes,
   Session,
@@ -88,10 +89,6 @@ function withoutDraft(drafts: ChatState["drafts"], turnId: string | null): ChatS
   return Object.fromEntries(Object.entries(drafts).filter(([id]) => id !== turnId));
 }
 
-function hasReply(chat: ChatState, turnId: string): boolean {
-  return chat.messages.some((message) => message.kind === "conductor" && message.turnId === turnId);
-}
-
 function withChat(state: LiveState, change: Partial<ChatState>): LiveState {
   return { ...state, chat: { ...state.chat, ...change } };
 }
@@ -141,14 +138,32 @@ function applySnapshot(
       ]),
     ),
     historyLoaded: {},
-    chat: {
-      model: chat.model,
-      replying: chat.replying,
-      messages: chat.messages,
-      drafts: {},
-      activity: null,
-    },
+    chat: chatFromView(chat),
   };
+}
+
+function chatFromView(view: ChatView): ChatState {
+  return {
+    model: view.model,
+    replying: view.replying,
+    conversationId: view.conversationId,
+    conversations: view.conversations,
+    messages: view.messages,
+    drafts: {},
+    activity: null,
+  };
+}
+
+function touchConversation(
+  conversations: ChatState["conversations"],
+  id: number,
+  at: string,
+): ChatState["conversations"] {
+  return conversations.map((conversation) =>
+    conversation.id === id && conversation.lastActivityAt < at
+      ? { ...conversation, lastActivityAt: at }
+      : conversation,
+  );
 }
 
 function upsertById<Item extends { id: number }>(items: readonly Item[], item: Item): Item[] {
@@ -255,7 +270,13 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
       );
     case "chat.message": {
       const { message } = action;
+      if (message.conversationId !== state.chat.conversationId) return state;
       return withChat(state, {
+        conversations: touchConversation(
+          state.chat.conversations,
+          message.conversationId,
+          message.ts,
+        ),
         messages: upsertMessage(state.chat.messages, message),
         drafts:
           message.kind === "conductor"
@@ -263,8 +284,24 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
             : state.chat.drafts,
       });
     }
+    // The stream announces an opened conversation and the request that opened it returns it too; whichever comes
+    // second is older than what the stream has applied since, so it is dropped.
+    case "chat.opened":
+      return action.view.conversationId === state.chat.conversationId
+        ? state
+        : { ...state, chat: chatFromView(action.view) };
+    case "conversation.updated": {
+      const { conversation } = action;
+      const known = state.chat.conversations.some(({ id }) => id === conversation.id);
+      return withChat(state, {
+        conversations: known
+          ? state.chat.conversations.map((existing) =>
+              existing.id === conversation.id ? conversation : existing,
+            )
+          : [conversation, ...state.chat.conversations],
+      });
+    }
     case "chat.delta": {
-      if (hasReply(state.chat, action.turnId)) return state;
       const draft = `${state.chat.drafts[action.turnId] ?? ""}${action.text}`;
       return withChat(state, {
         drafts: { ...state.chat.drafts, [action.turnId]: draft },

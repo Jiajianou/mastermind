@@ -51,6 +51,12 @@ async function prompts(harness: ConductorHarness): Promise<string[]> {
 const judgeSessions = (harness: ConductorHarness) =>
   harness.db.sessions.list().filter((session) => session.role === "judge");
 
+const latestSession = (harness: ConductorHarness) =>
+  harness.db.conductorSessions.latest(harness.db.conversations.active().id);
+
+const latestSummary = (harness: ConductorHarness) =>
+  harness.db.conductorSessions.latestSummary(harness.db.conversations.active().id);
+
 describe("Conductor rollover", () => {
   it("summarises a conversation whose context passed the threshold and continues the chat in a new one from the summary", async () => {
     const harness = await conductorHarness({
@@ -58,16 +64,16 @@ describe("Conductor rollover", () => {
     });
 
     await chat(harness, "plan the lexer");
-    const first = harness.db.conductorSessions.current();
+    const first = latestSession(harness);
     expect(first?.tokens).toBe(40_000);
     await chat(harness, "then the parser");
-    await waitFor(() => harness.db.conductorSessions.latestSummary() === summary);
+    await waitFor(() => latestSummary(harness) === summary);
     await chat(harness, "what was my plan");
 
     const runs = await conductorRuns(harness);
     expect(runs.map(({ flag }) => flag)).toEqual(["--session-id", "--session-id"]);
     expect(runs[0]?.id).toBe(first?.id);
-    const second = harness.db.conductorSessions.current();
+    const second = latestSession(harness);
     expect(second).toMatchObject({ id: runs[1]?.id, endedAt: null, tokens: 12_000 });
 
     const received = await prompts(harness);
@@ -106,8 +112,8 @@ describe("Conductor rollover", () => {
     const runs = await conductorRuns(harness);
     expect(runs.map(({ flag }) => flag)).toEqual(["--session-id"]);
     expect(harness.messages().at(-1)?.content).toBe("Lexer first, then the parser.");
-    expect(harness.db.conductorSessions.latestSummary()).toBeNull();
-    expect(harness.db.conductorSessions.current()).toMatchObject({
+    expect(latestSummary(harness)).toBeNull();
+    expect(latestSession(harness)).toMatchObject({
       id: runs[0]?.id,
       endedAt: null,
     });

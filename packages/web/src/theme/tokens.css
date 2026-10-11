@@ -11,6 +11,8 @@
   --color-added-line: #22394a;
   --color-peach: #e8a37c;
   --color-removed-line: #45302a;
+  --color-success: #a3be8c;
+  --color-danger: #bf616a;
 
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;

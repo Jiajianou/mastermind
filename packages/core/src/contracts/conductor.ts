@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { proposalStatusSchema } from "./chat.js";
+import { proposalStatusSchema, questionOptionSchema } from "./chat.js";
 import { isoTimestampSchema } from "./common.js";
 import { newTaskSchema } from "./tasks.js";
 
@@ -36,6 +36,13 @@ export const proposePlanInputSchema = z.strictObject({
   tasks: z.array(plannedTaskSchema).min(1),
 });
 
+export const askOwnerInputSchema = z.strictObject({
+  question: z.string().trim().min(1),
+  header: z.string().trim().min(1).max(24).optional(),
+  options: z.array(questionOptionSchema).min(2).max(6),
+  multiSelect: z.boolean().default(false),
+});
+
 export const planMetaSchema = z.object({
   tasks: z.array(newTaskSchema),
   notes: z.record(z.string(), z.string()).default({}),
@@ -55,6 +62,7 @@ export const sessionEventsInputSchema = z.strictObject({
 
 export const conductorSessionSchema = z.object({
   id: z.string(),
+  conversationId: z.int().nullable(),
   startedAt: isoTimestampSchema,
   endedAt: isoTimestampSchema.nullable(),
   summary: z.string().nullable(),
