@@ -201,7 +201,15 @@ test.describe("a long reply", () => {
     await expect(paragraph(50)).toBeInViewport();
     await expect(paragraph(60)).toBeInViewport();
     await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+    await page.mouse.wheel(0, 20_000);
     await fixedInPlace();
+    expect(
+      await page.evaluate(() =>
+        [document.documentElement, document.body].map(
+          (element) => getComputedStyle(element).overscrollBehaviorY,
+        ),
+      ),
+    ).toEqual(["none", "none"]);
   });
 });
 
