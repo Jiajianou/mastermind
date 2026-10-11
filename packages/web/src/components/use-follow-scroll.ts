@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 const bottomSlackPx = 24;
@@ -10,36 +10,59 @@ export interface FollowScroll<Element extends HTMLElement> {
   follow: () => void;
 }
 
-const isAtBottom = (element: HTMLElement, height: number): boolean =>
-  height - element.scrollTop - element.clientHeight <= bottomSlackPx;
+interface Geometry {
+  scrollHeight: number;
+  clientHeight: number;
+}
 
-// The element follows new content only if the reader was at its bottom before the content arrived: the live scroll
-// position is compared with the height measured before this render, because a scroll the reader just made may not
-// have fired its scroll event yet, and snapping back over it is what made a growing view jump.
+const geometryOf = (element: HTMLElement): Geometry => ({
+  scrollHeight: element.scrollHeight,
+  clientHeight: element.clientHeight,
+});
+
+// The element follows new content only if the reader was at its bottom before the content arrived. That is judged
+// from the size measured before the change with the live scroll position, because a scroll the reader just made may
+// not have fired its scroll event yet, and snapping back over it is what made a growing view jump. The element's
+// own height counts as measured too: it changes without a scroll when the composer below it grows.
 export function useFollowScroll<Element extends HTMLElement>(): FollowScroll<Element> {
   const ref = useRef<Element>(null);
-  const measuredHeight = useRef(0);
+  const measured = useRef<Geometry>({ scrollHeight: 0, clientHeight: 0 });
   const [following, setFollowing] = useState(true);
 
-  useLayoutEffect(() => {
+  const keepUp = useCallback(() => {
     const element = ref.current;
     if (element === null) return;
-    if (isAtBottom(element, measuredHeight.current)) element.scrollTop = element.scrollHeight;
-    measuredHeight.current = element.scrollHeight;
-  });
+    const { scrollHeight, clientHeight } = measured.current;
+    if (scrollHeight - element.scrollTop - clientHeight <= bottomSlackPx)
+      element.scrollTop = element.scrollHeight;
+    measured.current = geometryOf(element);
+  }, []);
+
+  useLayoutEffect(keepUp);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) return;
+    const observer = new ResizeObserver(keepUp);
+    observer.observe(element);
+    for (const child of element.children) observer.observe(child);
+    return () => {
+      observer.disconnect();
+    };
+  }, [keepUp]);
 
   const onScroll = useCallback(() => {
     const element = ref.current;
     if (element === null) return;
-    measuredHeight.current = element.scrollHeight;
-    setFollowing(isAtBottom(element, element.scrollHeight));
+    measured.current = geometryOf(element);
+    setFollowing(element.scrollHeight - element.scrollTop - element.clientHeight <= bottomSlackPx);
   }, []);
 
   const follow = useCallback(() => {
     const element = ref.current;
     if (element !== null) {
       element.scrollTop = element.scrollHeight;
-      measuredHeight.current = element.scrollHeight;
+      measured.current = geometryOf(element);
     }
     setFollowing(true);
   }, []);

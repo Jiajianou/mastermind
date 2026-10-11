@@ -435,6 +435,9 @@ describe("Conductor chat", () => {
       type: "conversation.deleted",
       conversationId: earlier,
     });
+    await expect(harness.delete(`/api/conversations/${String(earlier)}`)).rejects.toThrow(
+      `no conversation ${String(earlier)}`,
+    );
   });
 
   it("deleting the open conversation stops its reply, expires what it asked and opens an empty one", async () => {

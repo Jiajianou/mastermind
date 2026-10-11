@@ -3,6 +3,7 @@ import { createWriteStream } from "node:fs";
 import type { WriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { ActionError } from "../actions/index.js";
 import { errorMessage } from "../contracts/index.js";
 import { conversationTitle, postChatMessage, updateChatMessage } from "../chat.js";
 import type { ClaudeCli, PrintOptions } from "../claude.js";
@@ -19,7 +20,6 @@ import type {
   QuestionAnswer,
   Session,
 } from "../contracts/index.js";
-import { RecordNotFoundError } from "../db/index.js";
 import type { Db, NewChatMessage } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import { exitCode, stopGroup } from "../procs.js";
@@ -554,6 +554,11 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     return message;
   }
 
+  function requireConversation(id: number): void {
+    if (db.conversations.get(id) === null)
+      throw ActionError.fromMessage("not_found", `no conversation ${String(id)}`);
+  }
+
   // Leaving a conversation stops its reply and its process, but not its Claude session, so coming back resumes it.
   function leave(): void {
     deferred = null;
@@ -632,7 +637,7 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
     },
 
     deleteConversation(id) {
-      if (db.conversations.get(id) === null) throw new RecordNotFoundError("conversations", id);
+      requireConversation(id);
       const open = id === conversationId;
       if (open) leave();
       db.conversations.delete(id);
@@ -641,8 +646,7 @@ export function createChatRunner(options: ChatRunnerOptions): ChatRunner {
 
     openConversation(id) {
       if (id === conversationId) return db.conversations.open(id);
-      const conversation = db.conversations.get(id);
-      if (conversation === null) throw new RecordNotFoundError("conversations", id);
+      requireConversation(id);
       leave();
       return enter(db.conversations.open(id));
     },
