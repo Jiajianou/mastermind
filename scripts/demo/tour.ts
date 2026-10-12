@@ -85,14 +85,23 @@ async function tour(director: Director): Promise<void> {
   );
 
   await director.skipUntil(page.getByRole("link", { name: /^2 working/ }));
-  await director.dwell(1200);
+  await director.dwell(600);
   await director.click(director.screen("Overview"));
-  await director.dwell(3000);
-
-  await director.click(director.screen("Tasks"));
-  await director.dwell(800);
-  await director.click(page.getByRole("tab", { name: "Graph" }));
+  await director.dwell(3200);
+  await director.click(director.screen("Sessions"));
+  await director.click(
+    page.getByRole("navigation", { name: "Session list" }).getByRole("link", { name: /health/ }),
+  );
+  const transcript = page.getByRole("region", { name: "Transcript" });
+  await transcript.getByText("Thinking…").waitFor(slowStep);
   await director.dwell(2500);
+  await transcript.getByText("then route GET /health to it").waitFor(slowStep);
+  await director.dwell(1500);
+  const edit = transcript.locator("details.tool-step", { hasText: "Updated src/server.js" });
+  await edit.last().waitFor(slowStep);
+  await director.dwell(1200);
+  await director.click(edit.last().locator("summary"));
+  await director.dwell(3000);
 
   await director.click(director.screen("Review"));
   const ready = page.getByRole("navigation", { name: "Ready for review" });

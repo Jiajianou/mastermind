@@ -93,7 +93,14 @@ export const demoScenario: Scenario = {
     },
     workerTurn("health", [
       { kind: "read", path: "src/server.js" },
-      pause(1500),
+      pause(2500),
+      { kind: "thinking", tokens: 1400, streamMs: 160 },
+      {
+        kind: "text",
+        text: "I'll put the check in its own `health()` module, then route `GET /health` to it from the server.",
+        streamMs: 90,
+      },
+      pause(1200),
       { kind: "write", path: "src/health.js", content: healthModule },
       pause(1500),
       {
@@ -118,7 +125,7 @@ export const demoScenario: Scenario = {
     ]),
     workerTurn("docs", [
       { kind: "read", path: "README.md" },
-      pause(2000),
+      pause(5000),
       {
         kind: "edit",
         path: "README.md",

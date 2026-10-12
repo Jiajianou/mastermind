@@ -36,7 +36,6 @@ async function record(): Promise<void> {
 
   console.log(`Starting mastermind on a demo repo, ${demoProject}, with fake-claude`);
   const repo = await createTempRepo({ name: demoProject, files: demoRepoFiles });
-  await repo.git("switch", "--quiet", "--create", "dev");
   const env = await isolatedEnv();
   await env.writeScenario(demoScenario);
   const { webApp } = await startMastermind(repo, env.env);
