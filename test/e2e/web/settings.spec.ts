@@ -36,6 +36,10 @@ test("changing the worker model in Settings persists to config.yaml", async ({
 
 test.describe("a change from the chat", () => {
   test.use({
+    repoFiles: {
+      "README.md": "# Demo\n",
+      "mastermind.yaml": "conductor:\n  confirm: [set_config]\n",
+    },
     scenario: {
       turns: [
         {

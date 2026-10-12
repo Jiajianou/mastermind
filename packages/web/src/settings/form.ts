@@ -12,6 +12,7 @@ export interface SettingsValues {
   workerPermissions: WorkerPermissions;
   workerAllowedTools: string;
   sandboxEnabled: boolean;
+  restrictNetwork: boolean;
   allowedDomains: string;
   setupCommand: string;
   buildCommand: string;
@@ -43,6 +44,7 @@ export function settingsValues(config: Config): SettingsValues {
     workerPermissions: config.workerPermissions,
     workerAllowedTools: lines(config.workerAllowedTools),
     sandboxEnabled: config.sandbox.enabled,
+    restrictNetwork: config.sandbox.restrictNetwork,
     allowedDomains: lines(config.sandbox.allowedDomains),
     setupCommand: config.commands.setup,
     buildCommand: config.commands.build,
@@ -65,7 +67,11 @@ function settingsLayer(values: SettingsValues) {
     maxWorkers: values.maxWorkers === "auto" ? "auto" : Number(values.maxWorkers),
     workerPermissions: values.workerPermissions,
     workerAllowedTools: listItems(values.workerAllowedTools),
-    sandbox: { enabled: values.sandboxEnabled, allowedDomains: listItems(values.allowedDomains) },
+    sandbox: {
+      enabled: values.sandboxEnabled,
+      restrictNetwork: values.restrictNetwork,
+      allowedDomains: listItems(values.allowedDomains),
+    },
     commands: {
       setup: values.setupCommand.trim(),
       build: values.buildCommand.trim(),

@@ -212,7 +212,7 @@ export function config(conductorModel: string): Config {
     reviewer: { enabled: true },
     notifications: { desktop: true },
     stuckCheck: { after: "60m", every: "20m" },
-    sandbox: { enabled: true, allowedDomains: [], allowWrite: [] },
+    sandbox: { enabled: true, restrictNetwork: false, allowedDomains: [], allowWrite: [] },
     conductor: { confirm: [], wakeOnEvents: [] },
     logRetention: "30d",
     port: 4700,

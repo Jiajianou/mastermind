@@ -442,6 +442,7 @@ describe("Conductor chat", () => {
 
   it("deleting the open conversation stops its reply, expires what it asked and opens an empty one", async () => {
     const harness = await conductorHarness({
+      config: { conductor: { confirm: ["set_config"] } },
       scenario: {
         turns: [
           conductorTurn("use sonnet", [

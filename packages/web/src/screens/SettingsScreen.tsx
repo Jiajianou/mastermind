@@ -171,21 +171,31 @@ function SettingsForm({ config, plan }: { config: Config; plan: SubscriptionPlan
         <legend>Sandbox</legend>
         <CheckField
           label="Run workers in Claude Code's sandbox"
-          hint="Writes stay inside the task's workspace and network access is limited to the domains below."
+          hint="Writes stay inside the task's workspace."
           checked={values.sandboxEnabled}
           onChange={(checked) => {
             set("sandboxEnabled", checked);
           }}
         />
-        <TextField
-          label="Allowed domains"
-          hint="One per line, such as registry.npmjs.org."
-          multiline
-          value={values.allowedDomains}
-          onChange={(value) => {
-            set("allowedDomains", value);
+        <CheckField
+          label="Only let workers reach the allowed domains"
+          hint="Off: workers can reach any site in Bypass mode, so nothing waits for you. On: other sites are refused, and after a task fails you are asked whether to allow them."
+          checked={values.restrictNetwork}
+          onChange={(checked) => {
+            set("restrictNetwork", checked);
           }}
         />
+        {values.restrictNetwork && (
+          <TextField
+            label="Allowed domains"
+            hint="One per line, such as registry.npmjs.org."
+            multiline
+            value={values.allowedDomains}
+            onChange={(value) => {
+              set("allowedDomains", value);
+            }}
+          />
+        )}
       </fieldset>
 
       <fieldset className="settings-group panel">

@@ -19,7 +19,9 @@ interface Harness {
   advance(ms: number): void;
 }
 
-async function setup(): Promise<Harness> {
+const gatedTools = ["approve_rebase", "rebase_my_branch", "discard_task", "set_config"];
+
+async function setup(confirm: string[] | null = gatedTools): Promise<Harness> {
   const root = await makeTempDir();
   const context = { repoRoot: root, homeDir: join(root, "home") };
   let now = new Date("2026-10-06T12:00:00.000Z");
@@ -31,6 +33,7 @@ async function setup(): Promise<Harness> {
   const bus = createEventBus();
   const events: BusEvent[] = [];
   bus.subscribe((event) => events.push(event));
+  if (confirm !== null) await setConfig(context, { conductor: { confirm } });
   let config = await loadConfig(context);
   const actions = createActionRegistry(
     {
@@ -85,17 +88,13 @@ async function proposeWorkers(harness: Harness, maxWorkers: number): Promise<num
 }
 
 describe("proposal gate", () => {
-  it("by default gates only the tools that move main, throw work away or change settings", async () => {
-    const harness = await setup();
+  it("by default gates nothing, so the Conductor never waits on the owner", async () => {
+    const harness = await setup(null);
 
-    const gated = actionTools.filter(({ name }) => harness.gate.isGated(name));
-
-    expect(gated.map(({ name }) => name).sort()).toEqual([
-      "approve_rebase",
-      "discard_task",
-      "rebase_my_branch",
-      "set_config",
-    ]);
+    expect(actionTools.filter(({ name }) => harness.gate.isGated(name))).toEqual([]);
+    expect(await harness.gate.run(tool("set_config"), { maxWorkers: 3 })).toMatchObject({
+      kind: "done",
+    });
   });
 
   it.each([

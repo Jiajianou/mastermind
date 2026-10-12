@@ -38,6 +38,7 @@ describe("resolveConfig", () => {
       stuckCheck: { after: "1h30m", every: "20m" },
       sandbox: {
         enabled: true,
+        restrictNetwork: false,
         allowedDomains: [],
         allowWrite: ["~/.npm", "/opt/cache", "build/tmp"],
       },

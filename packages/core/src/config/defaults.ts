@@ -30,9 +30,9 @@ export function defaultConfig(context: ConfigContext): Config {
     reviewer: { enabled: true },
     notifications: { desktop: true },
     stuckCheck: { after: "60m", every: "20m" },
-    sandbox: { enabled: true, allowedDomains: [], allowWrite: [] },
+    sandbox: { enabled: true, restrictNetwork: false, allowedDomains: [], allowWrite: [] },
     conductor: {
-      confirm: ["approve_rebase", "rebase_my_branch", "discard_task", "set_config"],
+      confirm: [],
       wakeOnEvents: [],
     },
     logRetention: "30d",

@@ -104,7 +104,7 @@ export function offerBlockedHosts(options: BlockedAccessOptions): () => void {
 
   function offerHostsOf(taskId: string): void {
     const sandbox = options.sandbox();
-    if (!sandbox.enabled) return;
+    if (!sandbox.enabled || !sandbox.restrictNetwork) return;
     const offered = offeredHosts(db);
     for (const host of hostsDeniedToTask(db, taskId)) {
       if (offered.has(host) || hostAllowed(host, sandbox.allowedDomains)) continue;

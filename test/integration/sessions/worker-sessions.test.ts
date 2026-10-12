@@ -143,6 +143,7 @@ describe("worker sessions", () => {
           workerPermissions,
           sandbox: {
             enabled: true,
+            restrictNetwork: true,
             allowedDomains: ["registry.npmjs.org"],
             allowWrite: ["~/.npm"],
           },

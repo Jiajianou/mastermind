@@ -106,6 +106,10 @@ test.describe("a reply", () => {
 
 test.describe("a decision", () => {
   test.use({
+    repoFiles: {
+      "README.md": "# Demo\n",
+      "mastermind.yaml": "conductor:\n  confirm: [set_config]\n",
+    },
     scenario: {
       turns: [
         {

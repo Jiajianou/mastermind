@@ -69,6 +69,7 @@ const notificationsSchema = z.strictObject({ desktop: z.boolean() });
 const stuckCheckSchema = z.strictObject({ after: durationSchema, every: durationSchema });
 const sandboxSchema = z.strictObject({
   enabled: z.boolean(),
+  restrictNetwork: z.boolean(),
   allowedDomains: z.array(nonEmptyString),
   allowWrite: z.array(nonEmptyString),
 });

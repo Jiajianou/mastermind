@@ -19,7 +19,7 @@ const task = (id: string, deps: string[] = []) => ({
 
 describe("MCP server", () => {
   it("lists the Conductor tools, each with a description and an input schema", async () => {
-    const test = await serveTestApi();
+    const test = await serveTestApi({ confirm: ["set_config"] });
     const client = await connect(test);
 
     const { tools } = await client.listTools();
@@ -98,7 +98,7 @@ describe("MCP server", () => {
   });
 
   it("answers set_config with awaiting_confirmation, and the owner's confirm over HTTP applies it", async () => {
-    const test = await serveTestApi();
+    const test = await serveTestApi({ confirm: ["set_config"] });
     const client = await connect(test);
 
     const result = await callTool(client, "set_config", { maxAttempts: 5 });

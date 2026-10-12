@@ -89,12 +89,14 @@ export interface TestApiOptions {
   port?: PortChoice;
   staleToken?: string;
   loadPty?: LoadPty;
+  confirm?: string[];
 }
 
 export async function serveTestApi({
   port,
   staleToken,
   loadPty,
+  confirm,
 }: TestApiOptions = {}): Promise<TestApi> {
   const root = await makeTempDir("api");
   const stateDir = join(root, ".mastermind");
@@ -120,6 +122,7 @@ export async function serveTestApi({
   const env = { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: "1" };
   const git = createGit({ registry, env });
   const configContext = { repoRoot: root, homeDir: root };
+  if (confirm !== undefined) await setConfig(configContext, { conductor: { confirm } });
   let config = await loadConfig(configContext);
   const actions = createActionRegistry(
     {

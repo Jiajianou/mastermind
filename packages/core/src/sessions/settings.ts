@@ -46,6 +46,8 @@ function denyRules(worktree: string, protectedPaths: readonly string[]): string[
     .flatMap((path) => [`Edit(/${path}/**)`, `Write(/${path}/**)`]);
 }
 
+// Without strictAllowlist, Claude Code decides a host outside the list by permission mode: bypassPermissions allows
+// it, auto mode checks it per command and the allowlist's acceptEdits mode refuses it, since nothing can be asked.
 function sandboxSettings(sandbox: Config["sandbox"]): JsonValue {
   if (!sandbox.enabled) return { enabled: false };
   return {
@@ -53,7 +55,10 @@ function sandboxSettings(sandbox: Config["sandbox"]): JsonValue {
     autoAllowBashIfSandboxed: true,
     allowUnsandboxedCommands: false,
     failIfUnavailable: true,
-    network: { allowedDomains: [...sandbox.allowedDomains], strictAllowlist: true },
+    network: {
+      allowedDomains: [...sandbox.allowedDomains],
+      strictAllowlist: sandbox.restrictNetwork,
+    },
     filesystem: { allowWrite: [...sandbox.allowWrite] },
   };
 }
