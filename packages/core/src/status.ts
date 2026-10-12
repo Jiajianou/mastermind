@@ -43,7 +43,7 @@ export interface EventLine {
 
 export interface StatusSnapshot {
   header: StatusHeader;
-  ownerOnMain: boolean;
+  mainPaused: boolean;
   running: readonly RunningSession[];
   summary: Summary;
   runningChecks: number;
@@ -157,12 +157,12 @@ function schedulerLines(
   return lines;
 }
 
-function checkoutLine({ branch, onMain }: BusEventOf<"checkout.updated">): Line {
+function checkoutLine({ branch, paused }: BusEventOf<"checkout.updated">): Line {
   return {
     label: "rebase",
-    text: onMain
-      ? `You're on ${branch}: rebasing onto ${branch} is paused until you switch to another branch`
-      : `You left ${branch}; rebasing onto ${branch} continues`,
+    text: paused
+      ? `${branch} has uncommitted changes: rebasing onto ${branch} is paused until you commit or stash them`
+      : `${branch} is clean again; rebasing onto ${branch} continues`,
   };
 }
 
@@ -183,7 +183,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
   const taskStatuses = new Map(db.tasks.list().map((task) => [task.id, task.status]));
   let flags = db.flags.get();
   let header = options.header;
-  let ownerOnMain = false;
+  let mainPaused = false;
   let branchRebase: BranchRebase | null = null;
   let events: EventLine[] = [];
   let nextLineId = 1;
@@ -207,7 +207,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
   function read(): StatusSnapshot {
     return {
       header,
-      ownerOnMain,
+      mainPaused,
       running: readRunning(),
       summary: options.summary(),
       runningChecks: runningChecks.size,
@@ -260,7 +260,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
         header = { ...header, mainCommit: event.commit.slice(0, 7) };
         return [];
       case "checkout.updated":
-        ownerOnMain = event.onMain;
+        mainPaused = event.paused;
         return [checkoutLine(event)];
       case "branch.updated": {
         const { rebase } = event.branch;

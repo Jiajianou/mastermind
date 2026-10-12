@@ -17,10 +17,12 @@ import type { CheckKind, Rebase, Task, TaskStatus } from "../contracts/index.js"
 import type { Db } from "../db/index.js";
 import type { Environment } from "../env.js";
 import type { EventBus } from "../events.js";
-import { deleteClone, fetchTaskIntoRepo, taskRef } from "../git/index.js";
+import { deleteClone, fetchTaskIntoRepo, GitError, taskRef } from "../git/index.js";
 import type { Git } from "../git/index.js";
 import type { ProcessRegistry } from "../procs.js";
-import { deleteRef, fastForwardMain, mainCheckedOut } from "./main-ref.js";
+import { deleteRef, fastForwardCheckout, fastForwardMain, mainCheckout } from "./main-ref.js";
+import type { FastForward } from "./main-ref.js";
+import { hasUncommittedChanges } from "./owner-checkout.js";
 import { squashBranch } from "./squash.js";
 
 export interface RebaseQueueOptions {
@@ -79,7 +81,7 @@ export function createRebaseQueue(options: RebaseQueueOptions): RebaseQueue {
   const statuses = new Map<string, TaskStatus>();
   let active: string | null = null;
   let draining = false;
-  let ownerOnMain = false;
+  let paused = false;
   let stopping = new AbortController();
   let unsubscribe: (() => void) | null = null;
 
@@ -91,20 +93,24 @@ export function createRebaseQueue(options: RebaseQueueOptions): RebaseQueue {
     bus.emit({ type: "rebase.updated", taskId: rebase.taskId, rebase });
   }
 
-  function setOwnerOnMain(onMain: boolean, branch: string): void {
-    if (onMain === ownerOnMain) return;
-    ownerOnMain = onMain;
-    bus.emit({ type: "checkout.updated", branch, onMain });
+  function setPaused(now: boolean, branch: string): void {
+    if (now === paused) return;
+    paused = now;
+    bus.emit({ type: "checkout.updated", branch, paused });
   }
 
-  // Moving main under the owner's checkout would leave their files behind its HEAD (decision 6), so rebasing onto
-  // main waits until they switch away.
-  async function waitUntilMainIsFree(run: Run): Promise<boolean> {
+  // Landing on main moves the files of a checkout of main too, which would tangle them with the owner's uncommitted
+  // changes, so rebasing onto main waits until that checkout is clean or on another branch.
+  async function waitUntilMainIsClean(run: Run): Promise<boolean> {
     const { mainBranch } = run.config;
-    while (await mainCheckedOut(git, repoRoot, mainBranch)) {
-      if (!ownerOnMain)
-        await run.note(`${mainBranch} is checked out; waiting until the owner switches away.`);
-      setOwnerOnMain(true, mainBranch);
+    for (;;) {
+      const checkout = await mainCheckout(git, repoRoot, mainBranch);
+      if (checkout === null || !(await hasUncommittedChanges(git, checkout))) break;
+      if (!paused)
+        await run.note(
+          `${mainBranch} has uncommitted changes; waiting until it is clean or the owner switches away.`,
+        );
+      setPaused(true, mainBranch);
       try {
         await sleep(checkoutPollMs, undefined, { signal: run.signal });
       } catch (error) {
@@ -112,8 +118,25 @@ export function createRebaseQueue(options: RebaseQueueOptions): RebaseQueue {
         throw error;
       }
     }
-    setOwnerOnMain(false, mainBranch);
+    setPaused(false, mainBranch);
     return true;
+  }
+
+  async function landOnMain(run: Run, from: string, to: string): Promise<FastForward | null> {
+    const { mainBranch } = run.config;
+    const request = { repoRoot, mainBranch, subject: run.task.id, from, to };
+    for (;;) {
+      if (!(await waitUntilMainIsClean(run))) return null;
+      const checkout = await mainCheckout(git, repoRoot, mainBranch);
+      if (checkout === null) return fastForwardMain(git, request);
+      try {
+        return await fastForwardCheckout(git, checkout, request);
+      } catch (error) {
+        if (!(error instanceof GitError) || !(await hasUncommittedChanges(git, checkout)))
+          throw error;
+        await run.note(`${mainBranch} changed in ${checkout} while moving it; waiting again.`);
+      }
+    }
   }
 
   async function runCommand(run: Run, kind: CheckKind, command: string): Promise<Outcome | null> {
@@ -191,14 +214,8 @@ export function createRebaseQueue(options: RebaseQueueOptions): RebaseQueue {
       `Attribution guard: no attribution in ${upstream.slice(0, 7)}..${taskRef(task.id)}.`,
     );
 
-    if (!(await waitUntilMainIsFree(run))) return stopped;
-    const forward = await fastForwardMain(git, {
-      repoRoot,
-      mainBranch,
-      subject: task.id,
-      from: upstream,
-      to: fetched,
-    });
+    const forward = await landOnMain(run, upstream, fetched);
+    if (forward === null) return stopped;
     if (forward.kind === "moved") {
       await run.note(`${mainBranch} moved to ${forward.current} meanwhile; rebasing again.`);
       return { kind: "moved" };
@@ -209,7 +226,7 @@ export function createRebaseQueue(options: RebaseQueueOptions): RebaseQueue {
 
   async function rebaseTask(run: Run): Promise<Outcome> {
     for (let tries = 1; tries <= maxFastForwardTries; tries++) {
-      if (!(await waitUntilMainIsFree(run))) return stopped;
+      if (!(await waitUntilMainIsClean(run))) return stopped;
       const outcome = await rebaseOnce(run);
       if (outcome.kind !== "moved") return outcome;
     }

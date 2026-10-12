@@ -16,7 +16,7 @@ function snapshot(authRequired: boolean, resumeAt: string | null = null): Status
       plan: "max",
       link: "http://127.0.0.1:4700/#t=token",
     },
-    ownerOnMain: false,
+    mainPaused: false,
     running: [],
     summary: {
       counts: { pending: 1, running: 0, checking: 0, review: 0, rebasing: 0, done: 0, blocked: 0 },

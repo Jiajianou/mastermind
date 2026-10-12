@@ -66,10 +66,10 @@ export function StatusView({ snapshot, armed, now }: StatusViewProps) {
         <Text>{accountText(header)}</Text>
       </Box>
       <LinkLine link={header.link} />
-      {snapshot.ownerOnMain && (
+      {snapshot.mainPaused && (
         <Text color={peach}>
-          You&apos;re on {header.mainBranch}. Rebasing onto {header.mainBranch} is paused: switch to
-          another branch (git switch -c dev) and it carries on.
+          {header.mainBranch} has uncommitted changes. Rebasing onto {header.mainBranch} is paused:
+          commit or stash them, or switch to another branch, and it carries on.
         </Text>
       )}
       <Box marginTop={1} justifyContent="space-between">

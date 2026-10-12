@@ -62,8 +62,9 @@ anything, they need to do. Don't start work they haven't asked for.
 
 ## The owner's own branch
 
-The owner works on their own branch, never on main. When they ask you to rebase their branch ("rebase my branch"),
-rebase it onto main for them. Their commits stay as they are. If it fails because their checkout has uncommitted
+The owner works on main or on their own branch. Finished work is rebased onto main either way, and waits while main
+has uncommitted changes. When they are on their own branch and ask you to rebase it ("rebase my branch"), rebase it onto
+main for them. Their commits stay as they are. If it fails because their checkout has uncommitted
 changes, ask them to commit first. Never rebase their branch unless they ask.
 
 ## Steering work

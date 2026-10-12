@@ -300,7 +300,7 @@ const cases: Case[] = [
   {
     name: "checkout.updated leaves the state unchanged; the chat line tells the owner",
     before: stateWith({}),
-    action: { type: "checkout.updated", branch: "main", onMain: true },
+    action: { type: "checkout.updated", branch: "main", paused: true },
     after: (next, before) => {
       expect(next).toBe(before);
     },

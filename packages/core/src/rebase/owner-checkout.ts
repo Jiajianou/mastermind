@@ -22,6 +22,10 @@ export async function checkoutIsClean(git: Git, repoRoot: string): Promise<boole
   return (await git.run(repoRoot, ["status", "--porcelain"])).trim() === "";
 }
 
+export async function hasUncommittedChanges(git: Git, checkout: string): Promise<boolean> {
+  return (await git.run(checkout, ["status", "--porcelain", "--untracked-files=no"])).trim() !== "";
+}
+
 export async function countCommits(git: Git, cwd: string, range: string): Promise<number> {
   return Number((await git.run(cwd, ["rev-list", "--count", range])).trim());
 }

@@ -217,14 +217,14 @@ describe("the terminal view's event lines", () => {
       lines: ["rebase  ext2-driver rebased onto main", "rebase  ext2-driver rebase failed"],
     },
     {
-      name: "the owner's checkout moving onto main and off it",
+      name: "rebasing onto main pausing for uncommitted changes and carrying on",
       events: [
-        { type: "checkout.updated", branch: "main", onMain: true },
-        { type: "checkout.updated", branch: "main", onMain: false },
+        { type: "checkout.updated", branch: "main", paused: true },
+        { type: "checkout.updated", branch: "main", paused: false },
       ],
       lines: [
-        "rebase  You're on main: rebasing onto main is paused until you switch to another branch",
-        "rebase  You left main; rebasing onto main continues",
+        "rebase  main has uncommitted changes: rebasing onto main is paused until you commit or stash them",
+        "rebase  main is clean again; rebasing onto main continues",
       ],
     },
     {
@@ -294,7 +294,7 @@ describe("the terminal view's state", () => {
 
     harness.bus.emit(sessionEvent("edit", "Edit inode.rs", worker.id));
     harness.bus.emit({ type: "main.moved", branch: "main", commit: "4f9a16a0123456789" });
-    harness.bus.emit({ type: "checkout.updated", branch: "main", onMain: true });
+    harness.bus.emit({ type: "checkout.updated", branch: "main", paused: true });
 
     const snapshot = harness.store.getSnapshot();
     expect(snapshot.running).toEqual([
@@ -309,7 +309,7 @@ describe("the terminal view's state", () => {
       },
     ]);
     expect(snapshot.header.mainCommit).toBe("4f9a16a");
-    expect(snapshot.ownerOnMain).toBe(true);
+    expect(snapshot.mainPaused).toBe(true);
     expect(published).toBe(3);
   });
 });

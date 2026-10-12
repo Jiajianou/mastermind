@@ -170,7 +170,7 @@ describe("startup sequence", () => {
     const startup = await startFor(repo.path, env, prompts);
 
     expect(transcript).toContain(
-      "You're on main. Mastermind rebases finished work onto main, so please work on another branch.",
+      "You're on main with uncommitted changes. Mastermind rebases finished work onto main, so it waits until they are committed or you work on another branch.",
     );
     expect(startup.branch).toBe(branch);
     expect(await repo.git("branch", "--show-current")).toBe(branch);
@@ -179,8 +179,9 @@ describe("startup sequence", () => {
     expect(await repo.git("rev-parse", "main")).toBe(mainCommit);
   });
 
-  it("starts on a clean main without asking to switch branches", async () => {
+  it("starts on main without asking to switch branches when it has no uncommitted changes", async () => {
     const repo = await createTempRepo();
+    await writeFile(join(repo.path, "scratch.txt"), "untracked\n");
     const env = await isolatedEnv();
     const { prompts, transcript } = scriptedPrompts([]);
 

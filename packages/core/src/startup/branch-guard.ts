@@ -1,6 +1,6 @@
 import { GitError } from "../git/index.js";
 import type { Git } from "../git/index.js";
-import { checkoutIsClean } from "../rebase/owner-checkout.js";
+import { hasUncommittedChanges } from "../rebase/owner-checkout.js";
 import { StartupError } from "./errors.js";
 import { currentBranch, localBranches } from "./repo.js";
 import type { Choice, StartupPrompts } from "./prompts.js";
@@ -14,7 +14,7 @@ export interface BranchGuardOptions {
   prompts: StartupPrompts;
 }
 
-type GuardChoice = "new" | "existing" | "quit";
+type GuardChoice = "new" | "existing" | "stay" | "quit";
 
 function unusedBranchName(taken: readonly string[]): string {
   for (let suffix = 1; ; suffix += 1) {
@@ -24,10 +24,7 @@ function unusedBranchName(taken: readonly string[]): string {
 }
 
 function quit(mainBranch: string): StartupError {
-  return new StartupError(
-    "quit",
-    `Quit: mastermind doesn't run while ${mainBranch} is checked out.`,
-  );
+  return new StartupError("quit", `Quit: mastermind didn't start, and ${mainBranch} is unchanged.`);
 }
 
 async function pickExistingBranch(
@@ -64,7 +61,7 @@ export async function guardBranch(options: BranchGuardOptions): Promise<string |
   const { git, repoRoot, mainBranch, prompts } = options;
   for (;;) {
     const branch = await currentBranch(git, repoRoot);
-    if (branch !== mainBranch || (await checkoutIsClean(git, repoRoot))) return branch;
+    if (branch !== mainBranch || !(await hasUncommittedChanges(git, repoRoot))) return branch;
     const branches = await localBranches(git, repoRoot);
     const others = branches.filter((name) => name !== mainBranch);
     const newBranch = unusedBranchName(branches);
@@ -76,14 +73,19 @@ export async function guardBranch(options: BranchGuardOptions): Promise<string |
         label: `Switch to a new branch "${newBranch}" (keeps your uncommitted changes)`,
       },
       ...existing,
+      {
+        value: "stay",
+        label: `Stay on ${mainBranch} (finished work waits until you commit or stash your changes)`,
+      },
       { value: "quit", label: "Quit" },
     ];
     const choice = await prompts.choose(
-      `You're on ${mainBranch}. Mastermind rebases finished work onto ${mainBranch}, so please work on another branch.`,
+      `You're on ${mainBranch} with uncommitted changes. Mastermind rebases finished work onto ${mainBranch}, so it waits until they are committed or you work on another branch.`,
       choices,
       "quit",
     );
     if (choice === "quit") throw quit(mainBranch);
+    if (choice === "stay") return branch;
     if (choice === "new") await switchTo(["--create", newBranch], newBranch, options);
     else {
       const target = await pickExistingBranch(others, options);

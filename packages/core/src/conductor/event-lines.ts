@@ -58,9 +58,9 @@ function lineFor(state: WatchedState, event: BusEvent, mainBranch: () => string)
         : null;
     }
     case "checkout.updated":
-      return event.onMain
+      return event.paused
         ? {
-            content: `You're on ${event.branch}, so rebasing onto ${event.branch} is paused. Switch to another branch, for example with git switch -c dev, and it carries on.`,
+            content: `Your checkout of ${event.branch} has uncommitted changes, so rebasing onto ${event.branch} is paused. Commit or stash them, or switch to another branch, and it carries on.`,
             meta: { event: "owner_on_main", branch: event.branch },
           }
         : null;

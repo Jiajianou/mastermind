@@ -81,7 +81,6 @@ config, disk used by task clones, logs and the sandbox.
 
 ```sh
 cd ~/code/myproject
-git switch -c dev        # mastermind asks you to work off a branch other than main
 mastermind . --open
 ```
 

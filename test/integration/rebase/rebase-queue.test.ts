@@ -225,7 +225,26 @@ describe("rebase queue", () => {
     expect(harness.errors).toEqual([]);
   });
 
-  it("pauses rebasing onto main while the owner is on main, and carries on once they switch away", async () => {
+  it("lands on main while the owner has a clean main checked out, moving their files with it", async () => {
+    const harness = await checksHarness({
+      startRebaseQueue: true,
+      scenario: { turns: [worker("src/feature.txt")] },
+    });
+    const { repo } = harness;
+    const initial = await repo.git("rev-parse", "main");
+
+    await startFeature(harness, "beside", "src/feature.txt");
+    await harness.waitForStatus("beside", "done");
+
+    expect(await repo.git("rev-list", "--count", `${initial}..main`)).toBe("1");
+    expect(await repo.git("symbolic-ref", "--short", "HEAD")).toBe("main");
+    expect(await readFile(join(repo.path, "src/feature.txt"), "utf8")).toBe("src/feature.txt\n");
+    expect(await repo.git("status", "--porcelain", "--untracked-files=no")).toBe("");
+    expect(harness.events.some((event) => event.type === "checkout.updated")).toBe(false);
+    expect(harness.errors).toEqual([]);
+  });
+
+  it("pauses rebasing onto main while the owner's main has uncommitted changes, and carries on once they are stashed", async () => {
     const harness = await checksHarness({
       startRebaseQueue: true,
       scenario: { turns: [worker("src/feature.txt")] },
@@ -235,29 +254,32 @@ describe("rebase queue", () => {
       bus: harness.bus,
       mainBranch: () => "main",
     });
-    const initial = await harness.repo.git("rev-parse", "main");
+    const { repo } = harness;
+    const initial = await repo.git("rev-parse", "main");
+    await writeFile(join(repo.path, "README.md"), "# Edited by the owner\n");
 
     await startFeature(harness, "patient", "src/feature.txt");
     await waitFor(() =>
-      harness.events.some((event) => event.type === "checkout.updated" && event.onMain),
+      harness.events.some((event) => event.type === "checkout.updated" && event.paused),
     );
 
     expect(harness.db.tasks.get("patient")?.status).toBe("rebasing");
-    expect(harness.db.rebases.listForTask("patient").map((rebase) => rebase.status)).toEqual([
-      "running",
-    ]);
-    expect(await harness.repo.git("rev-parse", "main")).toBe(initial);
+    expect(await repo.git("rev-parse", "main")).toBe(initial);
     const prompt = harness.db.chat.list().find((message) => message.kind === "system");
-    expect(prompt?.content).toContain("You're on main, so rebasing onto main is paused");
+    expect(prompt?.content).toContain(
+      "Your checkout of main has uncommitted changes, so rebasing onto main is paused",
+    );
     expect(prompt?.meta).toEqual({ event: "owner_on_main", branch: "main" });
 
-    await harness.repo.git("switch", "--quiet", "--create", "dev");
+    await repo.git("stash", "--quiet");
     await harness.waitForStatus("patient", "done");
     stopLines();
 
-    expect(await harness.repo.git("rev-list", "--count", `${initial}..main`)).toBe("1");
+    expect(await repo.git("rev-list", "--count", `${initial}..main`)).toBe("1");
+    expect(await repo.git("status", "--porcelain", "--untracked-files=no")).toBe("");
+    expect(existsSync(join(repo.path, "src/feature.txt"))).toBe(true);
     expect(
-      harness.events.flatMap((event) => (event.type === "checkout.updated" ? [event.onMain] : [])),
+      harness.events.flatMap((event) => (event.type === "checkout.updated" ? [event.paused] : [])),
     ).toEqual([true, false]);
     expect(harness.errors).toEqual([]);
   });

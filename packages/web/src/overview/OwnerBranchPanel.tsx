@@ -14,9 +14,7 @@ function BranchState({ view, live }: { view: OwnerBranch; live: boolean }) {
   const { branch, mainBranch } = view;
   if (branch === null) return <p className="muted">Your checkout isn't on a branch.</p>;
   if (view.onMain)
-    return (
-      <p className="side-note">You're on {mainBranch}. Switch to your own branch to rebase it.</p>
-    );
+    return <p className="side-note">You're on {mainBranch}. Finished work is rebased onto it.</p>;
   const note = rebaseNote(view);
   const running = view.rebase?.status === "running";
 
