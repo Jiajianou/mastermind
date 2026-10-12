@@ -70,6 +70,7 @@ const builtins = {
     | "requestChanges"
     | "stopSession"
     | "messageSession"
+    | "resetProject"
     | "confirmProposal"
     | "rejectProposal"
     | "sendChat"

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
@@ -22,6 +23,7 @@ import { bearerRejection, siteRejection } from "./local-request.js";
 import type { Rejection } from "./local-request.js";
 import { registerReadRoutes } from "./read-routes.js";
 import { createEventStream } from "./stream.js";
+import type { Goodbye } from "./stream.js";
 import { registerTerminalRoutes } from "./terminal-routes.js";
 
 export interface ApiServerOptions {
@@ -38,6 +40,7 @@ export interface ApiServerOptions {
   ownerBranch: () => Promise<OwnerBranch>;
   token: string;
   webRoot: string;
+  server?: Server;
   onError: (error: unknown) => void;
 }
 
@@ -45,7 +48,7 @@ export interface ApiServer {
   app: FastifyInstance;
   server: Server;
   webClientConnected(): boolean;
-  closeSync(): void;
+  closeSync(goodbye?: Goodbye): void;
 }
 
 const pathOf = (url: string): string => url.split("?", 1)[0] ?? url;
@@ -64,17 +67,35 @@ function sendRejection(reply: FastifyReply, rejection: Rejection | null) {
 // The web app's own files carry no data, and a browser navigating to the link can't send the bearer token, so
 // only the API and MCP routes need it; the Host and Origin checks apply to everything. The token hook is bound to the routes,
 // not to a URL prefix, because the router matches the decoded path (/%61pi/summary reaches /api/summary).
+// While a reset swaps one runtime for the next, the port stays open and every request is told to try again.
+function holdDuringReset(server: Server): void {
+  server.on("request", (_request: IncomingMessage, response: ServerResponse) => {
+    response.writeHead(503, { "content-type": "application/json", "retry-after": "1" });
+    response.end(JSON.stringify(apiError("resetting", "mastermind is resetting the project")));
+  });
+  server.on("upgrade", (_request: IncomingMessage, socket: Duplex) => {
+    socket.destroy();
+  });
+}
+
 export async function createApiServer(options: ApiServerOptions): Promise<ApiServer> {
   const { token, onError } = options;
-  const server = createServer();
+  const server = options.server ?? createServer();
+  server.removeAllListeners("request");
+  server.removeAllListeners("upgrade");
+  const stream = createEventStream({ bus: options.bus, token });
+  const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    stream.handleUpgrade(request, socket, head);
+  };
+  let onRequest: ((request: IncomingMessage, response: ServerResponse) => void) | null = null;
   const app = Fastify({
     logger: false,
-    serverFactory: (handler) => server.on("request", handler),
+    serverFactory: (handler) => {
+      onRequest = handler;
+      return server.on("request", handler);
+    },
   });
-  const stream = createEventStream({ bus: options.bus, token });
-  server.on("upgrade", (request, socket, head) => {
-    stream.handleUpgrade(request, socket, head);
-  });
+  server.on("upgrade", onUpgrade);
 
   app.addHook("onRequest", async (request, reply) =>
     sendRejection(reply, siteRejection(request.headers)),
@@ -123,10 +144,13 @@ export async function createApiServer(options: ApiServerOptions): Promise<ApiSer
     app,
     server,
     webClientConnected: () => stream.webClientConnected(),
-    closeSync() {
-      stream.closeSync();
+    closeSync(goodbye) {
+      stream.closeSync(goodbye);
+      if (onRequest !== null) server.off("request", onRequest);
+      server.off("upgrade", onUpgrade);
       server.closeAllConnections();
-      server.close();
+      if (goodbye === "service.resetting") holdDuringReset(server);
+      else server.close();
     },
   };
 }

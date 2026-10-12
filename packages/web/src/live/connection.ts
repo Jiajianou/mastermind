@@ -12,9 +12,13 @@ export interface LiveConnectionOptions {
   api: ApiClient;
   openSocket: () => LiveSocket;
   retryDelaysMs?: readonly number[];
+  resetRetryDelaysMs?: readonly number[];
 }
 
 export const defaultRetryDelaysMs = [250, 500, 1_000, 2_000, 4_000];
+
+// A reset stops every session before the new run answers, which can take longer than an ordinary reconnect.
+export const defaultResetRetryDelaysMs = [250, ...Array.from({ length: 30 }, () => 1_000)];
 
 function startOfToday(): string {
   const today = new Date();
@@ -52,10 +56,12 @@ export function connectLive({
   api,
   openSocket,
   retryDelaysMs = defaultRetryDelaysMs,
+  resetRetryDelaysMs = defaultResetRetryDelaysMs,
 }: LiveConnectionOptions): () => void {
   let failures = 0;
   let ended = false;
   let wasLive = false;
+  let resetting = false;
   let socket: LiveSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -67,7 +73,7 @@ export function connectLive({
 
   const retry = () => {
     if (ended) return;
-    const delay = retryDelaysMs[failures];
+    const delay = (resetting ? resetRetryDelaysMs : retryDelaysMs)[failures];
     failures += 1;
     if (delay === undefined) {
       end("stopped");
@@ -98,7 +104,11 @@ export function connectLive({
       const message = parseMessage(data);
       if (message === null) return;
       if (message.type === "service.stopping") end("stopped");
-      else if (held === null) store.dispatch(message);
+      else if (message.type === "service.resetting") {
+        resetting = true;
+        failures = 0;
+        store.dispatch(message);
+      } else if (held === null) store.dispatch(message);
       else held.push(message);
     });
 
@@ -110,6 +120,7 @@ export function connectLive({
           for (const message of held ?? []) store.dispatch(message);
           held = null;
           failures = 0;
+          resetting = false;
           wasLive = true;
           store.dispatch({ type: "connection.changed", connection: "live" });
         },

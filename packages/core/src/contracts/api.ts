@@ -7,11 +7,14 @@ import {
   importTasksInputSchema,
   messageSessionInputSchema,
   noInputSchema,
+  resetProjectInputSchema,
+  resetProjectResultSchema,
   sessionRefInputSchema,
   setPriorityInputSchema,
   taskRefInputSchema,
   updateTaskInputSchema,
 } from "./actions.js";
+import type { ResetProjectResult } from "./actions.js";
 import { branchRebaseSchema, ownerBranchSchema, rebaseOwnerBranchInputSchema } from "./branch.js";
 import type { BranchRebase } from "./branch.js";
 import { fileContentSchema, taskChangesSchema, taskTreeSchema } from "./changes.js";
@@ -60,6 +63,7 @@ export const apiErrorCodeSchema = z.enum([
   "unauthorized",
   "forbidden",
   "internal",
+  "resetting",
 ]);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 
@@ -94,6 +98,7 @@ export interface ActionResults {
   messageSession: MessageSessionResult;
   pause: RuntimeFlags;
   resume: RuntimeFlags;
+  resetProject: ResetProjectResult;
   setConfig: Config;
   confirmSetup: Config;
   allowSandboxHost: Config;
@@ -158,6 +163,7 @@ export const actionRoutes = {
   },
   pause: { method: "POST", path: "/api/pause" },
   resume: { method: "POST", path: "/api/resume" },
+  resetProject: { method: "POST", path: "/api/reset" },
   setConfig: { method: "PATCH", path: "/api/config" },
   confirmSetup: { method: "POST", path: "/api/setup/confirm" },
   allowSandboxHost: { method: "POST", path: "/api/sandbox/allowed-domains" },
@@ -230,6 +236,7 @@ export const actionInputSchemas = {
   messageSession: messageSessionInputSchema,
   pause: noInputSchema,
   resume: noInputSchema,
+  resetProject: resetProjectInputSchema,
   setConfig: configLayerSchema,
   confirmSetup: confirmSetupInputSchema,
   allowSandboxHost: allowSandboxHostInputSchema,
@@ -269,6 +276,7 @@ export const actionResultSchemas = {
   messageSession: messageSessionResultSchema,
   pause: runtimeFlagsSchema,
   resume: runtimeFlagsSchema,
+  resetProject: resetProjectResultSchema,
   setConfig: configSchema,
   confirmSetup: configSchema,
   allowSandboxHost: configSchema,
@@ -307,6 +315,7 @@ export type SessionEventsQuery = z.infer<typeof sessionEventsQuerySchema>;
 
 export const instanceInfoSchema = z.object({
   project: z.string(),
+  runId: z.string(),
   account: z.object({ email: z.string().nullable(), plan: subscriptionPlanSchema }),
 });
 export type InstanceInfo = z.infer<typeof instanceInfoSchema>;

@@ -98,6 +98,7 @@ export function createTurnFollower(turnId: string, write: (text: string) => void
           if (!atLineStart) print("\n");
           return "finished";
         case "service.stopping":
+        case "service.resetting":
           return "service-stopped";
         default:
           return null;

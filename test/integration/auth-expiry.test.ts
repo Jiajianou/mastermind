@@ -57,6 +57,7 @@ async function runMastermind(scenario: Scenario): Promise<Running> {
     webRoot: join(env.root, "no-web"),
     pathGuardCommand: ["node", "/opt/mastermind/path-guard.js"],
     nativeNotifier: createNativeNotifier({ registry, env: env.env, platform: process.platform }),
+    requestReset: () => undefined,
     onError: (error) => errors.push(error),
     clock,
   });

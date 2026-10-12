@@ -298,6 +298,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
       case "proposal.updated":
       case "notification":
       case "service.stopping":
+      case "service.resetting":
         return null;
     }
   }

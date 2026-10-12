@@ -8,6 +8,7 @@ import type { Choice } from "../settings/fields.js";
 import { settingsChange, settingsValues } from "../settings/form.js";
 import type { SettingsValues } from "../settings/form.js";
 import { NotificationsField } from "../settings/NotificationsField.js";
+import { ResetProject } from "../settings/ResetProject.js";
 import { useApi, useDispatch, useLive } from "../store/hooks.js";
 import { Screen } from "./Screen.js";
 
@@ -272,6 +273,7 @@ function SettingsForm({ config, plan }: { config: Config; plan: SubscriptionPlan
 export function SettingsScreen() {
   const config = useLive((state) => state.config);
   const plan = useLive((state) => state.instance?.account.plan ?? null);
+  const project = useLive((state) => state.instance?.project ?? null);
   return (
     <Screen title="Settings">
       {config === null ? (
@@ -279,6 +281,7 @@ export function SettingsScreen() {
       ) : (
         <SettingsForm config={config} plan={plan} />
       )}
+      {project !== null && <ResetProject project={project} />}
     </Screen>
   );
 }

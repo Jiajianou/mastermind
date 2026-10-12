@@ -55,6 +55,7 @@ function createLogPrinter(taskId: string, output: ClientOutput): LogPrinter {
           if (message.taskId === taskId) printer.end(message.session);
           return null;
         case "service.stopping":
+        case "service.resetting":
           return "service-stopped";
         default:
           return null;

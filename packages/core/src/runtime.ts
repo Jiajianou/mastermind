@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { Server } from "node:http";
 import { basename } from "node:path";
 import { serveApi } from "./api/index.js";
 import type { ServedApi } from "./api/index.js";
@@ -43,6 +45,7 @@ import {
   offerOwnerRebase,
   rebaseOwnerBranchAction,
 } from "./rebase/index.js";
+import { resetProjectAction, wipeProject } from "./reset.js";
 import { requestChangesAction, reviewNoteActions } from "./review/index.js";
 import { createScheduler } from "./scheduler.js";
 import type { Scheduler } from "./scheduler.js";
@@ -70,21 +73,32 @@ export interface RuntimeOptions {
   webRoot: string;
   pathGuardCommand: readonly string[];
   nativeNotifier: NativeNotifier;
+  requestReset: () => void;
+  reuse?: ApiEndpoint;
   onError: (error: unknown) => void;
   clock?: Clock;
 }
+
+export interface ApiEndpoint {
+  token: string;
+  server: Server;
+}
+
+export type CloseMode = "stop" | "reset";
 
 export interface Runtime {
   bus: EventBus;
   actions: ActionRegistry;
   scheduler: Scheduler;
   store: StatusStore;
+  endpoint: ApiEndpoint;
   start(): void;
   togglePause(): Promise<RuntimeFlags>;
   signIn(): Promise<AuthVerdict | null>;
   killProcessesSync(): KillReport;
   markKilledSync(): KilledCounts;
-  closeSync(): void;
+  closeSync(mode?: CloseMode): void;
+  wipe(): Promise<void>;
 }
 
 const proposalSweepMs = 60_000;
@@ -283,6 +297,9 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     onError,
   });
   for (const action of chatActions(runner, gate)) actions.register(action);
+  actions.register(
+    resetProjectAction({ project: basename(repoRoot), requestReset: options.requestReset }),
+  );
   const terminals = createTerminals({ db, bus, registry, env });
 
   const mainCommit = await shortCommit(startup, config.mainBranch);
@@ -296,6 +313,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     terminals,
     instance: {
       project: basename(repoRoot),
+      runId: randomUUID(),
       account: { email: startup.auth.email, plan: startup.auth.plan },
     },
     summary: () => scheduler.summary(),
@@ -305,6 +323,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     onError,
     stateDir,
     lock: startup.lock,
+    token: options.reuse?.token,
+    server: options.reuse?.server,
     port: startup.port,
   });
 
@@ -373,6 +393,7 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
     actions,
     scheduler,
     store,
+    endpoint: { token: api.token, server: api.server },
 
     start() {
       signIn.start();
@@ -400,7 +421,8 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     markKilledSync: () => db.killRunning(),
 
-    closeSync() {
+    // A reset keeps the startup's database, lock and sign-in for the runtime that replaces this one.
+    closeSync(mode = "stop") {
       if (proposalSweep !== null) clearInterval(proposalSweep);
       signIn.stop();
       stopEventLines();
@@ -411,14 +433,23 @@ export async function createRuntime(options: RuntimeOptions): Promise<Runtime> {
       stuckMonitor.stop();
       terminals.dispose();
       runner.dispose();
-      api.closeSync();
+      api.closeSync(mode === "reset" ? "service.resetting" : "service.stopping");
       ownerRebaser.stop();
       mainWatcher.stop();
       rebaseQueue.stop();
       pipeline.stop();
       scheduler.stop();
       store.dispose();
-      startup.close();
+      if (mode === "stop") startup.close();
     },
+
+    wipe: () =>
+      wipeProject({
+        db,
+        git: startup.git,
+        repoRoot,
+        worktreeDir: config.worktreeDir,
+        logsDir,
+      }),
   };
 }

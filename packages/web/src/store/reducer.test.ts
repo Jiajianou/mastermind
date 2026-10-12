@@ -515,6 +515,43 @@ const cases: Case[] = [
     },
   },
   {
+    name: "service.resetting forgets everything from the run being reset while it reconnects",
+    before: stateWith({
+      tasks: { alpha: task("alpha") },
+      sessionEvents: { 1: [sessionEvent(1)] },
+      connection: "live",
+    }),
+    action: { type: "service.resetting" },
+    after: (next) => {
+      expect(next.tasks).toEqual({});
+      expect(next.sessionEvents).toEqual({});
+      expect(next.connection).toBe("reconnecting");
+    },
+  },
+  {
+    name: "a snapshot from a new run drops what was cached from the old one, whose ids it reuses",
+    before: stateWith({
+      instance: snapshot().instance,
+      sessionEvents: { 1: [sessionEvent(1)] },
+      historyLoaded: { 1: true },
+      sessionLive: { 1: { kind: "text", text: "old" } },
+      connection: "live",
+    }),
+    action: {
+      type: "snapshot.loaded",
+      snapshot: snapshot({
+        instance: { ...snapshot().instance, runId: "run-2" },
+        sessions: [session(1)],
+      }),
+    },
+    after: (next) => {
+      expect(next.sessionEvents).toEqual({});
+      expect(next.sessionLive).toEqual({});
+      expect(next.sessions[1]).toEqual(session(1));
+      expect(next.connection).toBe("live");
+    },
+  },
+  {
     name: "snapshot.loaded replaces the normalised state and keeps unchanged entities",
     before: stateWith({
       tasks: { gone: task("gone"), alpha: task("alpha"), beta: task("beta") },

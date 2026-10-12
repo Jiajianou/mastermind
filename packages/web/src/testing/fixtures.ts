@@ -162,7 +162,11 @@ export function summary(change: Partial<ApiSummary> = {}): ApiSummary {
 
 export function snapshot(change: Partial<Snapshot> = {}): Snapshot {
   return {
-    instance: { project: "demo", account: { email: "owner@example.com", plan: "max" } },
+    instance: {
+      project: "demo",
+      runId: "run-1",
+      account: { email: "owner@example.com", plan: "max" },
+    },
     summary: summary(),
     tasks: [],
     sessions: [],

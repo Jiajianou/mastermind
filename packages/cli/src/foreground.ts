@@ -1,8 +1,10 @@
 import { writeSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Environment } from "@mastermind/core/env";
 import type { ProcessRegistry } from "@mastermind/core/procs";
 import { createNativeNotifier } from "@mastermind/core/notify";
 import { createRuntime } from "@mastermind/core/runtime";
+import type { ApiEndpoint, Runtime } from "@mastermind/core/runtime";
 import type { Startup } from "@mastermind/core/startup";
 import { errorMessage } from "@mastermind/core/contracts";
 import { promptsDir, webRoot } from "./assets.js";
@@ -11,6 +13,7 @@ import { exitCodes, runKillPath } from "./kill-path.js";
 import type { KillPathSteps } from "./kill-path.js";
 import { startPlainLog } from "./plain-log.js";
 import { createTerminalCommands } from "./terminal-commands.js";
+import type { TerminalCommand } from "./terminal-commands.js";
 import { renderStatusApp } from "./tui/app.js";
 import type { TerminalView } from "./tui/app.js";
 
@@ -75,10 +78,23 @@ export function exitOnSignalsDuringStartup(
 const describe = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 
+const childExitPollMs = 50;
+const childExitWaitMs = 10_000;
+// Exit handlers of killed sessions still write their last rows a moment after the process is gone.
+const settleMs = 250;
+
+async function waitForChildren(registry: ProcessRegistry): Promise<void> {
+  const deadline = Date.now() + childExitWaitMs;
+  while (registry.tracked().length > 0 && Date.now() < deadline) await delay(childExitPollMs);
+  await delay(settleMs);
+}
+
 export async function runInForeground(run: ForegroundRun): Promise<void> {
   const { startup, registry, env } = run;
+  const { stdin, stdout } = process;
   let view: TerminalView | null = null;
   let killing = false;
+  let resetting = false;
 
   const killNow = (exitCode: number, reason?: string): never => {
     if (killing) process.exit(exitCode);
@@ -101,19 +117,26 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
     runtime.store.notice(`Error: ${errorMessage(error)}`);
   };
 
-  const runtime = await createRuntime({
-    startup,
-    registry,
-    env,
-    homeDir: run.homeDir,
-    promptsDir,
-    webRoot,
-    pathGuardCommand: pathGuardCommand(),
-    nativeNotifier: createNativeNotifier({ registry, env, platform: process.platform }),
-    onError: (error) => {
-      reportError(error);
-    },
-  });
+  const build = (reuse?: ApiEndpoint): Promise<Runtime> =>
+    createRuntime({
+      startup,
+      registry,
+      env,
+      homeDir: run.homeDir,
+      promptsDir,
+      webRoot,
+      pathGuardCommand: pathGuardCommand(),
+      nativeNotifier: createNativeNotifier({ registry, env, platform: process.platform }),
+      requestReset: () => {
+        setImmediate(() => void reset());
+      },
+      reuse,
+      onError: (error) => {
+        reportError(error);
+      },
+    });
+
+  let runtime = await build();
   const guard = createCtrlCGuard({ onFire: () => killNow(exitCodes.interrupt) });
 
   process.on("SIGINT", () => {
@@ -125,22 +148,50 @@ export async function runInForeground(run: ForegroundRun): Promise<void> {
     killNow(exitCodes.crash, `crashed: ${describe(error)}`),
   );
 
-  const onCommand = createTerminalCommands({
-    runtime,
-    registry,
-    env,
-    platform: process.platform,
-    handOffTerminal: (work) => (view === null ? work() : view.handOff(work)),
-    onError: reportError,
-  });
-  const { stdin, stdout } = process;
-  view =
-    stdin.isTTY && stdout.isTTY
-      ? renderStatusApp({ store: runtime.store, guard, onCommand }, stdin, stdout)
-      : startPlainLog(runtime.store, guard, (line) => {
-          stdout.write(`${line}\n`);
-        });
+  const show = (): ((command: TerminalCommand) => void) => {
+    const onCommand = createTerminalCommands({
+      runtime,
+      registry,
+      env,
+      platform: process.platform,
+      handOffTerminal: (work) => (view === null ? work() : view.handOff(work)),
+      onError: reportError,
+    });
+    view =
+      stdin.isTTY && stdout.isTTY
+        ? renderStatusApp({ store: runtime.store, guard, onCommand }, stdin, stdout)
+        : startPlainLog(runtime.store, guard, (line) => {
+            stdout.write(`${line}\n`);
+          });
+    return onCommand;
+  };
 
+  // The new runtime takes over the old one's listening server and token, so open web app tabs reconnect to it.
+  async function reset(): Promise<void> {
+    if (killing || resetting) return;
+    resetting = true;
+    const previous = runtime;
+    previous.killProcessesSync();
+    previous.closeSync("reset");
+    view?.restore();
+    view = null;
+    stdout.write(
+      "Resetting the project: every session stopped, deleting its tasks, chat and logs…\n",
+    );
+    try {
+      await waitForChildren(registry);
+      await previous.wipe();
+      runtime = await build(previous.endpoint);
+    } catch (error) {
+      killNow(exitCodes.crash, `reset failed: ${describe(error)}`);
+    }
+    show();
+    runtime.start();
+    runtime.store.notice("Project reset: tasks, sessions, chat and logs are gone");
+    resetting = false;
+  }
+
+  const onCommand = show();
   runtime.start();
   if (run.open) onCommand("open");
 }

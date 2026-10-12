@@ -9,10 +9,12 @@ import { apiError } from "./errors.js";
 import type { ErrorReply } from "./errors.js";
 import { offeredProtocols, siteRejection, streamRejection } from "./local-request.js";
 
+export type Goodbye = "service.stopping" | "service.resetting";
+
 export interface EventStream {
   handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void;
   webClientConnected(): boolean;
-  closeSync(): void;
+  closeSync(goodbye?: Goodbye): void;
 }
 
 export interface EventStreamOptions {
@@ -103,9 +105,9 @@ export function createEventStream({ bus, token }: EventStreamOptions): EventStre
       [...webClients].some((client) => client.readyState === WebSocket.OPEN),
 
     // The kill path can't wait, so the goodbye is written synchronously and may not arrive.
-    closeSync() {
+    closeSync(goodbye = "service.stopping") {
       unsubscribe();
-      broadcast({ type: "service.stopping" });
+      broadcast({ type: goodbye });
       for (const client of server.clients) {
         client.close(goingAway, "mastermind stopped");
         client.terminate();

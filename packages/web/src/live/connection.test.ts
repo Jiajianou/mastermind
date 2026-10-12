@@ -69,6 +69,7 @@ function connect() {
       store,
       api: createApiClient(token),
       retryDelaysMs: [1, 1],
+      resetRetryDelaysMs: [1, 1, 1, 1, 1],
       openSocket: () => {
         const socket = new FakeSocket();
         sockets.push(socket);
@@ -90,6 +91,34 @@ function connect() {
 }
 
 describe("live connection", () => {
+  it("keeps reconnecting through a reset, past the ordinary retry budget, and starts over on the new run", async () => {
+    let instanceReads = 0;
+    serve({
+      ...healthyServer,
+      "/api/instance": () => {
+        instanceReads += 1;
+        if (instanceReads === 1) return json(served.instance);
+        if (instanceReads <= 4)
+          return json({ code: "resetting", message: "resetting", issues: [] }, 503);
+        return json({ ...served.instance, runId: "run-2" });
+      },
+    });
+    const { store, nextSocket, connection } = connect();
+    const first = await nextSocket(1);
+    first.open();
+    await connection("live");
+
+    first.receive({ type: "service.resetting" });
+    expect(store.getState().tasks).toEqual({});
+    first.close();
+    const second = await nextSocket(2);
+    second.open();
+
+    await connection("live");
+    expect(instanceReads).toBe(5);
+    expect(store.getState().instance?.runId).toBe("run-2");
+  });
+
   it("applies events that arrive while the snapshot loads on top of the snapshot", async () => {
     let releaseTasks = (): void => undefined;
     const tasksRead = new Promise<Response>((resolve) => {

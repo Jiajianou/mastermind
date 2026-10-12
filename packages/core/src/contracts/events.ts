@@ -81,6 +81,7 @@ export const busEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("config.updated"), config: configSchema }),
   z.object({ type: z.literal("notification"), notification: ownerNotificationSchema }),
   z.object({ type: z.literal("service.stopping") }),
+  z.object({ type: z.literal("service.resetting") }),
 ]);
 export type BusEvent = z.infer<typeof busEventSchema>;
 export type BusEventType = BusEvent["type"];

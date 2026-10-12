@@ -16,6 +16,7 @@ import type {
   StoreAction,
   TerminalState,
 } from "./state.js";
+import { initialState } from "./state.js";
 import { appendOutput, withStatus, withView } from "./terminals.js";
 
 function withTerminal(state: LiveState, taskId: string, terminal: TerminalState): LiveState {
@@ -140,10 +141,15 @@ function keepUnchanged<Entity>(stored: Entity | undefined, fresh: Entity): Entit
   return stored !== undefined && JSON.stringify(stored) === JSON.stringify(fresh) ? stored : fresh;
 }
 
+// Ids start again after a reset, so nothing cached from an earlier run may be matched against the new one.
 function applySnapshot(
-  state: LiveState,
+  current: LiveState,
   { instance, summary, tasks, sessions, chat, config }: Snapshot,
 ): LiveState {
+  const state =
+    current.instance !== null && current.instance.runId !== instance.runId
+      ? { ...initialState, connection: current.connection }
+      : current;
   return {
     ...state,
     instance,
@@ -375,5 +381,7 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
       return { ...state, notification: action.notification };
     case "service.stopping":
       return { ...state, connection: "stopped" };
+    case "service.resetting":
+      return { ...initialState, connection: "reconnecting" };
   }
 }

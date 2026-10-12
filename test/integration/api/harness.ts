@@ -39,6 +39,7 @@ export interface TestApi {
 
 export const testInstance: InstanceInfo = {
   project: "demo",
+  runId: "run-1",
   account: { email: "owner@example.com", plan: "max" },
 };
 

@@ -30,6 +30,7 @@ import type { SessionRepository } from "./sessions.js";
 import { createTaskRepository } from "./tasks.js";
 import type { TaskRepository } from "./tasks.js";
 import { createTransaction } from "./transaction.js";
+import { createWipe } from "./wipe.js";
 import type { Transaction } from "./transaction.js";
 
 export interface Db {
@@ -48,6 +49,7 @@ export interface Db {
   flags: FlagRepository;
   transaction: Transaction;
   killRunning(): KilledCounts;
+  wipe(): void;
   close(): void;
 }
 
@@ -79,6 +81,7 @@ export function openDb(path: string, options: OpenDbOptions = {}): Db {
       flags: createFlagRepository(context),
       transaction,
       killRunning: createKillRunning(context),
+      wipe: createWipe(context),
       close: () => {
         database.close();
       },

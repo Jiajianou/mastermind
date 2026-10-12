@@ -16,6 +16,11 @@ export type ActionErrorBody = z.infer<typeof actionErrorSchema>;
 
 export const noInputSchema = z.strictObject({}).default({});
 
+export const resetProjectInputSchema = z.strictObject({ project: z.string() });
+
+export const resetProjectResultSchema = z.object({ resetting: z.literal(true) });
+export type ResetProjectResult = z.infer<typeof resetProjectResultSchema>;
+
 export const taskRefInputSchema = z.strictObject({ taskId: taskIdSchema });
 
 export const createTasksInputSchema = z.strictObject({ tasks: z.array(newTaskSchema).min(1) });

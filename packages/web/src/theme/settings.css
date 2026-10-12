@@ -71,3 +71,22 @@
 .settings-actions p {
   margin: 0;
 }
+
+.reset-project {
+  max-width: 760px;
+  margin-top: 24px;
+  border-color: var(--color-danger);
+}
+
+.reset-project h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.reset-project p {
+  margin: 0;
+}
+
+.reset-project input {
+  max-width: 320px;
+}
