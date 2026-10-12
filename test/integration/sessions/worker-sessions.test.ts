@@ -59,11 +59,15 @@ describe("worker sessions", () => {
     const stored = harness.db.events.listForSession(session?.id ?? 0);
     expect(stored.map((event) => event.type)).toEqual([
       "start",
+      "prompt",
       "read",
+      "output",
       "edit",
+      "output",
       "run",
       "commit",
       "edit",
+      "output",
       "note",
       "result",
     ]);

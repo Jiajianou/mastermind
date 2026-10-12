@@ -3,7 +3,7 @@ import type { Step } from "../../support/fake-claude.js";
 import { expect, test } from "./harness.js";
 import type { ServedMastermind } from "./harness.js";
 
-// The worker adds timeline rows for far longer than any test runs, so the waits depend only on how soon a row
+// The worker adds transcript entries for far longer than any test runs, so the waits depend only on how soon a row
 // arrives, and on a loaded machine (right after the gate) the fake worker runs several times slower.
 const progressSteps: Step[] = Array.from({ length: 300 }, (_, index): Step[] => [
   { kind: "sleep", ms: 150 },
@@ -54,7 +54,7 @@ async function openActiveSession(page: Page, mastermind: ServedMastermind) {
     .getByRole("link", { name: "Sessions" })
     .click();
   await expect(page.getByRole("navigation", { name: "Session list" })).toContainText("hello");
-  return page.getByRole("region", { name: "Timeline" });
+  return page.getByRole("region", { name: "Transcript" });
 }
 
 test("a running session appears on Overview with its branch, latest action and files", async ({
@@ -76,7 +76,9 @@ test("a running session appears on Overview with its branch, latest action and f
   await expect(card).toContainText("Worker");
   await expect(card).toContainText("Create hello.txt");
   await expect(card).toContainText("task/hello");
-  await expect(card.locator(".latest-action")).toContainText(/run · Run echo step \d+/);
+  await expect(card.getByRole("region", { name: "Latest activity" })).toContainText(
+    /Bash\s*echo step \d+/,
+  );
   await expect(card.locator(".file-changes")).toContainText("hello.txt +2 −0");
   await expect(
     page
@@ -97,20 +99,21 @@ test("a running session appears on Overview with its branch, latest action and f
   );
 });
 
-test("the timeline grows live and stops following when the owner scrolls up", async ({
+test("the transcript grows live and stops following when the owner scrolls up", async ({
   page,
   mastermind,
 }) => {
-  const timeline = await openActiveSession(page, mastermind);
-  const rows = timeline.getByRole("row");
+  const transcript = await openActiveSession(page, mastermind);
+  const rows = transcript.locator(".transcript-entry");
   await expect(rows.nth(1)).toBeVisible();
   const before = await rows.count();
 
   await expect.poll(() => rows.count(), whileTheWorkerRuns).toBeGreaterThan(before + 3);
-  await expect(timeline.locator("tr[aria-current='true']")).toContainText("now");
+  await expect(transcript).toContainText("Wrote 2 lines to hello.txt");
+  await expect(transcript.getByRole("status")).toContainText("Working…");
 
   await expect(rows.nth(1)).not.toBeInViewport(whileTheWorkerRuns);
-  await timeline.hover();
+  await transcript.hover();
   await page.mouse.wheel(0, -20_000);
   await expect(page.getByRole("button", { name: "Jump to latest" })).toBeVisible();
   const paused = await rows.count();
@@ -125,15 +128,16 @@ test("the timeline grows live and stops following when the owner scrolls up", as
 });
 
 test("Stop session stops the worker and holds its task", async ({ page, mastermind }) => {
-  const timeline = await openActiveSession(page, mastermind);
-  await expect(timeline.getByRole("row").nth(1)).toBeVisible();
+  const transcript = await openActiveSession(page, mastermind);
+  await expect(transcript.locator(".transcript-entry").nth(1)).toBeVisible();
 
   await page.getByRole("button", { name: "Stop session" }).click();
 
   const header = page.locator(".session-header");
   await expect(header).toContainText("Stopped");
   await expect(page.getByRole("button", { name: "Stop session" })).toBeHidden();
-  await expect(timeline.locator("tr[aria-current='true']")).toHaveCount(0);
+  await expect(transcript.getByRole("status")).toBeHidden();
+  await expect(transcript.locator("[aria-current='step']")).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Session list" })).toContainText(
     "No sessions running.",
   );

@@ -2,7 +2,9 @@ import { useMemo } from "react";
 import { Link } from "react-router";
 import { capitalized } from "@mastermind/core/contracts";
 import { sessionStatusWord } from "../sessions/session-list.js";
+import { SessionTranscript } from "../sessions/SessionTranscript.js";
 import { useSessionEvents } from "../sessions/use-session-events.js";
+import { useSessionTranscript } from "../sessions/use-session-transcript.js";
 import { useLive } from "../store/hooks.js";
 import { DiffContents } from "./FileContents.js";
 import { reviewPath } from "./location.js";
@@ -40,6 +42,8 @@ function LatestDiff({
   );
 }
 
+const tailLength = 3;
+
 export function SessionPane({ session }: { session: TaskSession }) {
   const { taskId } = session;
   const changes = useChangesView(taskId);
@@ -51,6 +55,7 @@ export function SessionPane({ session }: { session: TaskSession }) {
     () => sessionProblem(events.at(-1) ?? null, Object.values(checks ?? {}), rebase),
     [events, checks, rebase],
   );
+  const transcript = useSessionTranscript(session);
   const headingId = `review-pane-${String(session.id)}`;
 
   return (
@@ -75,6 +80,14 @@ export function SessionPane({ session }: { session: TaskSession }) {
           {problem}
         </p>
       )}
+      <section className="latest-activity" aria-label="Latest activity">
+        <SessionTranscript
+          entries={transcript.entries.slice(-tailLength)}
+          workingSince={transcript.workingSince}
+          live={transcript.live}
+          compact
+        />
+      </section>
       {path === null ? (
         <p className="muted pane-empty">No edits yet.</p>
       ) : (

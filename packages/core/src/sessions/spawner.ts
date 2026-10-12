@@ -10,6 +10,7 @@ import { exitCode, stopGroup } from "../procs.js";
 import type { ChildHandle } from "../procs.js";
 import { classifyExit } from "./exit.js";
 import { fileEdit, ranShellCommand } from "./file-edits.js";
+import { liveUpdate } from "./live.js";
 import { contextTokens, createStreamParser } from "./parser.js";
 import type { ParsedEvent } from "./parser.js";
 
@@ -152,6 +153,9 @@ export function createSessionSpawner(options: SessionSpawnerOptions): SessionSpa
             ...(edit?.stage === "editing" ? { path: edit.path } : {}),
           });
         }
+        const live = liveUpdate(event.details);
+        if (live !== null)
+          bus.emit({ type: "session.live", sessionId: session.id, taskId: session.taskId, live });
         if (edit?.stage === "written" && session.taskId !== null)
           bus.emit({
             type: "file.changed",

@@ -225,6 +225,20 @@ function partialBlock(block: AssistantBlock): { started: object; deltas: object[
   }
 }
 
+// The real CLI reports a running estimate of the thinking so far after each thinking delta.
+function thinkingTokensLine(context: SessionContext, tokens: number, step: number): object {
+  const before = Math.min(tokens, step * thinkingStepTokens);
+  const estimated = Math.min(tokens, (step + 1) * thinkingStepTokens);
+  return {
+    type: "system",
+    subtype: "thinking_tokens",
+    estimated_tokens: estimated,
+    estimated_tokens_delta: estimated - before,
+    session_id: context.sessionId,
+    uuid: randomUUID(),
+  };
+}
+
 export function partialOpeningLines(
   context: SessionContext,
   messageId: string,
@@ -235,9 +249,10 @@ export function partialOpeningLines(
   return [
     streamEventLine(context, messageStart, { ttft_ms: 420, thinking_display: "updates" }),
     streamEventLine(context, { type: "content_block_start", index: 0, content_block: started }),
-    ...deltas.map((delta) =>
+    ...deltas.flatMap((delta, index) => [
       streamEventLine(context, { type: "content_block_delta", index: 0, delta }),
-    ),
+      ...(block.type === "thinking" ? [thinkingTokensLine(context, block.tokens, index)] : []),
+    ]),
   ];
 }
 

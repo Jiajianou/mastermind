@@ -9,7 +9,7 @@ import { SessionHeader } from "../sessions/SessionHeader.js";
 import { defaultSessionId, groupSessions } from "../sessions/session-list.js";
 import { SessionList } from "../sessions/SessionList.js";
 import { SessionMessageBox } from "../sessions/SessionMessageBox.js";
-import { Timeline } from "../sessions/Timeline.js";
+import { TranscriptPanel } from "../sessions/TranscriptPanel.js";
 import { useSessionEvents } from "../sessions/use-session-events.js";
 import { useLive } from "../store/hooks.js";
 
@@ -23,18 +23,13 @@ function requestedSessionId(value: string | null): number | null {
 function SessionDetail({ session }: { session: Session }) {
   const { taskId } = session;
   const task = useLive((state) => (taskId === null ? undefined : state.tasks[taskId]));
-  const { events, failure } = useSessionEvents(session.id);
+  const { events } = useSessionEvents(session.id);
   const activity = useMemo(() => sessionActivity(events), [events]);
   return (
     <>
       <div className="session-main panel">
         <SessionHeader session={session} task={task} />
-        <Timeline
-          key={session.id}
-          events={events}
-          running={session.status === "running"}
-          failure={failure}
-        />
+        <TranscriptPanel key={session.id} session={session} />
         {session.taskId !== null && isEditingRole(session) && (
           <SessionMessageBox key={session.id} session={session} />
         )}

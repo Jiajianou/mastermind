@@ -71,6 +71,13 @@ const permissionDeniedLineSchema = z.object({
   message: z.string(),
 });
 
+const thinkingTokensLineSchema = z.object({
+  type: z.literal("system"),
+  subtype: z.literal("thinking_tokens"),
+  session_id: sessionIdField,
+  estimated_tokens: z.number(),
+});
+
 const assistantLineSchema = z.object({
   type: z.literal("assistant"),
   session_id: sessionIdField,
@@ -142,6 +149,7 @@ export const streamLineSchema = z.discriminatedUnion("type", [
     apiRetryLineSchema,
     vcsStateChangedLineSchema,
     permissionDeniedLineSchema,
+    thinkingTokensLineSchema,
   ]),
   assistantLineSchema,
   userLineSchema,

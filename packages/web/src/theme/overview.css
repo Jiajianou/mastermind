@@ -107,8 +107,7 @@
 }
 
 .role-tag,
-.ready-tag,
-.live-tag {
+.ready-tag {
   padding: 0 8px;
   border: 1px solid var(--color-control-border);
   border-radius: 999px;
@@ -142,8 +141,8 @@
   overflow-wrap: anywhere;
 }
 
-.latest-action {
-  color: var(--color-text);
+.latest-activity {
+  min-width: 0;
 }
 
 .file-changes ul {

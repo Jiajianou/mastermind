@@ -5,9 +5,11 @@ import type {
   ReviewNotes,
   Session,
   SessionEvent,
+  SessionLive,
 } from "@mastermind/core/contracts";
 import type {
   ChatState,
+  LiveActivity,
   LiveState,
   SchedulerState,
   Snapshot,
@@ -34,6 +36,29 @@ function appendEvent(state: LiveState, event: SessionEvent): LiveState {
       ? [...events, event]
       : [...events, event].sort((a, b) => a.id - b.id);
   return { ...state, sessionEvents: { ...state.sessionEvents, [event.sessionId]: next } };
+}
+
+function nextActivity(previous: LiveActivity | undefined, live: SessionLive): LiveActivity {
+  switch (live.kind) {
+    case "thinking":
+      return live;
+    case "tool":
+      return live;
+    case "text":
+      return {
+        kind: "text",
+        text: `${previous?.kind === "text" ? previous.text : ""}${live.delta}`,
+      };
+  }
+}
+
+// A stored event ends whatever was streaming: its finished line is now in the timeline.
+function withoutActivity(state: LiveState, sessionId: number): LiveState {
+  if (!(sessionId in state.sessionLive)) return state;
+  const sessionLive = Object.fromEntries(
+    Object.entries(state.sessionLive).filter(([id]) => Number(id) !== sessionId),
+  );
+  return { ...state, sessionLive };
 }
 
 type Touched = { path: string } | "any-file";
@@ -138,6 +163,7 @@ function applySnapshot(
       ]),
     ),
     historyLoaded: {},
+    sessionLive: {},
     chat: chatFromView(chat),
   };
 }
@@ -204,12 +230,20 @@ export function reduce(state: LiveState, action: StoreAction): LiveState {
     }
     case "session.started":
       return action.sessionId in state.sessions ? state : withSession(state, action.session);
+    case "session.live":
+      return {
+        ...state,
+        sessionLive: {
+          ...state.sessionLive,
+          [action.sessionId]: nextActivity(state.sessionLive[action.sessionId], action.live),
+        },
+      };
     case "session.ended": {
-      const ended = withSession(state, action.session);
+      const ended = withSession(withoutActivity(state, action.sessionId), action.session);
       return action.taskId === null ? ended : touchWorkspace(ended, action.taskId);
     }
     case "session.event": {
-      const appended = appendEvent(state, action.event);
+      const appended = appendEvent(withoutActivity(state, action.sessionId), action.event);
       if (action.path !== undefined) return withEdit(appended, action.sessionId, action.path);
       if (action.event.type === "commit" && action.taskId !== null)
         return touchWorkspace(appended, action.taskId);

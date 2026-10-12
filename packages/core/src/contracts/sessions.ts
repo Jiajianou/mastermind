@@ -39,16 +39,25 @@ export const isEditingRole = ({ role }: Pick<Session, "role">): boolean =>
 
 export const eventTypeSchema = z.enum([
   "start",
+  "prompt",
   "read",
   "edit",
   "run",
   "note",
+  "output",
   "commit",
   "steer",
   "result",
   "error",
 ]);
 export type EventType = z.infer<typeof eventTypeSchema>;
+
+export const sessionLiveSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("thinking"), tokens: z.int().min(0) }),
+  z.object({ kind: z.literal("text"), delta: z.string() }),
+  z.object({ kind: z.literal("tool"), name: z.string() }),
+]);
+export type SessionLive = z.infer<typeof sessionLiveSchema>;
 
 export const sessionEventSchema = z.object({
   id: z.int(),

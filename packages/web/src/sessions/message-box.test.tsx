@@ -55,7 +55,8 @@ describe("session message box", () => {
     expect(posted).toEqual([
       { path: "/api/sessions/3/message", body: { text: "Write the tests first" } },
     ]);
-    expect((await screen.findByRole("status")).textContent).toBe(
+    await screen.findByText("Sent. The session reads it at its next step.");
+    expect(screen.getAllByRole("status").map((status) => status.textContent)).toContain(
       "Sent. The session reads it at its next step.",
     );
     expect(screen.getByRole("textbox", { name: "Message this session" })).toHaveProperty(

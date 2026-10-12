@@ -9,6 +9,7 @@ import type {
 import { commitSummary, detectCommit } from "./commits.js";
 import type { CommitInfo, VcsCommit } from "./commits.js";
 import { failureText, firstLine, oneLine } from "./summary.js";
+import { keptOutput, keptPatch, resultSummary } from "./tool-results.js";
 import { describeToolUse } from "./tools.js";
 import type { ToolCall } from "./tools.js";
 
@@ -74,6 +75,7 @@ export type EventDetails =
       structuredOutput: unknown;
     }
   | { line: "rate_limit"; sessionId: string | null; rateLimit: RateLimit }
+  | { line: "thinking"; sessionId: string | null; tokens: number }
   | {
       line: "partial";
       sessionId: string | null;
@@ -111,7 +113,7 @@ export interface StreamParser {
   parseLine(line: string): ParsedEvent;
 }
 
-type DerivedEvent = Omit<ParsedEvent, "payload">;
+type DerivedEvent = Omit<ParsedEvent, "payload"> & { payload?: string };
 type SystemLine = Extract<StreamLine, { type: "system" }>;
 type UserLine = Extract<StreamLine, { type: "user" }>;
 type ResultLine = Extract<StreamLine, { type: "result" }>;
@@ -170,7 +172,7 @@ export function createStreamParser(): StreamParser {
   let initSeen = false;
   let turnPromptSeen = false;
   let vcsCommit: VcsCommit | null = null;
-  const toolCalls = new Map<string, ToolCall>();
+  const toolCalls = new Map<string, ToolCall & { input: Record<string, unknown> }>();
   const deniedToolUses = new Set<string>();
 
   function assistantEvent(line: AssistantLine): DerivedEvent {
@@ -190,7 +192,7 @@ export function createStreamParser(): StreamParser {
     const toolUse = blocks.find((block) => block.type === "tool_use");
     if (toolUse !== undefined) {
       const call = describeToolUse(toolUse.name, toolUse.input, cwd);
-      toolCalls.set(toolUse.id, call);
+      toolCalls.set(toolUse.id, { ...call, input: toolUse.input });
       return event(call.type, call.summary, {
         line: "tool_use",
         sessionId,
@@ -234,7 +236,24 @@ export function createStreamParser(): StreamParser {
       const failed = `${call?.name ?? "Tool"} failed: ${failureText(output)}`;
       return event("error", failed, details, !deniedToolUses.has(block.tool_use_id));
     }
-    return event("note", firstLine(output), details, false);
+    const patch = keptPatch(line.tool_use_result);
+    return {
+      ...event("output", resultSummary(call, output, cwd, patch), details),
+      payload: JSON.stringify({
+        type: "user",
+        session_id: line.session_id,
+        ...(patch === null ? {} : { tool_use_result: { structuredPatch: patch } }),
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: block.tool_use_id,
+              content: keptOutput(call?.name ?? null, output),
+            },
+          ],
+        },
+      }),
+    };
   }
 
   function userEvent(line: UserLine): DerivedEvent {
@@ -256,7 +275,7 @@ export function createStreamParser(): StreamParser {
     if (!isReplay) return event("note", firstLine(text), details);
     if (turnPromptSeen) return event("steer", text, details);
     turnPromptSeen = true;
-    return event("note", firstLine(text), details, false);
+    return event("prompt", firstLine(text), details);
   }
 
   function systemEvent(line: SystemLine): DerivedEvent {
@@ -302,6 +321,13 @@ export function createStreamParser(): StreamParser {
         vcsCommit = { branch };
         return event("commit", `Committed${where}`, details, false);
       }
+      case "thinking_tokens":
+        return event(
+          "note",
+          "Thinking",
+          { line: "thinking", sessionId, tokens: Math.round(line.estimated_tokens) },
+          false,
+        );
       case "permission_denied": {
         const toolUseId = line.tool_use_id ?? null;
         if (toolUseId !== null) deniedToolUses.add(toolUseId);
@@ -400,7 +426,8 @@ export function createStreamParser(): StreamParser {
 
   return {
     parseLine(raw) {
-      return { ...parse(raw), payload: raw };
+      const derived = parse(raw);
+      return { ...derived, payload: derived.payload ?? raw };
     },
   };
 }

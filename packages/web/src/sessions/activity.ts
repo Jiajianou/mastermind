@@ -1,6 +1,7 @@
-import { streamLineSchema } from "@mastermind/core/contracts";
+import { diffCounts, lineDiff, splitLines } from "@mastermind/core/contracts";
 import type { SessionEvent, StreamLine } from "@mastermind/core/contracts";
 import { z } from "zod";
+import { streamLine } from "./stream-lines.js";
 
 export interface FileChange {
   path: string;
@@ -9,7 +10,6 @@ export interface FileChange {
 }
 
 export interface SessionActivity {
-  latest: SessionEvent | null;
   files: FileChange[];
   commits: number;
   contextTokens: number | null;
@@ -30,33 +30,6 @@ const pathInputSchema = z.union([
   z.object({ notebook_path: z.string() }).transform((input) => input.notebook_path),
 ]);
 
-// Stored events never change, so each payload is parsed once however often the timeline grows.
-const parsedLines = new WeakMap<SessionEvent, StreamLine | null>();
-
-function parsePayload(payload: string): StreamLine | null {
-  let json: unknown;
-  try {
-    json = JSON.parse(payload);
-  } catch {
-    return null;
-  }
-  const parsed = streamLineSchema.safeParse(json);
-  return parsed.success ? parsed.data : null;
-}
-
-function streamLine(event: SessionEvent): StreamLine | null {
-  const cached = parsedLines.get(event);
-  if (cached !== undefined) return cached;
-  const line = parsePayload(event.payload);
-  parsedLines.set(event, line);
-  return line;
-}
-
-function lineCount(text: string): number {
-  if (text === "") return 0;
-  return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
-}
-
 function toolInput(line: StreamLine | null): { name: string; input: unknown } | null {
   if (line?.type !== "assistant") return null;
   const block = line.message.content.find((content) => content.type === "tool_use");
@@ -69,8 +42,7 @@ function editChange(name: string, input: unknown): FileChange | null {
     if (edit.success)
       return {
         path: edit.data.file_path,
-        added: lineCount(edit.data.new_string),
-        removed: lineCount(edit.data.old_string),
+        ...diffCounts(lineDiff(edit.data.old_string, edit.data.new_string)),
       };
   }
   if (name === "MultiEdit") {
@@ -78,14 +50,19 @@ function editChange(name: string, input: unknown): FileChange | null {
     if (multi.success)
       return {
         path: multi.data.file_path,
-        added: multi.data.edits.reduce((sum, edit) => sum + lineCount(edit.new_string), 0),
-        removed: multi.data.edits.reduce((sum, edit) => sum + lineCount(edit.old_string), 0),
+        ...diffCounts(
+          multi.data.edits.flatMap((edit) => lineDiff(edit.old_string, edit.new_string)),
+        ),
       };
   }
   if (name === "Write") {
     const write = writeInputSchema.safeParse(input);
     if (write.success)
-      return { path: write.data.file_path, added: lineCount(write.data.content), removed: 0 };
+      return {
+        path: write.data.file_path,
+        added: splitLines(write.data.content).length,
+        removed: 0,
+      };
   }
   const path = pathInputSchema.safeParse(input);
   return path.success ? { path: path.data, added: 0, removed: 0 } : null;
@@ -129,7 +106,7 @@ export function sessionActivity(events: readonly SessionEvent[]): SessionActivit
       removed: (known?.removed ?? 0) + change.removed,
     });
   }
-  return { latest: events.at(-1) ?? null, files: [...files.values()], commits, contextTokens };
+  return { files: [...files.values()], commits, contextTokens };
 }
 
 function initCwd(events: readonly SessionEvent[]): string | null {

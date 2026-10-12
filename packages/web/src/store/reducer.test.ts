@@ -120,6 +120,46 @@ const cases: Case[] = [
     },
   },
   {
+    name: "session.live joins text as it streams and lets thinking or a tool start replace it",
+    before: stateWith({
+      sessionLive: { 1: { kind: "text", text: "The README" }, 2: { kind: "tool", name: "Read" } },
+    }),
+    action: {
+      type: "session.live",
+      sessionId: 1,
+      taskId: "alpha",
+      live: { kind: "text", delta: " says hi" },
+    },
+    after: (next, before) => {
+      expect(next.sessionLive[1]).toEqual({ kind: "text", text: "The README says hi" });
+      expect(next.sessionLive[2]).toBe(before.sessionLive[2]);
+      const thinking = reduce(next, {
+        type: "session.live",
+        sessionId: 1,
+        taskId: "alpha",
+        live: { kind: "thinking", tokens: 0 },
+      });
+      expect(thinking.sessionLive[1]).toEqual({ kind: "thinking", tokens: 0 });
+      const text = reduce(thinking, {
+        type: "session.live",
+        sessionId: 1,
+        taskId: "alpha",
+        live: { kind: "text", delta: "Done" },
+      });
+      expect(text.sessionLive[1]).toEqual({ kind: "text", text: "Done" });
+    },
+  },
+  {
+    name: "session.event ends what was streaming, since its finished line has arrived",
+    before: stateWith({
+      sessionLive: { 1: { kind: "text", text: "The README" }, 2: { kind: "thinking", tokens: 50 } },
+    }),
+    action: { type: "session.event", sessionId: 1, taskId: "alpha", event: sessionEvent(1) },
+    after: (next) => {
+      expect(next.sessionLive).toEqual({ 2: { kind: "thinking", tokens: 50 } });
+    },
+  },
+  {
     name: "session.event ignores an event it already has",
     before: stateWith({ sessionEvents: { 1: [sessionEvent(1)] } }),
     action: { type: "session.event", sessionId: 1, taskId: "alpha", event: sessionEvent(1) },

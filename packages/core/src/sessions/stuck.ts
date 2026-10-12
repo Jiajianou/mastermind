@@ -102,7 +102,7 @@ function repeated(failures: ReadonlyMap<string, number>): RepeatedFailure[] {
 const isSessionOutput = (event: SessionEvent, details: EventDetails): boolean =>
   event.type !== "steer" && !(details.line === "other" && details.lineType === stuckCheckLineType);
 
-// Successful tool results are not stored, so a command is still running if nothing has been stored since it started.
+// A command is still running if nothing, not even its result, has been stored since it started.
 function silentCommandOf(
   last: { event: SessionEvent; details: EventDetails } | null,
   now: Date,

@@ -33,6 +33,7 @@ export function editingPrintOptions(
     model: config.models[role],
     inputFormat: "stream-json",
     ...session,
+    includePartialMessages: true,
     replayUserMessages: true,
     ...workerPermissionOptions(config.workerPermissions, config.workerAllowedTools),
     noPermissionPrompts: true,

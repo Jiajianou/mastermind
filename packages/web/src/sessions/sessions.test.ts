@@ -101,7 +101,6 @@ describe("sessionActivity", () => {
     ];
 
     expect(sessionActivity(events)).toEqual({
-      latest: events[7],
       files: [
         { path: "src/a.ts", added: 4, removed: 4 },
         { path: "src/b.ts", added: 3, removed: 0 },
@@ -114,7 +113,6 @@ describe("sessionActivity", () => {
 
   it("knows nothing yet for an empty timeline", () => {
     expect(sessionActivity([])).toEqual({
-      latest: null,
       files: [],
       commits: 0,
       contextTokens: null,

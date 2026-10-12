@@ -10,6 +10,7 @@ export * from "./conductor.js";
 export * from "./common.js";
 export * from "./config.js";
 export * from "./events.js";
+export * from "./line-diff.js";
 export * from "./notifications.js";
 export * from "./queue.js";
 export * from "./request-changes.js";

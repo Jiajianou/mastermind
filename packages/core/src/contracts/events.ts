@@ -6,7 +6,7 @@ import { isoTimestampSchema } from "./common.js";
 import { configSchema } from "./config.js";
 import { ownerNotificationSchema } from "./notifications.js";
 import { commentSchema, findingSchema } from "./review.js";
-import { sessionEventSchema, sessionSchema } from "./sessions.js";
+import { sessionEventSchema, sessionLiveSchema, sessionSchema } from "./sessions.js";
 import { taskSchema } from "./tasks.js";
 import { terminalSchema } from "./terminals.js";
 
@@ -24,6 +24,12 @@ export const busEventSchema = z.discriminatedUnion("type", [
     taskId: z.string().nullable(),
     event: sessionEventSchema,
     path: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("session.live"),
+    sessionId: z.int(),
+    taskId: z.string().nullable(),
+    live: sessionLiveSchema,
   }),
   z.object({
     type: z.literal("file.changed"),

@@ -59,6 +59,11 @@ export type ChangesView =
 export const changesKey = (taskId: string, since: string): string =>
   since === "base" ? taskId : `${taskId}@${since}`;
 
+export type LiveActivity =
+  | { kind: "thinking"; tokens: number }
+  | { kind: "text"; text: string }
+  | { kind: "tool"; name: string };
+
 export interface LiveState {
   connection: Connection;
   instance: InstanceInfo | null;
@@ -68,6 +73,7 @@ export interface LiveState {
   sessions: Readonly<Record<number, Session>>;
   sessionEvents: Readonly<Record<number, readonly SessionEvent[]>>;
   historyLoaded: Readonly<Record<number, true>>;
+  sessionLive: Readonly<Record<number, LiveActivity>>;
   editing: Readonly<Record<number, string>>;
   workspaces: Readonly<Record<string, Workspace>>;
   changes: Readonly<Record<string, ChangesView>>;
@@ -110,6 +116,7 @@ export const initialState: LiveState = {
   sessions: {},
   sessionEvents: {},
   historyLoaded: {},
+  sessionLive: {},
   editing: {},
   workspaces: {},
   changes: {},

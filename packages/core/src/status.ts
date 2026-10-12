@@ -236,7 +236,8 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
         if (event.session.role === "conductor") return null;
         return [startLine(event.session, options.maxAttempts())];
       case "session.event":
-        activity.set(event.sessionId, event.event.summary);
+        if (event.event.type !== "output" && event.event.type !== "prompt")
+          activity.set(event.sessionId, event.event.summary);
         return [sessionEventLine(event)];
       case "session.ended":
         activity.delete(event.sessionId);
@@ -279,6 +280,7 @@ export function createStatusStore(options: StatusStoreOptions): StatusStore {
         return [authLine(event)];
       case "config.updated":
         return [];
+      case "session.live":
       case "file.changed":
       case "workspace.changed":
       case "comment.updated":

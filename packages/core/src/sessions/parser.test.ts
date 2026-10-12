@@ -9,6 +9,7 @@ import {
   StructuredOutputError,
 } from "./index.js";
 import type { ParsedEvent } from "./index.js";
+import { liveUpdate } from "./live.js";
 
 const samplesDir = new URL("../../../../test/fixtures/claude-samples/", import.meta.url);
 
@@ -77,8 +78,11 @@ const expectedBySample: Record<string, Row[]> = {
   "01-worker-run.jsonl": [
     ["start", "claude-haiku-4-5-20251001 · bypassPermissions · 38 tools"],
     ["read", "Read hello.py"],
+    ["output", "Read 2 lines"],
     ["edit", "Edit hello.py"],
+    ["output", "Updated hello.py with 2 additions and 1 removal"],
     ["run", "Run python3 hello.py && echo ran"],
+    ["output", "goodbye"],
     ["run", 'Run git add -A && git commit -m "Say goodbye"'],
     ["commit", 'Commit "Say goodbye"'],
     ["note", "done"],
@@ -87,12 +91,14 @@ const expectedBySample: Record<string, Row[]> = {
   "01-partial-messages.jsonl": [
     ["start", "claude-haiku-4-5-20251001 · default · 1 tool"],
     ["read", "Read README.md"],
+    ["output", "Read 2 lines"],
     ["note", /^The README states that the repository has a README file\./],
     ["result", "Done in 2 turns"],
   ],
   "02-json-schema.jsonl": [
     ["start", "claude-haiku-4-5-20251001 · default · 1 tool"],
     ["note", "Structured output"],
+    ["output", "Structured output provided successfully"],
     ["result", "Done in 2 turns"],
   ],
   "03-rate-limit-events.jsonl": [],
@@ -113,13 +119,19 @@ const expectedBySample: Record<string, Row[]> = {
   ],
   "05-stdin-inject.jsonl": [
     ["start", "claude-haiku-4-5-20251001 · bypassPermissions · 1 tool"],
+    [
+      "prompt",
+      "Run the Bash command `sleep 4; echo slept` and then reply with one short sentence saying what it printed.",
+    ],
     ["run", "Run sleep 4; echo slept"],
+    ["output", "slept"],
     [
       "steer",
       "Additional instruction: when you finish, end your final reply with the word BANANA.",
     ],
     ["note", 'It printed "slept" after sleeping for 4 seconds. BANANA'],
     ["result", "Done in 2 turns"],
+    ["prompt", "Second turn: reply with just the word CHERRY."],
     ["note", "CHERRY"],
     ["result", "Done in 1 turn"],
   ],
@@ -135,7 +147,9 @@ const expectedBySample: Record<string, Row[]> = {
   "06-mcp-http.jsonl": [
     ["start", "claude-haiku-4-5-20251001 · default · 4 tools"],
     ["read", "mcp__mastermind__get_summary"],
+    ["output", "3 tasks: 1 running (sched-prio), 2 pending. Secret word: KUMQUAT."],
     ["read", "Read README.md"],
+    ["output", "Read 2 lines"],
     ["note", 'The secret word is **KUMQUAT** and the README text is "This repo has a README".'],
     ["result", "Done in 3 turns"],
   ],
@@ -151,8 +165,11 @@ const expectedBySample: Record<string, Row[]> = {
     ["run", `Run node -e "require('fs').writeFileSync('n.txt','x')"`],
     ["error", /^Denied Bash: Permission to use Bash has been denied because .* don't ask mode/],
     ["read", "Read Makefile"],
+    ["output", "Read 3 lines"],
     ["edit", "Edit Makefile"],
+    ["output", "Updated Makefile with 1 addition and 1 removal"],
     ["run", "Run make test"],
+    ["output", "all tests passed"],
     ["note", "**Step 1 (node write):** Permission denied — don't ask mode"],
     ["result", "Done in 5 turns"],
   ],
@@ -161,9 +178,11 @@ const expectedBySample: Record<string, Row[]> = {
     ["run", "Run touch made-by-bash.txt"],
     ["error", /^Denied Bash: touch in '.*made-by-bash.txt' needs approval\./],
     ["read", "Read Makefile"],
+    ["output", "Read 3 lines"],
     ["edit", "Edit Makefile"],
     ["error", /^Denied Edit: Claude requested permissions to write to .*Makefile/],
     ["run", "Run make test"],
+    ["output", "tests passed"],
     ["note", "Step 1: Failed — touch needs approval."],
     ["result", "Done in 5 turns"],
   ],
@@ -171,7 +190,9 @@ const expectedBySample: Record<string, Row[]> = {
     ["start", "claude-haiku-4-5-20251001 · bypassPermissions · 29 tools"],
     ["note", "I'll read a.txt first, then append 'b' and commit the change."],
     ["read", "Read a.txt"],
+    ["output", "Read 2 lines"],
     ["edit", "Edit a.txt"],
+    ["output", "Updated a.txt with 1 addition"],
     ["run", `Run git add a.txt && git commit -m "$(cat <<'EOF'`],
     ["commit", 'Commit "Add b Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"'],
     ["note", /^Done\. I've appended 'b' to a\.txt/],
@@ -191,6 +212,7 @@ const expectedBySample: Record<string, Row[]> = {
       "Write failed: mastermind: /tmp/mm-spikes/outside2/guarded2.txt is outside this task's worktree",
     ],
     ["edit", "Write inside-write.txt"],
+    ["output", "Wrote 1 line to inside-write.txt"],
     ["note", "## Results"],
     ["result", "Done in 4 turns"],
   ],
@@ -215,17 +237,19 @@ const expectedBySample: Record<string, Row[]> = {
       "Bash failed: sandbox: deny network-outbound example.com:443 (host is not on the allow list)",
     ],
     ["run", 'Run curl -sS -m 8 -o /dev/null -w "%{http_code}" https://registry.npmjs.org/'],
+    ["output", "200"],
     ["edit", "Write /private/tmp/mm-spikes/outside/write-denied.txt"],
     ["error", "Write failed: File is in a directory that is denied by your permission settings."],
     ["edit", "Write /private/tmp/mm-spikes/outside2/write-nodeny.txt"],
+    ["output", "Wrote 1 line to /private/tmp/mm-spikes/outside2/write-nodeny.txt"],
     ["run", "Run echo ok > inside.txt"],
+    ["output", "(Bash completed with no output)"],
     ["note", "## Sandbox Test Results"],
     ["result", "Done in 7 turns"],
   ],
 };
 
 const noiseLineTypes = [
-  "system/thinking_tokens",
   "system/status",
   "system/task_started",
   "system/task_notification",
@@ -261,6 +285,22 @@ describe("stream parser on the recorded samples", () => {
       expect(unrecognised).toEqual([]);
     },
   );
+
+  test("a streamed run shows its thinking, each tool as it starts and its reply text live", () => {
+    const updates = parseAll(sampleLines("01-partial-messages.jsonl")).flatMap(
+      ({ details }) => liveUpdate(details) ?? [],
+    );
+
+    const phases = updates
+      .map((update) => update.kind)
+      .filter((kind, index, kinds) => kind !== kinds[index - 1]);
+    expect(phases).toEqual(["thinking", "tool", "thinking", "text"]);
+    expect(updates).toContainEqual({ kind: "tool", name: "Read" });
+    expect(updates).toContainEqual({ kind: "thinking", tokens: 50 });
+    expect(updates.map((update) => (update.kind === "text" ? update.delta : "")).join("")).toMatch(
+      /^The README states that the repository has a README file\./,
+    );
+  });
 
   test("a worker run carries session id, paths, commands, the commit and usage in details", () => {
     const events = parseAll(sampleLines("01-worker-run.jsonl"));
@@ -467,10 +507,121 @@ describe("stream parser on malformed, unknown and synthetic lines", () => {
     },
   ])("$name", ({ command, lines, expected }) => {
     const events = parseAll([toolUse("t", "Bash", { command }), ...lines]);
-    expect(storedRows(events)).toEqual([
+    expect(storedRows(events).filter(([type]) => type !== "output")).toEqual([
       ["run", `Run ${command}`],
       ...(expected === null ? [] : [expected]),
     ]);
+  });
+});
+
+describe("finished tool calls", () => {
+  const numbered = (count: number) =>
+    Array.from({ length: count }, (_, index) => `${String(index + 1).padStart(6)}→line`).join("\n");
+  const echoed = (count: number) =>
+    Array.from({ length: count }, (_, index) => `out ${String(index + 1)}`).join("\n");
+
+  const hunk = {
+    oldStart: 3,
+    oldLines: 2,
+    newStart: 3,
+    newLines: 3,
+    lines: [" a", "-b", "+B", "+c"],
+  };
+
+  test.each<{
+    name: string;
+    tool: string;
+    input: Record<string, unknown>;
+    output: string;
+    toolUseResult?: unknown;
+    summary: string;
+    kept: string;
+    patch?: unknown;
+  }>([
+    {
+      name: "an edit keeps Claude Code's patch and counts its changed lines",
+      tool: "Edit",
+      input: { file_path: "/repo/src/a.ts", old_string: "a\nb", new_string: "a\nB\nc" },
+      output: "The file /repo/src/a.ts has been updated.",
+      toolUseResult: {
+        filePath: "/repo/src/a.ts",
+        originalFile: "x".repeat(5000),
+        structuredPatch: [hunk],
+      },
+      summary: "Updated src/a.ts with 2 additions and 1 removal",
+      kept: "",
+      patch: { structuredPatch: [hunk] },
+    },
+    {
+      name: "a read keeps only its line count",
+      tool: "Read",
+      input: { file_path: "/repo/src/a.ts" },
+      output: numbered(120),
+      summary: "Read 120 lines",
+      kept: "",
+    },
+    {
+      name: "an edit counts the changed lines and keeps no output",
+      tool: "MultiEdit",
+      input: {
+        file_path: "/repo/src/a.ts",
+        edits: [
+          { old_string: "a\nb\nc", new_string: "a\nB\nc\nd" },
+          { old_string: "x", new_string: "" },
+        ],
+      },
+      output: "The file /repo/src/a.ts has been updated.",
+      summary: "Updated src/a.ts with 2 additions and 2 removals",
+      kept: "",
+    },
+    {
+      name: "a write counts the lines it wrote",
+      tool: "Write",
+      input: { file_path: "/repo/notes.md", content: "one\ntwo\n" },
+      output: "File created successfully at: /repo/notes.md",
+      summary: "Wrote 2 lines to notes.md",
+      kept: "",
+    },
+    {
+      name: "a glob counts the files it found",
+      tool: "Glob",
+      input: { pattern: "**/*.ts" },
+      output: "/repo/a.ts\n/repo/b.ts",
+      summary: "Found 2 files",
+      kept: "/repo/a.ts\n/repo/b.ts",
+    },
+    {
+      name: "a long command output keeps its first 40 lines",
+      tool: "Bash",
+      input: { command: "make test" },
+      output: echoed(45),
+      summary: "out 1",
+      kept: `${echoed(40)}\n… +5 lines`,
+    },
+  ])("$name", ({ tool, input, output, toolUseResult, summary, kept, patch }) => {
+    const parser = createStreamParser();
+    parser.parseLine(
+      json({
+        type: "system",
+        subtype: "init",
+        cwd: "/repo",
+        model: "m",
+        permissionMode: "default",
+        tools: [],
+        mcp_servers: [],
+      }),
+    );
+    parser.parseLine(toolUse("t", tool, input));
+
+    const event = parser.parseLine(toolResult("t", output, { toolUseResult }));
+
+    expect(event).toMatchObject({ type: "output", summary, stored: true });
+    expect(JSON.parse(event.payload)).toEqual({
+      type: "user",
+      session_id: "s",
+      message: { content: [{ type: "tool_result", tool_use_id: "t", content: kept }] },
+      ...(patch === undefined ? {} : { tool_use_result: patch }),
+    });
   });
 });
 

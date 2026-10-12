@@ -109,7 +109,9 @@ test("tasks are created, watched and one is stopped through the chat without a p
   for (const id of ["alpha", "beta"]) {
     const card = active.getByRole("article", { name: id });
     await expect(card).toContainText("Worker");
-    await expect(card.locator(".latest-action")).toContainText("echo working");
+    await expect(card.getByRole("region", { name: "Latest activity" })).toContainText(
+      "echo working",
+    );
   }
   const alphaActivity = active
     .getByRole("article", { name: "alpha" })
@@ -120,7 +122,7 @@ test("tasks are created, watched and one is stopped through the chat without a p
   );
   await alphaActivity.click();
   await expect(page.locator(".session-header")).toContainText("alpha");
-  await expect(page.getByRole("region", { name: "Timeline" })).toContainText("echo working");
+  await expect(page.getByRole("region", { name: "Transcript" })).toContainText("echo working");
 
   await screens(page).getByRole("link", { name: "Chat" }).click();
   await say(page, "Please stop alpha");
@@ -235,13 +237,13 @@ test("Chat, Overview and Sessions use real labelled controls, work from the keyb
 
   await activateByKeyboard(page, screens(page).getByRole("link", { name: "Overview" }), "Enter");
   const card = page.getByRole("article", { name: "alpha" });
-  await expect(card.locator(".latest-action")).toContainText("echo working");
+  await expect(card.getByRole("region", { name: "Latest activity" })).toContainText("echo working");
   const tiles = page.getByRole("list", { name: "Task counts" }).getByRole("listitem");
   await expect(tiles).toHaveText(["0Remaining", "1Running", "0Done", "0Blocked"]);
   await expectAccessibleScreen(page);
 
   await activateByKeyboard(page, card.getByRole("link", { name: "Activity" }), "Enter");
-  await expect(page.getByRole("region", { name: "Timeline" })).toContainText("echo working");
+  await expect(page.getByRole("region", { name: "Transcript" })).toContainText("echo working");
   const sessionList = page.getByRole("navigation", { name: "Session list" });
   await expect(sessionList.getByRole("link", { name: /alpha/ })).toContainText("Running");
   await expectAccessibleScreen(page);

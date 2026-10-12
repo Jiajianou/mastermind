@@ -145,6 +145,20 @@ function writeFile(path: string, content: string): ToolResult {
   };
 }
 
+// Like the real CLI's patch, minus the surrounding context lines.
+function editHunk(originalFile: string, oldString: string, newString: string): object {
+  const start = originalFile.slice(0, originalFile.indexOf(oldString)).split("\n").length;
+  const oldLines = oldString.split("\n");
+  const newLines = newString.split("\n");
+  return {
+    oldStart: start,
+    oldLines: oldLines.length,
+    newStart: start,
+    newLines: newLines.length,
+    lines: [...oldLines.map((line) => `-${line}`), ...newLines.map((line) => `+${line}`)],
+  };
+}
+
 function editFile(
   path: string,
   oldString: string,
@@ -169,7 +183,7 @@ function editFile(
       oldString,
       newString,
       originalFile,
-      structuredPatch: [],
+      structuredPatch: [editHunk(originalFile, oldString, newString)],
       userModified: false,
       replaceAll,
     },

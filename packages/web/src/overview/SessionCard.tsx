@@ -7,16 +7,20 @@ import { Elapsed } from "../sessions/Elapsed.js";
 import { FileChanges } from "../sessions/FileChanges.js";
 import { FixerReason } from "../sessions/FixerReason.js";
 import { sessionDiffPath, sessionPath } from "../sessions/links.js";
+import { SessionTranscript } from "../sessions/SessionTranscript.js";
 import { useSessionEvents } from "../sessions/use-session-events.js";
+import { useSessionTranscript } from "../sessions/use-session-transcript.js";
 import { useLive } from "../store/hooks.js";
+
+const tailLength = 3;
 
 export function SessionCard({ session }: { session: Session }) {
   const { taskId } = session;
   const task = useLive((state) => (taskId === null ? undefined : state.tasks[taskId]));
   const { events } = useSessionEvents(session.id);
   const activity = useMemo(() => sessionActivity(events), [events]);
+  const transcript = useSessionTranscript(session);
   const headingId = `session-card-${String(session.id)}`;
-  const latest = activity.latest;
 
   return (
     <article className="session-card panel" aria-labelledby={headingId}>
@@ -34,13 +38,15 @@ export function SessionCard({ session }: { session: Session }) {
         <dd>
           <code>{task?.branch ?? "none yet"}</code>
         </dd>
-        <dt>Latest</dt>
-        <dd>
-          <code className="latest-action">
-            {latest === null ? "starting" : `${latest.type} · ${latest.summary}`}
-          </code>
-        </dd>
       </dl>
+      <section className="latest-activity" aria-label="Latest activity">
+        <SessionTranscript
+          entries={transcript.entries.slice(-tailLength)}
+          workingSince={transcript.workingSince}
+          live={transcript.live}
+          compact
+        />
+      </section>
       <FileChanges files={activity.files} />
       <div className="card-actions">
         <Link className="button-link" to={sessionDiffPath(session.id)}>
